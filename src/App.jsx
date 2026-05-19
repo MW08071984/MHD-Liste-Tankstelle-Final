@@ -50,7 +50,10 @@ const BACKWAREN = [
   { artikelnummer: '103950', name: 'Muschelbrötchen Käse Salami' },
 ]
 
+const CATS = ['Getränke','Kühlung','Milchprodukte','Snacks','Süßwaren','Backwaren','Sonstiges']
+
 function todayISO() { return new Date().toISOString().slice(0, 10) }
+function nowStamp() { return new Date().toISOString() }
 function daysUntil(dateString) {
   if (!dateString) return 999
   const today = new Date()
@@ -59,6 +62,7 @@ function daysUntil(dateString) {
   return Math.ceil((target - today) / 86400000)
 }
 function canEditImages(user) { return ['chef', 'chef_temp', 'stationsleitung'].includes(user?.rolle) }
+function canManage(user) { return ['chef', 'chef_temp', 'stationsleitung'].includes(user?.rolle) }
 function roleLabel(role) {
   if (role === 'chef') return 'Chef'
   if (role === 'chef_temp') return 'Chef-Rechte Einrichtung'
@@ -67,8 +71,8 @@ function roleLabel(role) {
 }
 function mapCategory(text='') {
   const t = text.toLowerCase()
-  if (t.includes('drink') || t.includes('beverage') || t.includes('wasser') || t.includes('cola')) return 'Getränke'
-  if (t.includes('milk') || t.includes('dairy') || t.includes('joghurt')) return 'Milchprodukte'
+  if (t.includes('drink') || t.includes('beverage') || t.includes('wasser') || t.includes('cola') || t.includes('juice')) return 'Getränke'
+  if (t.includes('milk') || t.includes('dairy') || t.includes('joghurt') || t.includes('cheese')) return 'Milchprodukte'
   if (t.includes('snack') || t.includes('chips') || t.includes('nuts')) return 'Snacks'
   if (t.includes('chocolate') || t.includes('candy') || t.includes('sweet')) return 'Süßwaren'
   if (t.includes('sandwich') || t.includes('bakery') || t.includes('bread')) return 'Backwaren'
@@ -137,15 +141,17 @@ function fileToDataUrl(file) {
   })
 }
 async function notify(items) {
-  if (!('Notification' in window)) return
+  if (!('Notification' in window)) return 'Browser unterstützt keine Benachrichtigungen.'
   const permission = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission()
-  if (permission !== 'granted') return
+  if (permission !== 'granted') return 'Benachrichtigungen nicht erlaubt.'
   const urgent = items.filter(x => daysUntil(x.mhd) <= 2)
-  if (!urgent.length) return
-  const body = urgent.slice(0, 5).map(x => `${x.name} · MHD ${new Date(x.mhd).toLocaleDateString('de-DE')} · ${x.menge} Stk.`).join('\\n')
+  const body = urgent.length
+    ? urgent.slice(0, 5).map(x => `${x.name} · MHD ${new Date(x.mhd).toLocaleDateString('de-DE')} · ${x.menge} Stk.`).join('\\n')
+    : 'Aktuell keine fälligen MHD-Artikel.'
   const reg = await navigator.serviceWorker?.ready.catch(() => null)
-  if (reg?.showNotification) reg.showNotification('MHD Warnung', { body, tag: 'mhd-warning', renotify: true })
-  else new Notification('MHD Warnung', { body })
+  if (reg?.showNotification) reg.showNotification('MHD Kontrolle', { body, tag: 'mhd-warning', renotify: true })
+  else new Notification('MHD Kontrolle', { body })
+  return 'Benachrichtigung gesendet.'
 }
 
 export default function App() {
@@ -159,26 +165,40 @@ export default function App() {
   const [writeoffs, setWriteoffs] = useState([])
   const [tab, setTab] = useState('dashboard')
   const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
   const [form, setForm] = useState({ barcode:'', name:'', kategorie:'Sonstiges', mhd:todayISO(), menge:1, bild_url:'' })
   const db = Boolean(supabase)
 
   useEffect(() => {
     navigator.serviceWorker?.register('/sw.js').catch(() => {})
     const saved = localStorage.getItem('mhd_user')
-    if (saved) setUser(JSON.parse(saved))
+    if (saved) {
+      try { setUser(JSON.parse(saved)) } catch {}
+    }
     init()
   }, [])
 
   async function init() {
-    if (!db) { setEmployees(START_EMPLOYEES); setReady(true); return }
-    await supabase.from('mitarbeiter').upsert(START_EMPLOYEES, { onConflict: 'nummer' })
-    const { data: emps } = await supabase.from('mitarbeiter').select('*').order('nummer')
-    const { data: list } = await supabase.from('mhd_artikel').select('*').order('mhd')
-    const { data: abs } = await supabase.from('abschriften').select('*').order('created_at', { ascending:false })
-    setEmployees(emps || START_EMPLOYEES)
-    setItems(list || [])
-    setWriteoffs(abs || [])
-    setReady(true)
+    if (!db) {
+      setEmployees(START_EMPLOYEES)
+      setItems(JSON.parse(localStorage.getItem('mhd_items') || '[]'))
+      setWriteoffs(JSON.parse(localStorage.getItem('mhd_writeoffs') || '[]'))
+      setReady(true)
+      return
+    }
+    try {
+      await supabase.from('mitarbeiter').upsert(START_EMPLOYEES, { onConflict: 'nummer' })
+      const { data: emps } = await supabase.from('mitarbeiter').select('*').order('nummer')
+      const { data: list } = await supabase.from('mhd_artikel').select('*').order('mhd')
+      const { data: abs } = await supabase.from('abschriften').select('*').order('created_at', { ascending:false })
+      setEmployees(emps || START_EMPLOYEES)
+      setItems(list || [])
+      setWriteoffs(abs || [])
+    } catch (e) {
+      setError('Datenbankfehler: ' + e.message)
+    } finally {
+      setReady(true)
+    }
   }
 
   async function reloadLists() {
@@ -189,6 +209,15 @@ export default function App() {
     setWriteoffs(abs || [])
   }
 
+  function localSetItems(next) {
+    setItems(next)
+    localStorage.setItem('mhd_items', JSON.stringify(next))
+  }
+  function localSetWriteoffs(next) {
+    setWriteoffs(next)
+    localStorage.setItem('mhd_writeoffs', JSON.stringify(next))
+  }
+
   async function doLogin(e) {
     e.preventDefault()
     setError('')
@@ -197,70 +226,140 @@ export default function App() {
     if (!employee) return setError('Nummer oder Passwort falsch.')
     setUser(employee)
     if (remember) localStorage.setItem('mhd_user', JSON.stringify(employee))
+    else localStorage.removeItem('mhd_user')
   }
 
   async function changePassword() {
+    setError('')
     if (!/^[0-9]{4}$/.test(newPassword)) return setError('Bitte genau 4 Zahlen eingeben.')
     const updated = { ...user, passwort: newPassword, muss_passwort_aendern: false }
-    if (db) await supabase.from('mitarbeiter').update({ passwort: newPassword, muss_passwort_aendern: false }).eq('nummer', user.nummer)
-    setEmployees(prev => prev.map(e => e.nummer === user.nummer ? updated : e))
+    if (db) {
+      const { error } = await supabase.from('mitarbeiter').update({ passwort: newPassword, muss_passwort_aendern: false }).eq('nummer', user.nummer)
+      if (error) return setError(error.message)
+    }
+    setEmployees(prev => prev.map(e => Number(e.nummer) === Number(user.nummer) ? updated : e))
     setUser(updated)
     localStorage.setItem('mhd_user', JSON.stringify(updated))
-    setNewPassword('')
   }
 
-  function logout() { localStorage.removeItem('mhd_user'); setUser(null) }
+  function logout() {
+    localStorage.removeItem('mhd_user')
+    setUser(null)
+  }
 
   async function barcodeLookup(code=form.barcode) {
     setError('')
+    setSuccess('')
     const p = await fetchProductByBarcode(code)
     if (!p) return setError('Kein Produkt online gefunden. Bitte manuell eintragen oder Bild hochladen.')
     setForm(f => ({...f, barcode: code, name: p.name || f.name, kategorie: p.kategorie || f.kategorie, bild_url: p.bild_url || f.bild_url}))
+    setSuccess('Produktdaten gefunden.')
   }
+
   async function doScan() {
     const code = await scanBarcode()
-    if (code) { setForm(f => ({...f, barcode: code})); await barcodeLookup(code) }
+    if (code) {
+      setForm(f => ({...f, barcode: code}))
+      await barcodeLookup(code)
+    }
   }
+
   async function uploadImage(e) {
+    setError('')
     if (!canEditImages(user)) return setError('Nur Chef oder Stationsleitung dürfen Bilder ändern.')
     const file = e.target.files?.[0]
     if (!file) return
     const dataUrl = await fileToDataUrl(file)
     setForm(f => ({...f, bild_url: dataUrl}))
   }
+
   async function addItem() {
+    setError('')
+    setSuccess('')
     if (!form.name || !form.mhd) return setError('Artikelname und MHD fehlen.')
     const payload = {
-      barcode: form.barcode || '', name: form.name, kategorie: form.kategorie, mhd: form.mhd,
-      menge: Number(form.menge || 1), bild_url: form.bild_url || '', mitarbeiter: user.name, erstellt_von: user.nummer
+      barcode: form.barcode || '',
+      artikelnummer: '',
+      name: form.name.trim(),
+      kategorie: form.kategorie,
+      mhd: form.mhd,
+      menge: Number(form.menge || 1),
+      bild_url: form.bild_url || '',
+      mitarbeiter: user.name,
+      erstellt_von: Number(user.nummer)
     }
     if (db) {
       const { error } = await supabase.from('mhd_artikel').insert(payload)
-      if (error) return setError(error.message)
-      await reloadLists()
-    } else setItems(prev => [{id: Date.now(), ...payload}, ...prev])
-    setForm({ barcode:'', name:'', kategorie:'Sonstiges', mhd:todayISO(), menge:1, bild_url:'' })
-  }
-  async function writeOff(item, grund='Abgelaufen') {
-    const payload = { ...item, artikel_id: item.id, grund, datum: todayISO(), mitarbeiter: user.name }
-    delete payload.id
-    if (db) {
-      await supabase.from('abschriften').insert(payload)
-      await supabase.from('mhd_artikel').delete().eq('id', item.id)
+      if (error) return setError('Speichern fehlgeschlagen: ' + error.message)
       await reloadLists()
     } else {
-      setWriteoffs(prev => [{ id: Date.now(), created_at: new Date().toISOString(), ...payload }, ...prev])
-      setItems(prev => prev.filter(x => x.id !== item.id))
+      localSetItems([{id: Date.now(), created_at: nowStamp(), ...payload}, ...items])
     }
+    setForm({ barcode:'', name:'', kategorie:'Sonstiges', mhd:todayISO(), menge:1, bild_url:'' })
+    setSuccess('Artikel gespeichert.')
   }
-  async function addBakeryWriteoff(bw, menge) {
+
+  async function writeOff(item, grund='Abgelaufen') {
+    setError('')
+    setSuccess('')
     const payload = {
-      name: bw.name, artikelnummer: bw.artikelnummer, barcode: '', kategorie: 'Backwaren', mhd: todayISO(),
-      menge: Number(menge || 0), bild_url: '', grund: 'Backwaren Tagesende', datum: todayISO(), mitarbeiter: user.name
+      artikel_id: item.id || null,
+      artikelnummer: item.artikelnummer || '',
+      barcode: item.barcode || '',
+      name: item.name,
+      kategorie: item.kategorie || '',
+      mhd: item.mhd || todayISO(),
+      menge: Number(item.menge || 1),
+      bild_url: item.bild_url || '',
+      grund,
+      datum: todayISO(),
+      mitarbeiter: user.name,
+      mitarbeiter_nummer: Number(user.nummer)
     }
-    if (!payload.menge) return
-    if (db) { await supabase.from('abschriften').insert(payload); await reloadLists() }
-    else setWriteoffs(prev => [{ id: Date.now(), created_at: new Date().toISOString(), ...payload }, ...prev])
+    if (db) {
+      const { error } = await supabase.from('abschriften').insert(payload)
+      if (error) return setError('Abschrift fehlgeschlagen: ' + error.message)
+      if (item.id) await supabase.from('mhd_artikel').delete().eq('id', item.id)
+      await reloadLists()
+    } else {
+      localSetWriteoffs([{id: Date.now(), created_at: nowStamp(), ...payload}, ...writeoffs])
+      if (item.id) localSetItems(items.filter(x => x.id !== item.id))
+    }
+    setSuccess('Abschrift gespeichert.')
+  }
+
+  async function addBakeryWriteoff(bw, menge) {
+    setError('')
+    setSuccess('')
+    const amount = Number(menge || 0)
+    if (!amount || amount < 1) return setError('Bitte Menge größer als 0 eintragen.')
+    const payload = {
+      artikel_id: null,
+      artikelnummer: bw.artikelnummer,
+      barcode: '',
+      name: bw.name,
+      kategorie: 'Backwaren',
+      mhd: todayISO(),
+      menge: amount,
+      bild_url: '',
+      grund: 'Backwaren Tagesende',
+      datum: todayISO(),
+      mitarbeiter: user.name,
+      mitarbeiter_nummer: Number(user.nummer)
+    }
+    if (db) {
+      const { error } = await supabase.from('abschriften').insert(payload)
+      if (error) return setError('Abschrift fehlgeschlagen: ' + error.message)
+      await reloadLists()
+    } else {
+      localSetWriteoffs([{ id: Date.now(), created_at: nowStamp(), ...payload }, ...writeoffs])
+    }
+    setSuccess(`${bw.name} (${amount}) als Abschrift gespeichert.`)
+  }
+
+  async function testNotify() {
+    const msg = await notify(items)
+    setSuccess(msg || 'Benachrichtigung geprüft.')
   }
 
   const stats = useMemo(() => ({
@@ -271,24 +370,23 @@ export default function App() {
   }), [items])
 
   if (!ready) return <div className="center">Lade App...</div>
-  if (!db) return <div className="fatal">Supabase ENV Variablen fehlen.</div>
+  if (!db) return <div className="fatal">Supabase ENV Variablen fehlen in Vercel.</div>
 
   if (!user) return (
     <main className="loginPage">
       <section className="loginCard">
         <div className="brandBadge">MHD</div>
-        <h1>Tankstellen MHD Kontrolle</h1>
-        <p>Shell-Farben ohne Logo · Mitarbeiter-Login</p>
+        <h1>Tankstelle Ludweiler</h1>
+        <p>Mitarbeiter-Login</p>
         <form onSubmit={doLogin}>
           <label>Mitarbeiternummer</label>
-          <input inputMode="numeric" value={login.nummer} onChange={e=>setLogin({...login, nummer:e.target.value})} />
+          <input inputMode="numeric" autoComplete="username" value={login.nummer} onChange={e=>setLogin({...login, nummer:e.target.value})} />
           <label>Passwort</label>
-          <input inputMode="numeric" type="password" value={login.passwort} onChange={e=>setLogin({...login, passwort:e.target.value})} />
-          <label className="check"><input type="checkbox" checked={remember} onChange={e=>setRemember(e.target.checked)} /> Eingeloggt bleiben</label>
+          <input inputMode="numeric" autoComplete="current-password" type="password" value={login.passwort} onChange={e=>setLogin({...login, passwort:e.target.value})} />
+          <label className="check"><input type="checkbox" checked={remember} onChange={e=>setRemember(e.target.checked)} /> Dauerhaft eingeloggt bleiben</label>
           {error && <div className="error">{error}</div>}
           <button>Einloggen</button>
         </form>
-        <small>Bitte beim ersten Login ein neues Passwort setzen.</small>
       </section>
     </main>
   )
@@ -308,40 +406,71 @@ export default function App() {
   return (
     <main className="app">
       <header className="topbar">
-        <div><h1>MHD Kontrolle</h1><p>{user.name} · {roleLabel(user.rolle)}</p></div>
-        <button className="ghost" onClick={logout}>Abmelden</button>
+        <div><p>MHD Kontrolle · {roleLabel(user.rolle)}</p><h1>Hallo {user.name}</h1></div>
+        <button className="ghost" onClick={logout}>Logout</button>
       </header>
+
       <section className="stats">
         <Card label="Artikel" value={stats.total} />
         <Card label="Abgelaufen" value={stats.expired} danger />
         <Card label="Bald" value={stats.urgent} warn />
         <Card label="Woche" value={stats.week} />
       </section>
+
       <nav className="tabs">
-        {['dashboard','erfassen','backwaren','abschriften','bilder'].map(t => <button key={t} onClick={()=>setTab(t)} className={tab===t?'active':''}>{t}</button>)}
+        {[
+          ['dashboard','Übersicht'],
+          ['erfassen','Erfassen'],
+          ['backwaren','Backwaren'],
+          ['abschriften','Abschriften'],
+          ['bilder','Bilder']
+        ].map(([key,label]) => <button key={key} onClick={()=>setTab(key)} className={tab===key?'active':''}>{label}</button>)}
       </nav>
+
       {error && <div className="error">{error}</div>}
+      {success && <div className="success">{success}</div>}
+
       {tab === 'dashboard' && <section className="list">
-        <button className="notify" onClick={()=>notify(items)}>Benachrichtigungen testen</button>
+        <button className="primary" onClick={()=>setTab('erfassen')}>+ Schnell erfassen</button>
+        <button className="notify" onClick={testNotify}>🔔 Push aktivieren/testen</button>
         {items.map(item => <Article key={item.id} item={item} onWriteOff={writeOff} />)}
-        {!items.length && <Empty text="Noch keine MHD-Artikel vorhanden." />}
+        {!items.length && <Empty text="Keine Einträge." />}
       </section>}
+
       {tab === 'erfassen' && <section className="formCard">
         <h2>Schnell erfassen</h2>
-        <div className="row"><input placeholder="Barcode" value={form.barcode} onChange={e=>setForm({...form, barcode:e.target.value})} /><button onClick={doScan}>Scan</button><button onClick={()=>barcodeLookup()}>Auto-Suche</button></div>
+        <div className="row">
+          <input placeholder="Barcode" value={form.barcode} onChange={e=>setForm({...form, barcode:e.target.value})} />
+          <button onClick={doScan}>Scan</button>
+          <button onClick={()=>barcodeLookup()}>Auto</button>
+        </div>
         <input placeholder="Artikelname" value={form.name} onChange={e=>setForm({...form, name:e.target.value})} />
-        <select value={form.kategorie} onChange={e=>setForm({...form, kategorie:e.target.value})}>{['Getränke','Kühlung','Milchprodukte','Snacks','Süßwaren','Backwaren','Sonstiges'].map(x => <option key={x}>{x}</option>)}</select>
-        <div className="row"><input type="date" value={form.mhd} onChange={e=>setForm({...form, mhd:e.target.value})} /><input type="number" min="1" value={form.menge} onChange={e=>setForm({...form, menge:e.target.value})} /></div>
+        <select value={form.kategorie} onChange={e=>setForm({...form, kategorie:e.target.value})}>{CATS.map(x => <option key={x}>{x}</option>)}</select>
+        <div className="row two">
+          <input type="date" value={form.mhd} onChange={e=>setForm({...form, mhd:e.target.value})} />
+          <input type="number" min="1" value={form.menge} onChange={e=>setForm({...form, menge:e.target.value})} />
+        </div>
         {canEditImages(user) && <label className="upload">Bild/Screenshot hochladen<input type="file" accept="image/*" onChange={uploadImage} /></label>}
+        {!canEditImages(user) && <p className="hint">Bilder dürfen nur Chef oder Stationsleitung ändern.</p>}
         {form.bild_url && <img className="preview" src={form.bild_url} />}
         <button className="primary" onClick={addItem}>Artikel speichern</button>
       </section>}
+
       {tab === 'backwaren' && <Backwaren onAdd={addBakeryWriteoff} />}
+
       {tab === 'abschriften' && <section className="list">
-        {writeoffs.map(w => <div className="item" key={w.id || `${w.name}-${w.created_at}`}><div className="thumb">{w.bild_url ? <img src={w.bild_url} /> : '📦'}</div><div><b>{w.artikelnummer ? `${w.artikelnummer} · ` : ''}{w.name}</b><p>{w.grund} · {w.menge} Stk. · {w.mitarbeiter}</p></div></div>)}
+        <h2>Abschriften</h2>
+        {writeoffs.map(w => <div className="item" key={w.id || `${w.name}-${w.created_at}`}>
+          <div className="artikelnummer small">{w.artikelnummer || 'MHD'}</div>
+          <div className="grow"><b>{w.name}</b><p>{w.grund} · {w.menge} Stk. · {w.mitarbeiter} · {new Date(w.datum || w.created_at).toLocaleDateString('de-DE')}</p></div>
+        </div>)}
         {!writeoffs.length && <Empty text="Noch keine Abschriften." />}
       </section>}
-      {tab === 'bilder' && <section className="formCard"><h2>Bilder verwalten</h2><p>{canEditImages(user) ? 'Du darfst Bilder ändern: Auto-Suche oder Upload/Screenshot.' : 'Nur Chef oder Stationsleitung dürfen Bilder ändern.'}</p></section>}
+
+      {tab === 'bilder' && <section className="formCard">
+        <h2>Bilder verwalten</h2>
+        <p>{canEditImages(user) ? 'Du darfst Bilder per Auto-Suche oder Upload/Screenshot ändern.' : 'Nur Chef oder Stationsleitung dürfen Bilder ändern.'}</p>
+      </section>}
     </main>
   )
 }
@@ -349,10 +478,19 @@ function Card({label, value, danger, warn}) { return <div className={`stat ${dan
 function Article({ item, onWriteOff }) {
   const days = daysUntil(item.mhd)
   const status = days < 0 ? 'abgelaufen' : days <= 2 ? 'bald' : days <= 7 ? 'woche' : 'ok'
-  return <div className={`item ${status}`}><div className="thumb">{item.bild_url ? <img src={item.bild_url} /> : '📦'}</div><div className="grow"><b>{item.name}</b><p>{item.kategorie} · {item.barcode || 'ohne Barcode'}</p><p>MHD {new Date(item.mhd).toLocaleDateString('de-DE')} · {item.menge} Stk. · {days < 0 ? `${Math.abs(days)} Tage drüber` : `${days} Tage`}</p></div><button onClick={()=>onWriteOff(item, days < 0 ? 'Abgelaufen' : 'Sonstiges')}>Abschrift</button></div>
+  return <div className={`item ${status}`}>
+    <div className="thumb">{item.bild_url ? <img src={item.bild_url} /> : '📦'}</div>
+    <div className="grow"><b>{item.name}</b><p>{item.kategorie} · {item.barcode || 'ohne Barcode'}</p><p>MHD {new Date(item.mhd).toLocaleDateString('de-DE')} · {item.menge} Stk. · {days < 0 ? `${Math.abs(days)} Tage drüber` : `${days} Tage`}</p></div>
+    <button onClick={()=>onWriteOff(item, days < 0 ? 'Abgelaufen' : 'Sonstiges')}>Abschrift</button>
+  </div>
 }
 function Backwaren({ onAdd }) {
   const [qty, setQty] = useState({})
-  return <section className="list"><h2>Backwaren Tagesende</h2>{BACKWAREN.map(b => <div className="item" key={b.artikelnummer}><div className="artikelnummer">{b.artikelnummer}</div><div className="grow"><b>{b.name}</b><p>Artikelnummer {b.artikelnummer}</p></div><input className="qty" inputMode="numeric" value={qty[b.artikelnummer] || ''} onChange={e=>setQty({...qty, [b.artikelnummer]: e.target.value.replace(/\D/g,'')})} placeholder="0" /><button onClick={()=>onAdd(b, qty[b.artikelnummer])}>Abschrift</button></div>)}</section>
+  return <section className="list"><h2>Backwaren Tagesende</h2>{BACKWAREN.map(b => <div className="item bakery" key={b.artikelnummer}>
+    <div className="artikelnummer">{b.artikelnummer}</div>
+    <div className="grow"><b>{b.name}</b><p>Artikelnummer {b.artikelnummer}</p></div>
+    <input className="qty" inputMode="numeric" value={qty[b.artikelnummer] || ''} onChange={e=>setQty({...qty, [b.artikelnummer]: e.target.value.replace(/\D/g,'')})} placeholder="0" />
+    <button onClick={()=>onAdd(b, qty[b.artikelnummer])}>Abschrift</button>
+  </div>)}</section>
 }
 function Empty({text}) { return <div className="empty">{text}</div> }

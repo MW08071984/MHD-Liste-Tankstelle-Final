@@ -1,7 +1,8 @@
 {
-  "name": "MHD Kontrolle Tankstelle",
-  "short_name": "MHD Kontrolle",
+  "name": "MHD Kontrolle",
+  "short_name": "MHD",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#fff4b8",
   "theme_color": "#d71920",
