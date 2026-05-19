@@ -68,6 +68,18 @@ function roleLabel(role) {
   if (role === 'stationsleitung') return 'Stationsleitung'
   return 'Mitarbeiter'
 }
+function canSeeOnline(user) {
+  return ['chef', 'chef_temp', 'stationsleitung'].includes(user?.rolle)
+}
+function onlineLabel(lastSeen) {
+  if (!lastSeen) return { dot: 'offline', text: 'Offline' }
+  const diff = Date.now() - new Date(lastSeen).getTime()
+  if (diff < 2 * 60 * 1000) return { dot: 'online', text: 'Online' }
+  const min = Math.max(1, Math.round(diff / 60000))
+  if (min < 60) return { dot: 'away', text: `vor ${min} Min.` }
+  const hours = Math.round(min / 60)
+  return { dot: 'offline', text: `vor ${hours} Std.` }
+}
 function mapCategory(text='') {
   const t = text.toLowerCase()
   if (t.includes('drink') || t.includes('beverage') || t.includes('wasser') || t.includes('cola') || t.includes('juice')) return 'Getränke'
@@ -162,6 +174,8 @@ export default function App() {
   const [newPassword, setNewPassword] = useState('')
   const [items, setItems] = useState([])
   const [writeoffs, setWriteoffs] = useState([])
+  const [onlineUsers, setOnlineUsers] = useState([])
+  const [appSettings, setAppSettings] = useState({})
   const [tab, setTab] = useState('dashboard')
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -188,9 +202,15 @@ export default function App() {
       const { data: emps } = await supabase.from('mitarbeiter').select('*').order('nummer')
       const { data: list } = await supabase.from('mhd_artikel').select('*').order('mhd')
       const { data: abs } = await supabase.from('abschriften').select('*').order('created_at', { ascending:false })
+      const { data: settings } = await supabase.from('app_settings').select('*')
       setEmployees(emps || START_EMPLOYEES)
       setItems(list || [])
       setWriteoffs(abs || [])
+      setAppSettings(Object.fromEntries((settings || []).map(s => [s.key, s.value])))
+      if (user && canSeeOnline(user)) {
+        const { data: online } = await supabase.from('online_status').select('*').order('name')
+        setOnlineUsers(online || [])
+      }
     } catch (e) { setError('Datenbankfehler: ' + e.message) }
     finally { setReady(true) }
   }
@@ -199,8 +219,30 @@ export default function App() {
     if (!db) return
     const { data: list } = await supabase.from('mhd_artikel').select('*').order('mhd')
     const { data: abs } = await supabase.from('abschriften').select('*').order('created_at', { ascending:false })
+    const { data: settings } = await supabase.from('app_settings').select('*')
     setItems(list || [])
     setWriteoffs(abs || [])
+    setAppSettings(Object.fromEntries((settings || []).map(s => [s.key, s.value])))
+  }
+
+  async function saveSetting(key, value) {
+    setError('')
+    setSuccess('')
+    if (!canSeeOnline(user)) return setError('Nur Chef oder Stationsleitung dürfen Einstellungen ändern.')
+    const { error } = await supabase.from('app_settings').upsert({ key, value, updated_by: user.name }, { onConflict: 'key' })
+    if (error) return setError('Einstellung konnte nicht gespeichert werden: ' + error.message)
+    setAppSettings(prev => ({ ...prev, [key]: value }))
+    setSuccess('Einstellung gespeichert.')
+  }
+
+  async function updateItemImage(item, imageUrl) {
+    setError('')
+    setSuccess('')
+    if (!canEditImages(user)) return setError('Nur Chef oder Stationsleitung dürfen Bilder ändern.')
+    const { error } = await supabase.from('mhd_artikel').update({ bild_url: imageUrl }).eq('id', item.id)
+    if (error) return setError('Bild konnte nicht gespeichert werden: ' + error.message)
+    await reloadLists()
+    setSuccess('Bild gespeichert.')
   }
   function localSetItems(next) { setItems(next); localStorage.setItem('mhd_items', JSON.stringify(next)) }
   function localSetWriteoffs(next) { setWriteoffs(next); localStorage.setItem('mhd_writeoffs', JSON.stringify(next)) }
@@ -381,20 +423,22 @@ export default function App() {
       </header>
 
       <section className="stats">
-        <Card label="Artikel" value={stats.total} />
-        <Card label="Abgelaufen" value={stats.expired} danger />
-        <Card label="Bald" value={stats.urgent} warn />
-        <Card label="Woche" value={stats.week} />
+        <Card label="Artikel" value={stats.total} onClick={() => setTab('artikel')} />
+        <Card label="Abgelaufen" value={stats.expired} danger onClick={() => setTab('artikel')} />
+        <Card label="Bald" value={stats.urgent} warn onClick={() => setTab('artikel')} />
+        <Card label="Woche" value={stats.week} onClick={() => setTab('artikel')} />
       </section>
 
       <nav className="tabs">
         {[
           ['dashboard','Übersicht'],
+          ['artikel','Artikel'],
           ['erfassen','Erfassen'],
           ['backwaren','Backwaren'],
           ['abschriften','Abschriften'],
           ['bilder','Bilder'],
-          ['dienstplan','Dienstplan']
+          ['dienstplan','Dienstplan'],
+          ...(canSeeOnline(user) ? [['online','Mitarbeiter'], ['settings','Einstellungen']] : [])
         ].map(([key,label]) => <button key={key} onClick={()=>setTab(key)} className={tab===key?'active':''}>{label}</button>)}
       </nav>
 
@@ -406,6 +450,12 @@ export default function App() {
         <button className="notify" onClick={testNotify}>🔔 Push aktivieren/testen</button>
         {items.map(item => <Article key={item.id} item={item} onWriteOff={writeOff} />)}
         {!items.length && <Empty text="Keine Einträge." />}
+      </section>}
+
+      {tab === 'artikel' && <section className="list">
+        <h2>Artikel</h2>
+        {items.map(item => <Article key={item.id} item={item} onWriteOff={writeOff} />)}
+        {!items.length && <Empty text="Keine Artikel vorhanden." />}
       </section>}
 
       {tab === 'erfassen' && <section className="formCard">
@@ -431,16 +481,17 @@ export default function App() {
         {!writeoffs.length && <Empty text="Noch keine Abschriften." />}
       </section>}
 
-      {tab === 'bilder' && <section className="formCard">
-        <h2>Bilder verwalten</h2>
-        <p>{canEditImages(user) ? 'Du darfst Bilder per Auto-Suche oder Upload/Screenshot ändern.' : 'Nur Chef oder Stationsleitung dürfen Bilder ändern.'}</p>
-      </section>}
+      {tab === 'bilder' && <BilderVerwaltung user={user} items={items} onUpdateImage={updateItemImage} />}
 
-      {tab === 'dienstplan' && <Dienstplan user={user} />}
+      {tab === 'dienstplan' && <Dienstplan user={user} appSettings={appSettings} saveSetting={saveSetting} />}
+
+      {tab === 'online' && canSeeOnline(user) && <OnlineStatus onlineUsers={onlineUsers} />}
+
+      {tab === 'settings' && canSeeOnline(user) && <Einstellungen appSettings={appSettings} saveSetting={saveSetting} />}
     </main>
   )
 }
-function Card({label, value, danger, warn}) { return <div className={`stat ${danger?'danger':''} ${warn?'warn':''}`}><span>{label}</span><b>{value}</b></div> }
+function Card({label, value, danger, warn, onClick}) { return <button type="button" onClick={onClick} className={`stat statBtn ${danger?'danger':''} ${warn?'warn':''}`}><span>{label}</span><b>{value}</b></button> }
 function Article({ item, onWriteOff }) {
   const days = daysUntil(item.mhd)
   const status = days < 0 ? 'abgelaufen' : days <= 2 ? 'bald' : days <= 7 ? 'woche' : 'ok'
@@ -460,14 +511,113 @@ function Backwaren({ onAdd }) {
   </div>)}</section>
 }
 
-function Dienstplan({ user }) {
+
+
+function BilderVerwaltung({ user, items, onUpdateImage }) {
+  const [busy, setBusy] = useState('')
+  const allowed = canEditImages(user)
+
+  async function uploadFor(item, e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setBusy(item.id)
+    const dataUrl = await fileToDataUrl(file)
+    await onUpdateImage(item, dataUrl)
+    setBusy('')
+  }
+
+  async function autoFor(item) {
+    if (!item.barcode) return alert('Für Auto-Suche braucht der Artikel einen Barcode.')
+    setBusy(item.id)
+    const p = await fetchProductByBarcode(item.barcode)
+    if (p?.bild_url) await onUpdateImage(item, p.bild_url)
+    else alert('Kein Bild gefunden.')
+    setBusy('')
+  }
+
+  return (
+    <section className="formCard">
+      <h2>Bilder verwalten</h2>
+      <p className="hint">{allowed ? 'Du kannst Artikelbilder per Auto-Suche oder Upload/Screenshot ändern.' : 'Nur Chef oder Stationsleitung dürfen Bilder ändern.'}</p>
+      <div className="onlineList">
+        {items.map(item => (
+          <div className="imageManageItem" key={item.id}>
+            <div className="thumb">{item.bild_url ? <img src={item.bild_url} /> : '📦'}</div>
+            <div className="grow">
+              <b>{item.name || item.artikel}</b>
+              <p>{item.barcode || 'ohne Barcode'}</p>
+            </div>
+            {allowed && <div className="imageActions">
+              <button type="button" disabled={busy === item.id} onClick={() => autoFor(item)}>Auto</button>
+              <label className="miniUpload">Upload<input type="file" accept="image/*" onChange={(e) => uploadFor(item, e)} /></label>
+            </div>}
+          </div>
+        ))}
+        {!items.length && <Empty text="Keine Artikel mit Bildern vorhanden." />}
+      </div>
+    </section>
+  )
+}
+
+function Einstellungen({ appSettings, saveSetting }) {
+  return (
+    <section className="formCard">
+      <h2>Einstellungen</h2>
+      <p className="hint">Chef, Stationsleitung und Michael können wichtige Inhalte direkt in der App ändern.</p>
+      <div className="settingCard">
+        <b>Dienstpläne</b>
+        <p>Im Tab Dienstplan können Mai/Juni und später neue Pläne direkt ersetzt werden.</p>
+      </div>
+      <div className="settingCard">
+        <b>Artikelbilder</b>
+        <p>Im Tab Bilder können Artikelbilder über Auto-Suche oder Upload/Screenshot geändert werden.</p>
+      </div>
+      <div className="settingCard">
+        <b>Mitarbeiter online</b>
+        <p>Im Tab Mitarbeiter sieht man Online/zuletzt aktiv.</p>
+      </div>
+    </section>
+  )
+}
+
+function OnlineStatus({ onlineUsers }) {
+  return (
+    <section className="formCard">
+      <h2>Mitarbeiter online</h2>
+      <p className="hint">Online bedeutet: innerhalb der letzten 2 Minuten aktiv.</p>
+      <div className="onlineList">
+        {onlineUsers.map(u => {
+          const status = onlineLabel(u.last_seen)
+          return (
+            <div className="onlineItem" key={u.nummer}>
+              <span className={`dot ${status.dot}`}></span>
+              <div className="grow">
+                <b>{u.name}</b>
+                <p>{roleLabel(u.rolle)} · {status.text}</p>
+              </div>
+            </div>
+          )
+        })}
+        {!onlineUsers.length && <Empty text="Noch keine Mitarbeiter aktiv." />}
+      </div>
+    </section>
+  )
+}
+
+function Dienstplan({ user, appSettings, saveSetting }) {
   const [month, setMonth] = useState('juni')
   const plans = {
     mai: { label: 'Mai 2026', src: '/dienstplan-mai-2026.jpg' },
     juni: { label: 'Juni 2026', src: '/dienstplan-juni-2026.jpg' },
   }
-  const plan = plans[month]
+  const plan = { ...plans[month], src: appSettings?.[`dienstplan_${month}`] || plans[month].src }
   const admin = ['chef', 'chef_temp', 'stationsleitung'].includes(user?.rolle)
+  async function uploadPlan(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const dataUrl = await fileToDataUrl(file)
+    await saveSetting(`dienstplan_${month}`, dataUrl)
+  }
 
   return (
     <section className="formCard">
@@ -478,10 +628,12 @@ function Dienstplan({ user }) {
       </div>
       <p className="hint">Aktueller Plan: {plan.label}</p>
       <div className="dienstplanBox">
-        <img src={plan.src} alt={`Dienstplan ${plan.label}`} />
+        {String(plan.src).startsWith('data:application/pdf') || String(plan.src).endsWith('.pdf')
+          ? <iframe title={`Dienstplan ${plan.label}`} src={plan.src}></iframe>
+          : <img src={plan.src} alt={`Dienstplan ${plan.label}`} />}
       </div>
       <a className="downloadBtn" href={plan.src} target="_blank" rel="noreferrer">Plan groß öffnen / herunterladen</a>
-      {admin && <p className="hint">Später können Chef oder Stationsleitung neue Dienstpläne hochladen oder ersetzen.</p>}
+      {admin && <label className="upload">Diesen Monatsplan ersetzen<input type="file" accept="image/*,application/pdf" onChange={uploadPlan} /></label>}
     </section>
   )
 }

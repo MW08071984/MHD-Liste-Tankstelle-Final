@@ -130,3 +130,93 @@ input,select{width:100%;border:3px solid #d71920;border-radius:18px;padding:14px
     min-width:720px;
   }
 }
+
+
+/* Online Status + klickbare Statistik */
+.statBtn{
+  text-align:left;
+  cursor:pointer;
+  color:inherit;
+}
+.onlineList{
+  display:grid;
+  gap:12px;
+}
+.onlineItem{
+  display:flex;
+  align-items:center;
+  gap:14px;
+  background:linear-gradient(145deg,#fffdf0,#fff3a0);
+  border:3px solid #d71920;
+  border-radius:24px;
+  padding:14px;
+}
+.dot{
+  width:18px;
+  height:18px;
+  border-radius:50%;
+  display:inline-block;
+  flex:none;
+  box-shadow:0 0 0 4px #00000012;
+}
+.dot.online{background:#12b337}
+.dot.away{background:#f5bd00}
+.dot.offline{background:#999}
+.onlineItem b{font-size:22px}
+.onlineItem p{margin:4px 0 0;color:#5a2d00;font-weight:800}
+
+
+/* App-Einstellungen und Bildverwaltung */
+.dienstplanBox iframe{
+  width:100%;
+  height:72vh;
+  border:0;
+  border-radius:16px;
+  background:white;
+}
+.imageManageItem{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  background:linear-gradient(145deg,#fffdf0,#fff3a0);
+  border:3px solid #d71920;
+  border-radius:24px;
+  padding:12px;
+}
+.imageActions{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+}
+.imageActions button,.miniUpload{
+  background:#d71920;
+  color:#ffe15a;
+  border-radius:15px;
+  padding:11px 13px;
+  font-weight:1000;
+  cursor:pointer;
+}
+.miniUpload input{display:none}
+.settingCard{
+  background:linear-gradient(145deg,#fffdf0,#fff3a0);
+  border:3px solid #d71920;
+  border-radius:22px;
+  padding:14px;
+}
+.settingCard b{font-size:22px}
+.settingCard p{margin:6px 0 0;color:#5a2d00;font-weight:800}
+@media(max-width:560px){
+  .imageManageItem{
+    display:grid;
+    grid-template-columns:64px 1fr;
+  }
+  .imageActions{
+    grid-column:1 / -1;
+    justify-content:stretch;
+  }
+  .imageActions button,.miniUpload{
+    flex:1;
+    text-align:center;
+  }
+}

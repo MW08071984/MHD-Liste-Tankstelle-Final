@@ -13,3 +13,17 @@ Update Dienstplan:
 - Tab "Dienstplan" hinzugefügt
 - Mai 2026 und Juni 2026 sind fest enthalten
 - Pläne sind zoombar/scrollbar und als Bild groß öffnbar
+
+Update Online Status:
+- Neuer Tab "Mitarbeiter" für Chef/Stationsleitung/Michael
+- Online / zuletzt aktiv automatisch
+- Statistik-Karten sind klickbar und öffnen die Artikelliste
+- SUPABASE_FIX_FINAL.sql einmal ausführen, damit online_status Tabelle angelegt wird
+
+Update komplette Einstellungen:
+- Tab Artikel öffnet die Artikelliste
+- Statistik-Karten öffnen Artikel
+- Tab Bilder erlaubt Bildverwaltung direkt in der App
+- Dienstpläne können durch Berechtigte direkt ersetzt werden
+- Tab Einstellungen erklärt Admin-Funktionen
+- app_settings Tabelle wird benötigt; SUPABASE_FIX_FINAL.sql einmal ausführen

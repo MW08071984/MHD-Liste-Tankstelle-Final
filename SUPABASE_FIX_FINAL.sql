@@ -60,3 +60,27 @@ on conflict (nummer) do update set name = excluded.name, rolle = excluded.rolle;
 alter table public.mitarbeiter disable row level security;
 alter table public.mhd_artikel disable row level security;
 alter table public.abschriften disable row level security;
+
+
+
+-- Online Status für Chef/Stationsleitung
+create table if not exists public.online_status (
+  nummer int primary key,
+  name text not null,
+  rolle text not null default 'mitarbeiter',
+  last_seen timestamp with time zone default now() not null
+);
+
+alter table public.online_status disable row level security;
+
+
+
+-- App Einstellungen für Dienstpläne und weitere Inhalte
+create table if not exists public.app_settings (
+  key text primary key,
+  value text,
+  updated_at timestamp with time zone default now(),
+  updated_by text
+);
+
+alter table public.app_settings disable row level security;
