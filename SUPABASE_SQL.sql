@@ -1,14 +1,20 @@
-create table if not exists mhd_artikel (
-  id text primary key,
-  name text,
-  barcode text,
-  image text,
-  category text,
-  mhd date,
-  menge int,
-  employee text,
-  type text,
-  artikelnummer text,
-  created_at timestamptz default now()
-);
-alter table mhd_artikel disable row level security;
+{
+  "name": "mhd-kontrolle-final",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.2.1",
+    "vite": "^5.4.11"
+  }
+}
