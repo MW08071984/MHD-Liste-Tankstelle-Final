@@ -1,10 +1,9 @@
 {
-  "name": "MHD Kontrolle",
-  "short_name": "MHD",
+  "name": "MHD Kontrolle Tankstelle Ludweiler",
+  "short_name": "MHD Kontrolle",
   "start_url": "/",
-  "scope": "/",
   "display": "standalone",
-  "background_color": "#fff4b8",
+  "background_color": "#ffd900",
   "theme_color": "#d71920",
   "icons": []
 }

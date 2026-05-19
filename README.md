@@ -1,45 +1,14 @@
-# MHD Kontrolle Final DB-kompatibel
+# MHD Kontrolle - Sauber Fertig
 
-Diese Version speichert Abschriften sowohl in `artikel` als auch in `name`.
-Dadurch funktioniert sie mit deiner bestehenden alten Supabase Tabelle.
+Diese Version enthält:
+- lesbare Login-Seite im Shell-Stil
+- robuste Anmeldung
+- Backwaren sammeln und dann gemeinsam absenden
+- normale Mitarbeiter können nach Absenden nicht mehr bearbeiten
+- Chef/Stationsleitung/Michael können Artikel und Abschriften bearbeiten
+- Bilder, Dienstplan, Online-Status, Einstellungen
 
 Wichtig:
-1. SUPABASE_FIX_FINAL.sql im Supabase SQL Editor ausführen.
-2. ZIP-Inhalt in GitHub hochladen.
-3. Vercel redeploy.
-
-
-Update Dienstplan:
-- Tab "Dienstplan" hinzugefügt
-- Mai 2026 und Juni 2026 sind fest enthalten
-- Pläne sind zoombar/scrollbar und als Bild groß öffnbar
-
-Update Online Status:
-- Neuer Tab "Mitarbeiter" für Chef/Stationsleitung/Michael
-- Online / zuletzt aktiv automatisch
-- Statistik-Karten sind klickbar und öffnen die Artikelliste
-- SUPABASE_FIX_FINAL.sql einmal ausführen, damit online_status Tabelle angelegt wird
-
-Update komplette Einstellungen:
-- Tab Artikel öffnet die Artikelliste
-- Statistik-Karten öffnen Artikel
-- Tab Bilder erlaubt Bildverwaltung direkt in der App
-- Dienstpläne können durch Berechtigte direkt ersetzt werden
-- Tab Einstellungen erklärt Admin-Funktionen
-- app_settings Tabelle wird benötigt; SUPABASE_FIX_FINAL.sql einmal ausführen
-
-Update:
-- Chris und andere Mitarbeiter bekommen klare Erfolgsrückmeldung bei Backwaren-Abschriften.
-- Backwaren-Menge wird nach Speichern geleert.
-- Abschriften können bearbeitet/gelöscht werden: Chef/Stationsleitung alle, Mitarbeiter eigene.
-- Chef/Stationsleitung/Michael können Artikel vollständig bearbeiten: Artikelnummer, Name, Kategorie, MHD, Menge, Barcode, Bild.
-- Bilder per Upload/Screenshot und Anzeige überall.
-- SUPABASE_FIX_FINAL.sql einmal ausführen.
-
-Finales Smartphone/Shell/Backwaren-Update:
-- Backwaren werden gesammelt eingetragen und erst mit "Alles absenden" gespeichert.
-- Normale Mitarbeiter können abgeschickte Backwaren-Abschriften nicht mehr ändern.
-- Chef, Stationsleitung und Michael können weiterhin Abschriften bearbeiten.
-- Shell-Farben wurden auf allen Seiten verstärkt.
-- Smartphone-Bedienung wurde optimiert.
-- SUPABASE_FIX_FINAL.sql einmal ausführen.
+1. SUPABASE_FIX_FINAL.sql in Supabase ausführen.
+2. ZIP in GitHub/Vercel hochladen.
+3. Nach Deployment STRG+F5.
