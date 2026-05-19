@@ -62,6 +62,12 @@ function daysUntil(dateString) {
   return Math.ceil((target - today) / 86400000)
 }
 function canEditImages(user) { return ['chef', 'chef_temp', 'stationsleitung'].includes(user?.rolle) }
+function canManageArticles(user) { return ['chef', 'chef_temp', 'stationsleitung'].includes(user?.rolle) }
+function canEditWriteoff(user, writeoff) {
+  if (!user) return false
+  if (['chef', 'chef_temp', 'stationsleitung'].includes(user.rolle)) return true
+  return Number(writeoff?.mitarbeiter_nummer) === Number(user.nummer) || String(writeoff?.mitarbeiter) === String(user.name)
+}
 function roleLabel(role) {
   if (role === 'chef') return 'Chef'
   if (role === 'chef_temp') return 'Chef-Rechte Einrichtung'
@@ -180,6 +186,8 @@ export default function App() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [form, setForm] = useState({ barcode:'', name:'', kategorie:'Sonstiges', mhd:todayISO(), menge:1, bild_url:'' })
+  const [editingArticle, setEditingArticle] = useState(null)
+  const [editingWriteoff, setEditingWriteoff] = useState(null)
   const db = Boolean(supabase)
 
   useEffect(() => {
@@ -309,6 +317,74 @@ export default function App() {
     setSuccess('Artikel gespeichert.')
   }
 
+  
+  async function saveArticleEdit(updated) {
+    setError('')
+    setSuccess('')
+    if (!canManageArticles(user)) return setError('Nur Chef oder Stationsleitung dürfen Artikel bearbeiten.')
+    const payload = {
+      artikelnummer: updated.artikelnummer || '',
+      artikel: updated.name || updated.artikel || 'Artikel',
+      name: updated.name || updated.artikel || 'Artikel',
+      kategorie: updated.kategorie || 'Sonstiges',
+      mhd: updated.mhd || todayISO(),
+      menge: Number(updated.menge || 1),
+      barcode: updated.barcode || '',
+      bild_url: updated.bild_url || ''
+    }
+    if (db) {
+      const { error } = await supabase.from('mhd_artikel').update(payload).eq('id', updated.id)
+      if (error) return setError('Artikel konnte nicht gespeichert werden: ' + error.message)
+      await reloadLists()
+    } else {
+      localSetItems(items.map(i => i.id === updated.id ? { ...i, ...payload } : i))
+    }
+    setEditingArticle(null)
+    setSuccess('Artikel gespeichert.')
+  }
+
+  async function saveWriteoffEdit(updated) {
+    setError('')
+    setSuccess('')
+    if (!canEditWriteoff(user, updated)) return setError('Du darfst diese Abschrift nicht bearbeiten.')
+    const payload = {
+      artikelnummer: updated.artikelnummer || '',
+      artikel: updated.name || updated.artikel || 'Artikel',
+      name: updated.name || updated.artikel || 'Artikel',
+      kategorie: updated.kategorie || '',
+      mhd: updated.mhd || todayISO(),
+      menge: Number(updated.menge || 1),
+      bild_url: updated.bild_url || '',
+      grund: updated.grund || 'Abschrift',
+      datum: updated.datum || todayISO(),
+      mitarbeiter: updated.mitarbeiter || user.name,
+      mitarbeiter_nummer: Number(updated.mitarbeiter_nummer || user.nummer)
+    }
+    if (db) {
+      const { error } = await supabase.from('abschriften').update(payload).eq('id', updated.id)
+      if (error) return setError('Abschrift konnte nicht gespeichert werden: ' + error.message)
+      await reloadLists()
+    } else {
+      localSetWriteoffs(writeoffs.map(w => w.id === updated.id ? { ...w, ...payload } : w))
+    }
+    setEditingWriteoff(null)
+    setSuccess('Abschrift gespeichert.')
+  }
+
+  async function deleteWriteoff(writeoff) {
+    setError('')
+    setSuccess('')
+    if (!canEditWriteoff(user, writeoff)) return setError('Du darfst diese Abschrift nicht löschen.')
+    if (db) {
+      const { error } = await supabase.from('abschriften').delete().eq('id', writeoff.id)
+      if (error) return setError('Abschrift konnte nicht gelöscht werden: ' + error.message)
+      await reloadLists()
+    } else {
+      localSetWriteoffs(writeoffs.filter(w => w.id !== writeoff.id))
+    }
+    setSuccess('Abschrift gelöscht.')
+  }
+
   async function insertWriteoff(payload) {
     if (db) {
       const { error } = await supabase.from('abschriften').insert(payload)
@@ -366,7 +442,8 @@ export default function App() {
     }
     const res = await insertWriteoff(payload)
     if (res.error) return setError('Abschrift fehlgeschlagen: ' + res.error.message)
-    setSuccess(`${bw.name} (${amount}) als Abschrift gespeichert.`)
+    navigator.vibrate?.(80)
+    setSuccess(`Abschrift gespeichert: ${bw.name} · Menge ${amount}`)
   }
 
   async function testNotify() {
@@ -448,13 +525,13 @@ export default function App() {
       {tab === 'dashboard' && <section className="list">
         <button className="primary" onClick={()=>setTab('erfassen')}>+ Schnell erfassen</button>
         <button className="notify" onClick={testNotify}>🔔 Push aktivieren/testen</button>
-        {items.map(item => <Article key={item.id} item={item} onWriteOff={writeOff} />)}
+        {items.map(item => <Article key={item.id} item={item} user={user} onEdit={setEditingArticle} onWriteOff={writeOff} />)}
         {!items.length && <Empty text="Keine Einträge." />}
       </section>}
 
       {tab === 'artikel' && <section className="list">
         <h2>Artikel</h2>
-        {items.map(item => <Article key={item.id} item={item} onWriteOff={writeOff} />)}
+        {items.map(item => <Article key={item.id} item={item} user={user} onEdit={setEditingArticle} onWriteOff={writeOff} />)}
         {!items.length && <Empty text="Keine Artikel vorhanden." />}
       </section>}
 
@@ -477,6 +554,7 @@ export default function App() {
         {writeoffs.map(w => <div className="item" key={w.id || `${w.name}-${w.created_at}`}>
           <div className="artikelnummer small">{w.artikelnummer || 'MHD'}</div>
           <div className="grow"><b>{w.name || w.artikel}</b><p>{w.grund} · {w.menge} Stk. · {w.mitarbeiter} · {new Date(w.datum || w.created_at).toLocaleDateString('de-DE')}</p></div>
+          {canEditWriteoff(user, w) && <div className="editActions"><button onClick={() => setEditingWriteoff(w)}>Bearbeiten</button><button className="dangerBtn" onClick={() => deleteWriteoff(w)}>Löschen</button></div>}
         </div>)}
         {!writeoffs.length && <Empty text="Noch keine Abschriften." />}
       </section>}
@@ -488,26 +566,71 @@ export default function App() {
       {tab === 'online' && canSeeOnline(user) && <OnlineStatus onlineUsers={onlineUsers} />}
 
       {tab === 'settings' && canSeeOnline(user) && <Einstellungen appSettings={appSettings} saveSetting={saveSetting} />}
+          {editingArticle && <ArticleEditModal item={editingArticle} onCancel={() => setEditingArticle(null)} onSave={saveArticleEdit} />}
+      {editingWriteoff && <WriteoffEditModal item={editingWriteoff} onCancel={() => setEditingWriteoff(null)} onSave={saveWriteoffEdit} />}
     </main>
   )
 }
 function Card({label, value, danger, warn, onClick}) { return <button type="button" onClick={onClick} className={`stat statBtn ${danger?'danger':''} ${warn?'warn':''}`}><span>{label}</span><b>{value}</b></button> }
-function Article({ item, onWriteOff }) {
+function Article({ item, user, onEdit, onWriteOff }) {
   const days = daysUntil(item.mhd)
   const status = days < 0 ? 'abgelaufen' : days <= 2 ? 'bald' : days <= 7 ? 'woche' : 'ok'
   return <div className={`item ${status}`}>
     <div className="thumb">{item.bild_url ? <img src={item.bild_url} /> : '📦'}</div>
-    <div className="grow"><b>{item.name || item.artikel}</b><p>{item.kategorie} · {item.barcode || 'ohne Barcode'}</p><p>MHD {new Date(item.mhd).toLocaleDateString('de-DE')} · {item.menge} Stk. · {days < 0 ? `${Math.abs(days)} Tage drüber` : `${days} Tage`}</p></div>
-    <button onClick={()=>onWriteOff(item, days < 0 ? 'Abgelaufen' : 'Sonstiges')}>Abschrift</button>
+    <div className="grow"><b>{item.name || item.artikel}</b><p>{item.artikelnummer ? `Art.-Nr. ${item.artikelnummer} · ` : ''}{item.kategorie} · {item.barcode || 'ohne Barcode'}</p><p>MHD {new Date(item.mhd).toLocaleDateString('de-DE')} · {item.menge} Stk. · {days < 0 ? `${Math.abs(days)} Tage drüber` : `${days} Tage`}</p></div>
+    <div className="editActions">
+      {canManageArticles(user) && <button onClick={() => onEdit(item)}>Bearbeiten</button>}
+      <button onClick={()=>onWriteOff(item, days < 0 ? 'Abgelaufen' : 'Sonstiges')}>Abschrift</button>
+    </div>
   </div>
 }
+
+function ArticleEditModal({ item, onCancel, onSave }) {
+  const [data, setData] = useState({ ...item, name: item.name || item.artikel || '', artikelnummer: item.artikelnummer || '', bild_url: item.bild_url || '' })
+  async function upload(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const dataUrl = await fileToDataUrl(file)
+    setData(d => ({ ...d, bild_url: dataUrl }))
+  }
+  return <div className="modalOverlay">
+    <div className="modalCard">
+      <h2>Artikel bearbeiten</h2>
+      <label>Artikelnummer</label><input value={data.artikelnummer || ''} onChange={e=>setData({...data, artikelnummer:e.target.value})} />
+      <label>Name</label><input value={data.name || ''} onChange={e=>setData({...data, name:e.target.value})} />
+      <label>Kategorie</label><select value={data.kategorie || 'Sonstiges'} onChange={e=>setData({...data, kategorie:e.target.value})}>{CATS.map(x => <option key={x}>{x}</option>)}</select>
+      <label>MHD</label><input type="date" value={data.mhd || todayISO()} onChange={e=>setData({...data, mhd:e.target.value})} />
+      <label>Menge</label><input type="number" min="1" value={data.menge || 1} onChange={e=>setData({...data, menge:e.target.value})} />
+      <label>Barcode</label><input value={data.barcode || ''} onChange={e=>setData({...data, barcode:e.target.value})} />
+      <label className="upload">Bild hochladen/Screenshot<input type="file" accept="image/*" onChange={upload} /></label>
+      {data.bild_url && <img className="preview" src={data.bild_url} />}
+      <div className="modalActions"><button className="ghost" onClick={onCancel}>Abbrechen</button><button onClick={()=>onSave(data)}>Speichern</button></div>
+    </div>
+  </div>
+}
+
+function WriteoffEditModal({ item, onCancel, onSave }) {
+  const [data, setData] = useState({ ...item, name: item.name || item.artikel || '', artikelnummer: item.artikelnummer || '' })
+  return <div className="modalOverlay">
+    <div className="modalCard">
+      <h2>Abschrift bearbeiten</h2>
+      <label>Artikelnummer</label><input value={data.artikelnummer || ''} onChange={e=>setData({...data, artikelnummer:e.target.value})} />
+      <label>Name</label><input value={data.name || ''} onChange={e=>setData({...data, name:e.target.value})} />
+      <label>Grund</label><input value={data.grund || ''} onChange={e=>setData({...data, grund:e.target.value})} />
+      <label>Menge</label><input type="number" min="1" value={data.menge || 1} onChange={e=>setData({...data, menge:e.target.value})} />
+      <label>Datum</label><input type="date" value={(data.datum || todayISO()).slice(0,10)} onChange={e=>setData({...data, datum:e.target.value})} />
+      <div className="modalActions"><button className="ghost" onClick={onCancel}>Abbrechen</button><button onClick={()=>onSave(data)}>Speichern</button></div>
+    </div>
+  </div>
+}
+
 function Backwaren({ onAdd }) {
   const [qty, setQty] = useState({})
   return <section className="list"><h2>Backwaren Tagesende</h2>{BACKWAREN.map(b => <div className="item bakery" key={b.artikelnummer}>
     <div className="artikelnummer">{b.artikelnummer}</div>
     <div className="grow"><b>{b.name}</b><p>Artikelnummer {b.artikelnummer}</p></div>
     <input className="qty" inputMode="numeric" value={qty[b.artikelnummer] || ''} onChange={e=>setQty({...qty, [b.artikelnummer]: e.target.value.replace(/\D/g,'')})} placeholder="0" />
-    <button onClick={()=>onAdd(b, qty[b.artikelnummer])}>Abschrift</button>
+    <button onClick={async()=>{ await onAdd(b, qty[b.artikelnummer]); setQty({...qty, [b.artikelnummer]: ''}) }}>Abschrift</button>
   </div>)}</section>
 }
 

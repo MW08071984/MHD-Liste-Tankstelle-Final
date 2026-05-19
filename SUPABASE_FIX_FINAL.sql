@@ -84,3 +84,20 @@ create table if not exists public.app_settings (
 );
 
 alter table public.app_settings disable row level security;
+
+
+
+-- Bearbeiten/Rückmeldung Fix
+alter table public.mhd_artikel add column if not exists artikelnummer text;
+alter table public.mhd_artikel add column if not exists artikel text;
+alter table public.mhd_artikel add column if not exists bild_url text;
+alter table public.mhd_artikel add column if not exists barcode text;
+alter table public.mhd_artikel add column if not exists erstellt_von int;
+
+alter table public.abschriften add column if not exists artikel text;
+alter table public.abschriften add column if not exists artikelnummer text;
+alter table public.abschriften add column if not exists bild_url text;
+alter table public.abschriften add column if not exists mitarbeiter_nummer int;
+
+alter table public.mhd_artikel disable row level security;
+alter table public.abschriften disable row level security;

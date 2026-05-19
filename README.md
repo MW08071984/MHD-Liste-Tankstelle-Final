@@ -27,3 +27,11 @@ Update komplette Einstellungen:
 - Dienstpläne können durch Berechtigte direkt ersetzt werden
 - Tab Einstellungen erklärt Admin-Funktionen
 - app_settings Tabelle wird benötigt; SUPABASE_FIX_FINAL.sql einmal ausführen
+
+Update:
+- Chris und andere Mitarbeiter bekommen klare Erfolgsrückmeldung bei Backwaren-Abschriften.
+- Backwaren-Menge wird nach Speichern geleert.
+- Abschriften können bearbeitet/gelöscht werden: Chef/Stationsleitung alle, Mitarbeiter eigene.
+- Chef/Stationsleitung/Michael können Artikel vollständig bearbeiten: Artikelnummer, Name, Kategorie, MHD, Menge, Barcode, Bild.
+- Bilder per Upload/Screenshot und Anzeige überall.
+- SUPABASE_FIX_FINAL.sql einmal ausführen.
