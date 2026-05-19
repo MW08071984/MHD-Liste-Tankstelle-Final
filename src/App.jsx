@@ -274,7 +274,7 @@ export default function App() {
           {error && <div className="error">{error}</div>}
           <button>Einloggen</button>
         </form>
-        <small>Bitte beim ersten Login ein neues Passwort setzen.</small>
+        <small>Erstpasswort: 0000 · Danach neues 4-stelliges Passwort setzen.</small>
       </section>
     </main>
   )
