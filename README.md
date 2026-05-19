@@ -1,22 +1,9 @@
-# MHD Kontrolle Final
+# MHD Kontrolle Final DB-kompatibel
 
-Diese Version ist die fertige Upload-Version.
-
-Enthalten:
-- Backwaren-Abschrift speichert wirklich in Supabase
-- korrekte Backwarenliste mit Artikelnummern
-- Shell-Farben ohne Logo
-- Smartphone-Design
-- dauerhaft eingeloggt bleiben
-- Passwortwechsel nach erstem Login
-- Push-Benachrichtigungen
-- Barcode + Auto-Bildersuche
-- Bild-Upload/Screenshot
-- Bilder nur Chef/Stationsleitung/Michael temporär
-- Lars 1 Chef
-- Philipp 2 Stationsleitung
-- Michael 19 temporär volle Rechte
-- Denis 3, Chris 9, Tizi 17, Mira 21, Anne 22 Mitarbeiter
+Diese Version speichert Abschriften sowohl in `artikel` als auch in `name`.
+Dadurch funktioniert sie mit deiner bestehenden alten Supabase Tabelle.
 
 Wichtig:
-SUPABASE_SQL.sql einmal im Supabase SQL Editor ausführen.
+1. SUPABASE_FIX_FINAL.sql im Supabase SQL Editor ausführen.
+2. ZIP-Inhalt in GitHub hochladen.
+3. Vercel redeploy.
