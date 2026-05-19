@@ -178,6 +178,7 @@ export default function App() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [form, setForm] = useState({ barcode:'', name:'', kategorie:'Sonstiges', mhd:todayISO(), menge:1, bild_url:'' })
+  const [employeeForm, setEmployeeForm] = useState({ nummer:'', name:'', rolle:'mitarbeiter' })
   const db = Boolean(supabase)
 
   useEffect(() => {
@@ -404,6 +405,67 @@ export default function App() {
     setSuccess('Tagesabschluss wurde endgültig gesendet.')
   }
 
+
+  async function saveEmployee() {
+    setError('')
+    setSuccess('')
+    if (!canManage(user)) return setError('Nur Chef oder Stationsleitung darf Mitarbeiter verwalten.')
+    if (!employeeForm.nummer || !employeeForm.name) return setError('Nummer und Name fehlen.')
+    const payload = {
+      nummer: Number(employeeForm.nummer),
+      name: employeeForm.name.trim(),
+      rolle: employeeForm.rolle,
+      passwort: '0000',
+      muss_passwort_aendern: true
+    }
+    if (db) {
+      const { error } = await supabase.from('mitarbeiter').upsert(payload, { onConflict: 'nummer' })
+      if (error) return setError('Mitarbeiter konnte nicht gespeichert werden: ' + error.message)
+      const { data } = await supabase.from('mitarbeiter').select('*').order('nummer')
+      setEmployees(data || [])
+    } else {
+      setEmployees(prev => {
+        const exists = prev.some(e => Number(e.nummer) === Number(payload.nummer))
+        return exists ? prev.map(e => Number(e.nummer) === Number(payload.nummer) ? payload : e) : [...prev, payload]
+      })
+    }
+    setEmployeeForm({ nummer:'', name:'', rolle:'mitarbeiter' })
+    setSuccess('Mitarbeiter gespeichert. Erstpasswort ist 0000.')
+  }
+
+  async function resetEmployeePassword(emp) {
+    setError('')
+    setSuccess('')
+    if (!canManage(user)) return setError('Nur Chef oder Stationsleitung darf Passwörter zurücksetzen.')
+    if (!confirm(`Passwort von ${emp.name} auf 0000 zurücksetzen?`)) return
+    if (db) {
+      const { error } = await supabase.from('mitarbeiter').update({ passwort:'0000', muss_passwort_aendern:true }).eq('nummer', emp.nummer)
+      if (error) return setError('Passwort konnte nicht zurückgesetzt werden: ' + error.message)
+      const { data } = await supabase.from('mitarbeiter').select('*').order('nummer')
+      setEmployees(data || [])
+    } else {
+      setEmployees(prev => prev.map(e => Number(e.nummer) === Number(emp.nummer) ? {...e, passwort:'0000', muss_passwort_aendern:true} : e))
+    }
+    setSuccess(`Passwort von ${emp.name} wurde auf 0000 zurückgesetzt.`)
+  }
+
+  async function deleteEmployee(emp) {
+    setError('')
+    setSuccess('')
+    if (!canManage(user)) return setError('Nur Chef oder Stationsleitung darf Mitarbeiter löschen.')
+    if (Number(emp.nummer) === Number(user.nummer)) return setError('Du kannst dich nicht selbst löschen.')
+    if (!confirm(`${emp.name} wirklich löschen?`)) return
+    if (db) {
+      const { error } = await supabase.from('mitarbeiter').delete().eq('nummer', emp.nummer)
+      if (error) return setError('Mitarbeiter konnte nicht gelöscht werden: ' + error.message)
+      const { data } = await supabase.from('mitarbeiter').select('*').order('nummer')
+      setEmployees(data || [])
+    } else {
+      setEmployees(prev => prev.filter(e => Number(e.nummer) !== Number(emp.nummer)))
+    }
+    setSuccess('Mitarbeiter gelöscht.')
+  }
+
   async function testNotify() {
     const msg = await notify(items)
     setSuccess(msg || 'Benachrichtigung geprüft.')
@@ -470,7 +532,8 @@ export default function App() {
           ['erfassen','Erfassen'],
           ['backwaren','Backwaren'],
           ['abschriften','Abschriften'],
-          ['bilder','Bilder']
+          ['bilder','Bilder'],
+          ...(canManage(user) ? [['einstellungen','Einstellungen']] : [])
         ].map(([key,label]) => <button key={key} onClick={()=>setTab(key)} className={tab===key?'active':''}>{label}</button>)}
       </nav>
 
@@ -524,6 +587,33 @@ export default function App() {
       {tab === 'bilder' && <section className="formCard">
         <h2>Bilder verwalten</h2>
         <p>{canEditImages(user) ? 'Du darfst Bilder per Auto-Suche oder Upload/Screenshot ändern.' : 'Nur Chef oder Stationsleitung dürfen Bilder ändern.'}</p>
+      </section>}
+
+      {tab === 'einstellungen' && canManage(user) && <section className="formCard">
+        <h2>Einstellungen</h2>
+        <h3>Mitarbeiter anlegen / ändern</h3>
+        <div className="row settingsRow">
+          <input placeholder="Nummer" inputMode="numeric" value={employeeForm.nummer} onChange={e=>setEmployeeForm({...employeeForm, nummer:e.target.value.replace(/\D/g,'')})} />
+          <input placeholder="Name" value={employeeForm.name} onChange={e=>setEmployeeForm({...employeeForm, name:e.target.value})} />
+        </div>
+        <select value={employeeForm.rolle} onChange={e=>setEmployeeForm({...employeeForm, rolle:e.target.value})}>
+          <option value="mitarbeiter">Mitarbeiter</option>
+          <option value="stationsleitung">Stationsleitung</option>
+          <option value="chef">Chef</option>
+          <option value="chef_temp">Chef-Rechte Einrichtung</option>
+        </select>
+        <button className="primary" onClick={saveEmployee}>Mitarbeiter speichern</button>
+        <p className="hint">Neue Mitarbeiter starten mit Passwort 0000 und müssen es beim ersten Login ändern.</p>
+
+        <h3>Bestehende Mitarbeiter</h3>
+        <div className="employeeList">
+          {employees.map(emp => <div className="employeeRow" key={emp.nummer}>
+            <div className="artikelnummer small">{emp.nummer}</div>
+            <div className="grow"><b>{emp.name}</b><p>{roleLabel(emp.rolle)}{emp.muss_passwort_aendern ? ' · Passwortwechsel offen' : ''}</p></div>
+            <button onClick={()=>resetEmployeePassword(emp)}>Reset 0000</button>
+            <button className="deleteBtn" onClick={()=>deleteEmployee(emp)}>Löschen</button>
+          </div>)}
+        </div>
       </section>}
     </main>
   )

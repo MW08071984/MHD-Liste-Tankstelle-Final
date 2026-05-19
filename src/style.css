@@ -144,3 +144,37 @@ button:disabled{opacity:.65;cursor:not-allowed}
   .dayActions{grid-template-columns:1fr}
   .deleteBtn{width:100%;grid-column:1/-1}
 }
+
+.settingsRow{
+  grid-template-columns:110px 1fr !important;
+}
+.employeeList{
+  display:grid;
+  gap:10px;
+}
+.employeeRow{
+  display:grid;
+  grid-template-columns:auto 1fr auto auto;
+  gap:10px;
+  align-items:center;
+  background:linear-gradient(145deg,#fffdf0,#fff3a0);
+  border:3px solid #d71920;
+  border-radius:24px;
+  padding:12px;
+}
+.employeeRow button{
+  font-size:14px;
+  padding:10px 12px;
+}
+@media(max-width:560px){
+  .settingsRow{
+    grid-template-columns:1fr !important;
+  }
+  .employeeRow{
+    grid-template-columns:76px 1fr;
+  }
+  .employeeRow button{
+    grid-column:1 / -1;
+    width:100%;
+  }
+}

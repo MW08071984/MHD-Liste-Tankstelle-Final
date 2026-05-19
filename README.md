@@ -22,3 +22,10 @@ Update Abschriften:
 - Chef/Stationsleitung/Michael können offene Tage zurücksetzen.
 - Chef/Stationsleitung/Michael können Tagesabschluss endgültig senden.
 - Endgültig gesendete Tage sind gesperrt.
+
+
+Update Einstellungen:
+- Chef, Stationsleitung und Michael mit Chef-Rechten können Mitarbeiter direkt in der App anlegen.
+- Rollen: Chef, Stationsleitung, Mitarbeiter, Chef-Rechte Einrichtung.
+- Passwort-Reset auf 0000 direkt in der App.
+- Mitarbeiter löschen direkt in der App.
