@@ -9,23 +9,7 @@ Wichtig:
 3. Vercel redeploy.
 
 
-Feinschliff:
-- Menge bei Backwaren wird nach erfolgreicher Abschrift automatisch geleert.
-- Artikelzeile blinkt grün und Button zeigt ✓ Fertig.
-- Abschriften werden übersichtlich nach Datum gruppiert.
-
-
-FINALER DB-FIX: SUPABASE_FIX_FINAL.sql ausführen. Dieser Fix ergänzt jetzt auch fehlende Spalten in mhd_artikel, z.B. artikelnummer.
-
-Update Abschriften:
-- Mitarbeiter können eigene offene Abschriften löschen.
-- Chef/Stationsleitung/Michael können offene Tage zurücksetzen.
-- Chef/Stationsleitung/Michael können Tagesabschluss endgültig senden.
-- Endgültig gesendete Tage sind gesperrt.
-
-
-Update Einstellungen:
-- Chef, Stationsleitung und Michael mit Chef-Rechten können Mitarbeiter direkt in der App anlegen.
-- Rollen: Chef, Stationsleitung, Mitarbeiter, Chef-Rechte Einrichtung.
-- Passwort-Reset auf 0000 direkt in der App.
-- Mitarbeiter löschen direkt in der App.
+Update Dienstplan:
+- Tab "Dienstplan" hinzugefügt
+- Mai 2026 und Juni 2026 sind fest enthalten
+- Pläne sind zoombar/scrollbar und als Bild groß öffnbar

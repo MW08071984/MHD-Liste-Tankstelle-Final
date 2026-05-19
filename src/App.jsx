@@ -62,7 +62,6 @@ function daysUntil(dateString) {
   return Math.ceil((target - today) / 86400000)
 }
 function canEditImages(user) { return ['chef', 'chef_temp', 'stationsleitung'].includes(user?.rolle) }
-function canManage(user) { return ['chef', 'chef_temp', 'stationsleitung'].includes(user?.rolle) }
 function roleLabel(role) {
   if (role === 'chef') return 'Chef'
   if (role === 'chef_temp') return 'Chef-Rechte Einrichtung'
@@ -154,17 +153,6 @@ async function notify(items) {
   return 'Benachrichtigung gesendet.'
 }
 
-
-function groupWriteoffsByDate(writeoffs) {
-  const groups = {}
-  for (const w of writeoffs) {
-    const key = w.datum || (w.created_at ? String(w.created_at).slice(0,10) : todayISO())
-    if (!groups[key]) groups[key] = []
-    groups[key].push(w)
-  }
-  return Object.entries(groups).sort((a,b) => b[0].localeCompare(a[0]))
-}
-
 export default function App() {
   const [ready, setReady] = useState(false)
   const [employees, setEmployees] = useState([])
@@ -178,7 +166,6 @@ export default function App() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [form, setForm] = useState({ barcode:'', name:'', kategorie:'Sonstiges', mhd:todayISO(), menge:1, bild_url:'' })
-  const [employeeForm, setEmployeeForm] = useState({ nummer:'', name:'', rolle:'mitarbeiter' })
   const db = Boolean(supabase)
 
   useEffect(() => {
@@ -307,8 +294,7 @@ export default function App() {
       grund,
       datum: todayISO(),
       mitarbeiter: user.name,
-      mitarbeiter_nummer: Number(user.nummer),
-      finalisiert: false
+      mitarbeiter_nummer: Number(user.nummer)
     }
     const res = await insertWriteoff(payload)
     if (res.error) return setError('Abschrift fehlgeschlagen: ' + res.error.message)
@@ -320,7 +306,7 @@ export default function App() {
   async function addBakeryWriteoff(bw, menge) {
     setError(''); setSuccess('')
     const amount = Number(menge || 0)
-    if (!amount || amount < 1) { setError('Bitte Menge größer als 0 eintragen.'); return false }
+    if (!amount || amount < 1) return setError('Bitte Menge größer als 0 eintragen.')
     const payload = {
       artikel_id: null,
       artikelnummer: bw.artikelnummer,
@@ -334,136 +320,11 @@ export default function App() {
       grund: 'Backwaren Tagesende',
       datum: todayISO(),
       mitarbeiter: user.name,
-      mitarbeiter_nummer: Number(user.nummer),
-      finalisiert: false
+      mitarbeiter_nummer: Number(user.nummer)
     }
     const res = await insertWriteoff(payload)
-    if (res.error) { setError('Abschrift fehlgeschlagen: ' + res.error.message); return false }
+    if (res.error) return setError('Abschrift fehlgeschlagen: ' + res.error.message)
     setSuccess(`${bw.name} (${amount}) als Abschrift gespeichert.`)
-    return true
-  }
-
-
-  function canDeleteWriteoff(w) {
-    if (canManage(user)) return !w.finalisiert
-    return !w.finalisiert && Number(w.mitarbeiter_nummer) === Number(user.nummer)
-  }
-
-  async function deleteWriteoff(w) {
-    setError('')
-    setSuccess('')
-    if (!canDeleteWriteoff(w)) return setError('Diese Abschrift kann nicht mehr gelöscht werden.')
-    if (!confirm(`${w.name || w.artikel} wirklich löschen?`)) return
-
-    if (db) {
-      const { error } = await supabase.from('abschriften').delete().eq('id', w.id)
-      if (error) return setError('Löschen fehlgeschlagen: ' + error.message)
-      await reloadLists()
-    } else {
-      localSetWriteoffs(writeoffs.filter(x => x.id !== w.id))
-    }
-    setSuccess('Abschrift gelöscht.')
-  }
-
-  async function resetOpenDay(date, entries) {
-    setError('')
-    setSuccess('')
-    if (!canManage(user)) return setError('Nur Chef oder Stationsleitung darf einen Tag zurücksetzen.')
-    const openEntries = entries.filter(x => !x.finalisiert)
-    if (!openEntries.length) return setError('Dieser Tag ist bereits endgültig gesendet.')
-    if (!confirm(`Alle offenen Abschriften vom ${new Date(date).toLocaleDateString('de-DE')} löschen?`)) return
-
-    if (db) {
-      const ids = openEntries.map(x => x.id).filter(Boolean)
-      const { error } = await supabase.from('abschriften').delete().in('id', ids)
-      if (error) return setError('Zurücksetzen fehlgeschlagen: ' + error.message)
-      await reloadLists()
-    } else {
-      localSetWriteoffs(writeoffs.filter(x => !openEntries.some(y => y.id === x.id)))
-    }
-    setSuccess('Offene Abschriften für den Tag wurden zurückgesetzt.')
-  }
-
-  async function finalizeDay(date, entries) {
-    setError('')
-    setSuccess('')
-    if (!canManage(user)) return setError('Nur Chef oder Stationsleitung darf endgültig senden.')
-    const openEntries = entries.filter(x => !x.finalisiert)
-    if (!openEntries.length) return setError('Dieser Tag ist bereits endgültig gesendet.')
-    if (!confirm(`Tagesabschluss für ${new Date(date).toLocaleDateString('de-DE')} endgültig senden? Danach ist er gesperrt.`)) return
-
-    if (db) {
-      const ids = openEntries.map(x => x.id).filter(Boolean)
-      const { error } = await supabase.from('abschriften')
-        .update({ finalisiert: true, finalisiert_am: new Date().toISOString(), finalisiert_von: user.name })
-        .in('id', ids)
-      if (error) return setError('Endgültig senden fehlgeschlagen: ' + error.message)
-      await reloadLists()
-    } else {
-      localSetWriteoffs(writeoffs.map(x => openEntries.some(y => y.id === x.id) ? {...x, finalisiert:true, finalisiert_am:nowStamp(), finalisiert_von:user.name} : x))
-    }
-    setSuccess('Tagesabschluss wurde endgültig gesendet.')
-  }
-
-
-  async function saveEmployee() {
-    setError('')
-    setSuccess('')
-    if (!canManage(user)) return setError('Nur Chef oder Stationsleitung darf Mitarbeiter verwalten.')
-    if (!employeeForm.nummer || !employeeForm.name) return setError('Nummer und Name fehlen.')
-    const payload = {
-      nummer: Number(employeeForm.nummer),
-      name: employeeForm.name.trim(),
-      rolle: employeeForm.rolle,
-      passwort: '0000',
-      muss_passwort_aendern: true
-    }
-    if (db) {
-      const { error } = await supabase.from('mitarbeiter').upsert(payload, { onConflict: 'nummer' })
-      if (error) return setError('Mitarbeiter konnte nicht gespeichert werden: ' + error.message)
-      const { data } = await supabase.from('mitarbeiter').select('*').order('nummer')
-      setEmployees(data || [])
-    } else {
-      setEmployees(prev => {
-        const exists = prev.some(e => Number(e.nummer) === Number(payload.nummer))
-        return exists ? prev.map(e => Number(e.nummer) === Number(payload.nummer) ? payload : e) : [...prev, payload]
-      })
-    }
-    setEmployeeForm({ nummer:'', name:'', rolle:'mitarbeiter' })
-    setSuccess('Mitarbeiter gespeichert. Erstpasswort ist 0000.')
-  }
-
-  async function resetEmployeePassword(emp) {
-    setError('')
-    setSuccess('')
-    if (!canManage(user)) return setError('Nur Chef oder Stationsleitung darf Passwörter zurücksetzen.')
-    if (!confirm(`Passwort von ${emp.name} auf 0000 zurücksetzen?`)) return
-    if (db) {
-      const { error } = await supabase.from('mitarbeiter').update({ passwort:'0000', muss_passwort_aendern:true }).eq('nummer', emp.nummer)
-      if (error) return setError('Passwort konnte nicht zurückgesetzt werden: ' + error.message)
-      const { data } = await supabase.from('mitarbeiter').select('*').order('nummer')
-      setEmployees(data || [])
-    } else {
-      setEmployees(prev => prev.map(e => Number(e.nummer) === Number(emp.nummer) ? {...e, passwort:'0000', muss_passwort_aendern:true} : e))
-    }
-    setSuccess(`Passwort von ${emp.name} wurde auf 0000 zurückgesetzt.`)
-  }
-
-  async function deleteEmployee(emp) {
-    setError('')
-    setSuccess('')
-    if (!canManage(user)) return setError('Nur Chef oder Stationsleitung darf Mitarbeiter löschen.')
-    if (Number(emp.nummer) === Number(user.nummer)) return setError('Du kannst dich nicht selbst löschen.')
-    if (!confirm(`${emp.name} wirklich löschen?`)) return
-    if (db) {
-      const { error } = await supabase.from('mitarbeiter').delete().eq('nummer', emp.nummer)
-      if (error) return setError('Mitarbeiter konnte nicht gelöscht werden: ' + error.message)
-      const { data } = await supabase.from('mitarbeiter').select('*').order('nummer')
-      setEmployees(data || [])
-    } else {
-      setEmployees(prev => prev.filter(e => Number(e.nummer) !== Number(emp.nummer)))
-    }
-    setSuccess('Mitarbeiter gelöscht.')
   }
 
   async function testNotify() {
@@ -533,7 +394,7 @@ export default function App() {
           ['backwaren','Backwaren'],
           ['abschriften','Abschriften'],
           ['bilder','Bilder'],
-          ...(canManage(user) ? [['einstellungen','Einstellungen']] : [])
+          ['dienstplan','Dienstplan']
         ].map(([key,label]) => <button key={key} onClick={()=>setTab(key)} className={tab===key?'active':''}>{label}</button>)}
       </nav>
 
@@ -563,24 +424,10 @@ export default function App() {
 
       {tab === 'abschriften' && <section className="list">
         <h2>Abschriften</h2>
-        {groupWriteoffsByDate(writeoffs).map(([date, entries]) => {
-          const final = entries.every(x => x.finalisiert)
-          return <div className={`dayGroup ${final ? 'finalDay' : ''}`} key={date}>
-            <div className="dayHead">
-              <div><b>{new Date(date).toLocaleDateString('de-DE')}</b><small>{final ? 'Endgültig gesendet' : 'Offen / änderbar'}</small></div>
-              <span>{entries.reduce((sum, w) => sum + Number(w.menge || 0), 0)} Stück · {entries.length} Einträge</span>
-            </div>
-            {!final && canManage(user) && <div className="dayActions">
-              <button className="dangerBtn" onClick={() => resetOpenDay(date, entries)}>Offene löschen</button>
-              <button className="doneBtn" onClick={() => finalizeDay(date, entries)}>Tagesabschluss senden</button>
-            </div>}
-            {entries.map(w => <div className={`item ${w.finalisiert ? 'lockedRow' : ''}`} key={w.id || `${w.name}-${w.created_at}-${Math.random()}`}>
-              <div className="artikelnummer small">{w.artikelnummer || 'MHD'}</div>
-              <div className="grow"><b>{w.name || w.artikel}</b><p>{w.grund} · {w.menge} Stk. · {w.mitarbeiter}{w.finalisiert ? ' · gesperrt' : ''}</p></div>
-              {canDeleteWriteoff(w) && <button className="deleteBtn" onClick={() => deleteWriteoff(w)}>Löschen</button>}
-            </div>)}
-          </div>
-        })}
+        {writeoffs.map(w => <div className="item" key={w.id || `${w.name}-${w.created_at}`}>
+          <div className="artikelnummer small">{w.artikelnummer || 'MHD'}</div>
+          <div className="grow"><b>{w.name || w.artikel}</b><p>{w.grund} · {w.menge} Stk. · {w.mitarbeiter} · {new Date(w.datum || w.created_at).toLocaleDateString('de-DE')}</p></div>
+        </div>)}
         {!writeoffs.length && <Empty text="Noch keine Abschriften." />}
       </section>}
 
@@ -589,32 +436,7 @@ export default function App() {
         <p>{canEditImages(user) ? 'Du darfst Bilder per Auto-Suche oder Upload/Screenshot ändern.' : 'Nur Chef oder Stationsleitung dürfen Bilder ändern.'}</p>
       </section>}
 
-      {tab === 'einstellungen' && canManage(user) && <section className="formCard">
-        <h2>Einstellungen</h2>
-        <h3>Mitarbeiter anlegen / ändern</h3>
-        <div className="row settingsRow">
-          <input placeholder="Nummer" inputMode="numeric" value={employeeForm.nummer} onChange={e=>setEmployeeForm({...employeeForm, nummer:e.target.value.replace(/\D/g,'')})} />
-          <input placeholder="Name" value={employeeForm.name} onChange={e=>setEmployeeForm({...employeeForm, name:e.target.value})} />
-        </div>
-        <select value={employeeForm.rolle} onChange={e=>setEmployeeForm({...employeeForm, rolle:e.target.value})}>
-          <option value="mitarbeiter">Mitarbeiter</option>
-          <option value="stationsleitung">Stationsleitung</option>
-          <option value="chef">Chef</option>
-          <option value="chef_temp">Chef-Rechte Einrichtung</option>
-        </select>
-        <button className="primary" onClick={saveEmployee}>Mitarbeiter speichern</button>
-        <p className="hint">Neue Mitarbeiter starten mit Passwort 0000 und müssen es beim ersten Login ändern.</p>
-
-        <h3>Bestehende Mitarbeiter</h3>
-        <div className="employeeList">
-          {employees.map(emp => <div className="employeeRow" key={emp.nummer}>
-            <div className="artikelnummer small">{emp.nummer}</div>
-            <div className="grow"><b>{emp.name}</b><p>{roleLabel(emp.rolle)}{emp.muss_passwort_aendern ? ' · Passwortwechsel offen' : ''}</p></div>
-            <button onClick={()=>resetEmployeePassword(emp)}>Reset 0000</button>
-            <button className="deleteBtn" onClick={()=>deleteEmployee(emp)}>Löschen</button>
-          </div>)}
-        </div>
-      </section>}
+      {tab === 'dienstplan' && <Dienstplan user={user} />}
     </main>
   )
 }
@@ -630,25 +452,38 @@ function Article({ item, onWriteOff }) {
 }
 function Backwaren({ onAdd }) {
   const [qty, setQty] = useState({})
-  const [saved, setSaved] = useState('')
-  const [busy, setBusy] = useState('')
-  async function saveBakery(b) {
-    const amount = qty[b.artikelnummer] || ''
-    if (!amount || Number(amount) < 1) return
-    setBusy(b.artikelnummer)
-    const ok = await onAdd(b, amount)
-    setBusy('')
-    if (ok) {
-      setQty(prev => ({...prev, [b.artikelnummer]: ''}))
-      setSaved(b.artikelnummer)
-      setTimeout(() => setSaved(''), 1800)
-    }
-  }
-  return <section className="list"><h2>Backwaren Tagesende</h2>{BACKWAREN.map(b => <div className={`item bakery ${saved===b.artikelnummer ? 'savedRow' : ''}`} key={b.artikelnummer}>
+  return <section className="list"><h2>Backwaren Tagesende</h2>{BACKWAREN.map(b => <div className="item bakery" key={b.artikelnummer}>
     <div className="artikelnummer">{b.artikelnummer}</div>
-    <div className="grow"><b>{b.name}</b><p>{saved===b.artikelnummer ? '✓ Gespeichert' : `Artikelnummer ${b.artikelnummer}`}</p></div>
+    <div className="grow"><b>{b.name}</b><p>Artikelnummer {b.artikelnummer}</p></div>
     <input className="qty" inputMode="numeric" value={qty[b.artikelnummer] || ''} onChange={e=>setQty({...qty, [b.artikelnummer]: e.target.value.replace(/\D/g,'')})} placeholder="0" />
-    <button disabled={busy===b.artikelnummer} className={saved===b.artikelnummer ? 'doneBtn' : ''} onClick={()=>saveBakery(b)}>{saved===b.artikelnummer ? '✓ Fertig' : busy===b.artikelnummer ? 'Speichert...' : 'Abschrift'}</button>
+    <button onClick={()=>onAdd(b, qty[b.artikelnummer])}>Abschrift</button>
   </div>)}</section>
 }
+
+function Dienstplan({ user }) {
+  const [month, setMonth] = useState('juni')
+  const plans = {
+    mai: { label: 'Mai 2026', src: '/dienstplan-mai-2026.jpg' },
+    juni: { label: 'Juni 2026', src: '/dienstplan-juni-2026.jpg' },
+  }
+  const plan = plans[month]
+  const admin = ['chef', 'chef_temp', 'stationsleitung'].includes(user?.rolle)
+
+  return (
+    <section className="formCard">
+      <h2>Dienstplan</h2>
+      <div className="planSwitch">
+        <button className={month === 'mai' ? 'active' : ''} onClick={() => setMonth('mai')}>Mai 2026</button>
+        <button className={month === 'juni' ? 'active' : ''} onClick={() => setMonth('juni')}>Juni 2026</button>
+      </div>
+      <p className="hint">Aktueller Plan: {plan.label}</p>
+      <div className="dienstplanBox">
+        <img src={plan.src} alt={`Dienstplan ${plan.label}`} />
+      </div>
+      <a className="downloadBtn" href={plan.src} target="_blank" rel="noreferrer">Plan groß öffnen / herunterladen</a>
+      {admin && <p className="hint">Später können Chef oder Stationsleitung neue Dienstpläne hochladen oder ersetzen.</p>}
+    </section>
+  )
+}
+
 function Empty({text}) { return <div className="empty">{text}</div> }
