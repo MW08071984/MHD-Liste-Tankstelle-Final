@@ -1,1 +1,7 @@
-<!doctype html><html lang="de"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/><meta name="theme-color" content="#facc15"/><title>MHD Kontrolle</title></head><body><div id="root"></div><script type="module" src="/src/main.jsx"></script></body></html>
+# MHD Kontrolle Final
+
+Funktionen: Dauerlogin mit sichtbarer Checkbox, Erstpasswort 0000 mit Pflicht-Passwortwechsel, Mitarbeiter/Rollen, Barcode-Produktsuche über OpenFoodFacts, eigene Bilder, mehrere MHD pro Produkt, Backwaren-Tagesende mit Artikelnummern, Push/Browser-Benachrichtigungen.
+
+Vercel ENV:
+- VITE_SUPABASE_URL
+- VITE_SUPABASE_ANON_KEY

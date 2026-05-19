@@ -1,9 +1,1 @@
-{
-  "name":"MHD Tankstelle Ludweiler",
-  "short_name":"MHD",
-  "start_url":"/",
-  "display":"standalone",
-  "background_color":"#fff8d6",
-  "theme_color":"#d71920",
-  "icons":[{"src":"/icon-192.png","sizes":"192x192","type":"image/png"},{"src":"/icon-512.png","sizes":"512x512","type":"image/png"}]
-}
+{"name":"MHD Kontrolle","short_name":"MHD","start_url":"/","display":"standalone","background_color":"#fff7f8","theme_color":"#8b1e2d","icons":[]}
