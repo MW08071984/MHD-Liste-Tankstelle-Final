@@ -16,3 +16,9 @@ Feinschliff:
 
 
 FINALER DB-FIX: SUPABASE_FIX_FINAL.sql ausführen. Dieser Fix ergänzt jetzt auch fehlende Spalten in mhd_artikel, z.B. artikelnummer.
+
+Update Abschriften:
+- Mitarbeiter können eigene offene Abschriften löschen.
+- Chef/Stationsleitung/Michael können offene Tage zurücksetzen.
+- Chef/Stationsleitung/Michael können Tagesabschluss endgültig senden.
+- Endgültig gesendete Tage sind gesperrt.

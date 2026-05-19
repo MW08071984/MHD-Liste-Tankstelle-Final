@@ -62,6 +62,7 @@ function daysUntil(dateString) {
   return Math.ceil((target - today) / 86400000)
 }
 function canEditImages(user) { return ['chef', 'chef_temp', 'stationsleitung'].includes(user?.rolle) }
+function canManage(user) { return ['chef', 'chef_temp', 'stationsleitung'].includes(user?.rolle) }
 function roleLabel(role) {
   if (role === 'chef') return 'Chef'
   if (role === 'chef_temp') return 'Chef-Rechte Einrichtung'
@@ -305,7 +306,8 @@ export default function App() {
       grund,
       datum: todayISO(),
       mitarbeiter: user.name,
-      mitarbeiter_nummer: Number(user.nummer)
+      mitarbeiter_nummer: Number(user.nummer),
+      finalisiert: false
     }
     const res = await insertWriteoff(payload)
     if (res.error) return setError('Abschrift fehlgeschlagen: ' + res.error.message)
@@ -331,12 +333,75 @@ export default function App() {
       grund: 'Backwaren Tagesende',
       datum: todayISO(),
       mitarbeiter: user.name,
-      mitarbeiter_nummer: Number(user.nummer)
+      mitarbeiter_nummer: Number(user.nummer),
+      finalisiert: false
     }
     const res = await insertWriteoff(payload)
     if (res.error) { setError('Abschrift fehlgeschlagen: ' + res.error.message); return false }
     setSuccess(`${bw.name} (${amount}) als Abschrift gespeichert.`)
     return true
+  }
+
+
+  function canDeleteWriteoff(w) {
+    if (canManage(user)) return !w.finalisiert
+    return !w.finalisiert && Number(w.mitarbeiter_nummer) === Number(user.nummer)
+  }
+
+  async function deleteWriteoff(w) {
+    setError('')
+    setSuccess('')
+    if (!canDeleteWriteoff(w)) return setError('Diese Abschrift kann nicht mehr gelöscht werden.')
+    if (!confirm(`${w.name || w.artikel} wirklich löschen?`)) return
+
+    if (db) {
+      const { error } = await supabase.from('abschriften').delete().eq('id', w.id)
+      if (error) return setError('Löschen fehlgeschlagen: ' + error.message)
+      await reloadLists()
+    } else {
+      localSetWriteoffs(writeoffs.filter(x => x.id !== w.id))
+    }
+    setSuccess('Abschrift gelöscht.')
+  }
+
+  async function resetOpenDay(date, entries) {
+    setError('')
+    setSuccess('')
+    if (!canManage(user)) return setError('Nur Chef oder Stationsleitung darf einen Tag zurücksetzen.')
+    const openEntries = entries.filter(x => !x.finalisiert)
+    if (!openEntries.length) return setError('Dieser Tag ist bereits endgültig gesendet.')
+    if (!confirm(`Alle offenen Abschriften vom ${new Date(date).toLocaleDateString('de-DE')} löschen?`)) return
+
+    if (db) {
+      const ids = openEntries.map(x => x.id).filter(Boolean)
+      const { error } = await supabase.from('abschriften').delete().in('id', ids)
+      if (error) return setError('Zurücksetzen fehlgeschlagen: ' + error.message)
+      await reloadLists()
+    } else {
+      localSetWriteoffs(writeoffs.filter(x => !openEntries.some(y => y.id === x.id)))
+    }
+    setSuccess('Offene Abschriften für den Tag wurden zurückgesetzt.')
+  }
+
+  async function finalizeDay(date, entries) {
+    setError('')
+    setSuccess('')
+    if (!canManage(user)) return setError('Nur Chef oder Stationsleitung darf endgültig senden.')
+    const openEntries = entries.filter(x => !x.finalisiert)
+    if (!openEntries.length) return setError('Dieser Tag ist bereits endgültig gesendet.')
+    if (!confirm(`Tagesabschluss für ${new Date(date).toLocaleDateString('de-DE')} endgültig senden? Danach ist er gesperrt.`)) return
+
+    if (db) {
+      const ids = openEntries.map(x => x.id).filter(Boolean)
+      const { error } = await supabase.from('abschriften')
+        .update({ finalisiert: true, finalisiert_am: new Date().toISOString(), finalisiert_von: user.name })
+        .in('id', ids)
+      if (error) return setError('Endgültig senden fehlgeschlagen: ' + error.message)
+      await reloadLists()
+    } else {
+      localSetWriteoffs(writeoffs.map(x => openEntries.some(y => y.id === x.id) ? {...x, finalisiert:true, finalisiert_am:nowStamp(), finalisiert_von:user.name} : x))
+    }
+    setSuccess('Tagesabschluss wurde endgültig gesendet.')
   }
 
   async function testNotify() {
@@ -435,16 +500,24 @@ export default function App() {
 
       {tab === 'abschriften' && <section className="list">
         <h2>Abschriften</h2>
-        {groupWriteoffsByDate(writeoffs).map(([date, entries]) => <div className="dayGroup" key={date}>
-          <div className="dayHead">
-            <b>{new Date(date).toLocaleDateString('de-DE')}</b>
-            <span>{entries.reduce((sum, w) => sum + Number(w.menge || 0), 0)} Stück · {entries.length} Einträge</span>
+        {groupWriteoffsByDate(writeoffs).map(([date, entries]) => {
+          const final = entries.every(x => x.finalisiert)
+          return <div className={`dayGroup ${final ? 'finalDay' : ''}`} key={date}>
+            <div className="dayHead">
+              <div><b>{new Date(date).toLocaleDateString('de-DE')}</b><small>{final ? 'Endgültig gesendet' : 'Offen / änderbar'}</small></div>
+              <span>{entries.reduce((sum, w) => sum + Number(w.menge || 0), 0)} Stück · {entries.length} Einträge</span>
+            </div>
+            {!final && canManage(user) && <div className="dayActions">
+              <button className="dangerBtn" onClick={() => resetOpenDay(date, entries)}>Offene löschen</button>
+              <button className="doneBtn" onClick={() => finalizeDay(date, entries)}>Tagesabschluss senden</button>
+            </div>}
+            {entries.map(w => <div className={`item ${w.finalisiert ? 'lockedRow' : ''}`} key={w.id || `${w.name}-${w.created_at}-${Math.random()}`}>
+              <div className="artikelnummer small">{w.artikelnummer || 'MHD'}</div>
+              <div className="grow"><b>{w.name || w.artikel}</b><p>{w.grund} · {w.menge} Stk. · {w.mitarbeiter}{w.finalisiert ? ' · gesperrt' : ''}</p></div>
+              {canDeleteWriteoff(w) && <button className="deleteBtn" onClick={() => deleteWriteoff(w)}>Löschen</button>}
+            </div>)}
           </div>
-          {entries.map(w => <div className="item" key={w.id || `${w.name}-${w.created_at}-${Math.random()}`}>
-            <div className="artikelnummer small">{w.artikelnummer || 'MHD'}</div>
-            <div className="grow"><b>{w.name || w.artikel}</b><p>{w.grund} · {w.menge} Stk. · {w.mitarbeiter}</p></div>
-          </div>)}
-        </div>)}
+        })}
         {!writeoffs.length && <Empty text="Noch keine Abschriften." />}
       </section>}
 

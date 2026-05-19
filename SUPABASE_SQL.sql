@@ -76,3 +76,11 @@ on conflict (nummer) do update set name = excluded.name, rolle = excluded.rolle;
 alter table public.mitarbeiter disable row level security;
 alter table public.mhd_artikel disable row level security;
 alter table public.abschriften disable row level security;
+
+
+
+-- Abschriften Freigabe / Tagesabschluss
+alter table public.abschriften add column if not exists finalisiert boolean default false;
+alter table public.abschriften add column if not exists finalisiert_am timestamp with time zone;
+alter table public.abschriften add column if not exists finalisiert_von text;
+update public.abschriften set finalisiert = false where finalisiert is null;

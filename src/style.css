@@ -117,3 +117,30 @@ button:disabled{opacity:.65;cursor:not-allowed}
 @media(max-width:560px){
   .dayHead{display:grid;gap:4px}
 }
+
+.dayHead small{
+  display:block;
+  color:#fff7cc;
+  font-weight:800;
+  margin-top:3px;
+}
+.dayActions{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+}
+.deleteBtn,.dangerBtn{
+  background:#8b0000 !important;
+  color:#fff !important;
+}
+.lockedRow{
+  opacity:.82;
+  background:linear-gradient(145deg,#eee,#fff7c2) !important;
+}
+.finalDay{
+  border-color:#4f9d00 !important;
+}
+@media(max-width:560px){
+  .dayActions{grid-template-columns:1fr}
+  .deleteBtn{width:100%;grid-column:1/-1}
+}
