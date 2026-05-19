@@ -1,1 +1,10 @@
-{"name":"MHD Kontrolle","short_name":"MHD","start_url":"/","display":"standalone","background_color":"#fff7f7","theme_color":"#9b1c31","icons":[]}
+# MHD Kontrolle
+
+Finale Smartphone-Version in Shell-Farben ohne Logo.
+
+## Vercel ENV
+VITE_SUPABASE_URL
+VITE_SUPABASE_ANON_KEY
+
+## Backwarenliste
+Die Liste aus dem Foto ist in src/App.jsx fest hinterlegt.

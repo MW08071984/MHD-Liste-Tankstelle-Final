@@ -1,1 +1,9 @@
-{"name":"MHD Kontrolle","short_name":"MHD","start_url":"/","display":"standalone","background_color":"#fff7f8","theme_color":"#8b1e2d","icons":[]}
+{
+  "name": "MHD Kontrolle",
+  "short_name": "MHD",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fff8d7",
+  "theme_color": "#ffd500",
+  "icons": []
+}
