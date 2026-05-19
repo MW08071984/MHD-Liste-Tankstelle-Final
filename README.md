@@ -35,3 +35,11 @@ Update:
 - Chef/Stationsleitung/Michael können Artikel vollständig bearbeiten: Artikelnummer, Name, Kategorie, MHD, Menge, Barcode, Bild.
 - Bilder per Upload/Screenshot und Anzeige überall.
 - SUPABASE_FIX_FINAL.sql einmal ausführen.
+
+Finales Smartphone/Shell/Backwaren-Update:
+- Backwaren werden gesammelt eingetragen und erst mit "Alles absenden" gespeichert.
+- Normale Mitarbeiter können abgeschickte Backwaren-Abschriften nicht mehr ändern.
+- Chef, Stationsleitung und Michael können weiterhin Abschriften bearbeiten.
+- Shell-Farben wurden auf allen Seiten verstärkt.
+- Smartphone-Bedienung wurde optimiert.
+- SUPABASE_FIX_FINAL.sql einmal ausführen.

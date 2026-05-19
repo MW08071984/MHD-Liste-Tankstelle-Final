@@ -101,3 +101,9 @@ alter table public.abschriften add column if not exists mitarbeiter_nummer int;
 
 alter table public.mhd_artikel disable row level security;
 alter table public.abschriften disable row level security;
+
+
+
+-- Backwaren Sammel-Absenden / Abschlussstatus
+alter table public.abschriften
+add column if not exists status text default 'abgeschlossen';

@@ -65,8 +65,7 @@ function canEditImages(user) { return ['chef', 'chef_temp', 'stationsleitung'].i
 function canManageArticles(user) { return ['chef', 'chef_temp', 'stationsleitung'].includes(user?.rolle) }
 function canEditWriteoff(user, writeoff) {
   if (!user) return false
-  if (['chef', 'chef_temp', 'stationsleitung'].includes(user.rolle)) return true
-  return Number(writeoff?.mitarbeiter_nummer) === Number(user.nummer) || String(writeoff?.mitarbeiter) === String(user.name)
+  return ['chef', 'chef_temp', 'stationsleitung'].includes(user.rolle)
 }
 function roleLabel(role) {
   if (role === 'chef') return 'Chef'
@@ -368,7 +367,7 @@ export default function App() {
       localSetWriteoffs(writeoffs.map(w => w.id === updated.id ? { ...w, ...payload } : w))
     }
     setEditingWriteoff(null)
-    setSuccess('Abschrift gespeichert.')
+    setSuccess('Abschrift gespeichert und abgeschlossen.')
   }
 
   async function deleteWriteoff(writeoff) {
@@ -418,7 +417,7 @@ export default function App() {
     if (res.error) return setError('Abschrift fehlgeschlagen: ' + res.error.message)
     if (db && item.id) { await supabase.from('mhd_artikel').delete().eq('id', item.id); await reloadLists() }
     if (!db && item.id) localSetItems(items.filter(x => x.id !== item.id))
-    setSuccess('Abschrift gespeichert.')
+    setSuccess('Abschrift gespeichert und abgeschlossen.')
   }
 
   async function addBakeryWriteoff(bw, menge) {
@@ -436,6 +435,7 @@ export default function App() {
       menge: amount,
       bild_url: '',
       grund: 'Backwaren Tagesende',
+      status: 'abgeschlossen',
       datum: todayISO(),
       mitarbeiter: user.name,
       mitarbeiter_nummer: Number(user.nummer)
@@ -443,7 +443,7 @@ export default function App() {
     const res = await insertWriteoff(payload)
     if (res.error) return setError('Abschrift fehlgeschlagen: ' + res.error.message)
     navigator.vibrate?.(80)
-    setSuccess(`Abschrift gespeichert: ${bw.name} · Menge ${amount}`)
+    setSuccess(`Backwaren-Abschrift gespeichert: ${bw.name} · Menge ${amount}`)
   }
 
   async function testNotify() {
