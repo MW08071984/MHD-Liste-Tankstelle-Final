@@ -153,6 +153,17 @@ async function notify(items) {
   return 'Benachrichtigung gesendet.'
 }
 
+
+function groupWriteoffsByDate(writeoffs) {
+  const groups = {}
+  for (const w of writeoffs) {
+    const key = w.datum || (w.created_at ? String(w.created_at).slice(0,10) : todayISO())
+    if (!groups[key]) groups[key] = []
+    groups[key].push(w)
+  }
+  return Object.entries(groups).sort((a,b) => b[0].localeCompare(a[0]))
+}
+
 export default function App() {
   const [ready, setReady] = useState(false)
   const [employees, setEmployees] = useState([])
@@ -306,7 +317,7 @@ export default function App() {
   async function addBakeryWriteoff(bw, menge) {
     setError(''); setSuccess('')
     const amount = Number(menge || 0)
-    if (!amount || amount < 1) return setError('Bitte Menge größer als 0 eintragen.')
+    if (!amount || amount < 1) { setError('Bitte Menge größer als 0 eintragen.'); return false }
     const payload = {
       artikel_id: null,
       artikelnummer: bw.artikelnummer,
@@ -323,8 +334,9 @@ export default function App() {
       mitarbeiter_nummer: Number(user.nummer)
     }
     const res = await insertWriteoff(payload)
-    if (res.error) return setError('Abschrift fehlgeschlagen: ' + res.error.message)
+    if (res.error) { setError('Abschrift fehlgeschlagen: ' + res.error.message); return false }
     setSuccess(`${bw.name} (${amount}) als Abschrift gespeichert.`)
+    return true
   }
 
   async function testNotify() {
@@ -423,9 +435,15 @@ export default function App() {
 
       {tab === 'abschriften' && <section className="list">
         <h2>Abschriften</h2>
-        {writeoffs.map(w => <div className="item" key={w.id || `${w.name}-${w.created_at}`}>
-          <div className="artikelnummer small">{w.artikelnummer || 'MHD'}</div>
-          <div className="grow"><b>{w.name || w.artikel}</b><p>{w.grund} · {w.menge} Stk. · {w.mitarbeiter} · {new Date(w.datum || w.created_at).toLocaleDateString('de-DE')}</p></div>
+        {groupWriteoffsByDate(writeoffs).map(([date, entries]) => <div className="dayGroup" key={date}>
+          <div className="dayHead">
+            <b>{new Date(date).toLocaleDateString('de-DE')}</b>
+            <span>{entries.reduce((sum, w) => sum + Number(w.menge || 0), 0)} Stück · {entries.length} Einträge</span>
+          </div>
+          {entries.map(w => <div className="item" key={w.id || `${w.name}-${w.created_at}-${Math.random()}`}>
+            <div className="artikelnummer small">{w.artikelnummer || 'MHD'}</div>
+            <div className="grow"><b>{w.name || w.artikel}</b><p>{w.grund} · {w.menge} Stk. · {w.mitarbeiter}</p></div>
+          </div>)}
         </div>)}
         {!writeoffs.length && <Empty text="Noch keine Abschriften." />}
       </section>}
@@ -449,11 +467,25 @@ function Article({ item, onWriteOff }) {
 }
 function Backwaren({ onAdd }) {
   const [qty, setQty] = useState({})
-  return <section className="list"><h2>Backwaren Tagesende</h2>{BACKWAREN.map(b => <div className="item bakery" key={b.artikelnummer}>
+  const [saved, setSaved] = useState('')
+  const [busy, setBusy] = useState('')
+  async function saveBakery(b) {
+    const amount = qty[b.artikelnummer] || ''
+    if (!amount || Number(amount) < 1) return
+    setBusy(b.artikelnummer)
+    const ok = await onAdd(b, amount)
+    setBusy('')
+    if (ok) {
+      setQty(prev => ({...prev, [b.artikelnummer]: ''}))
+      setSaved(b.artikelnummer)
+      setTimeout(() => setSaved(''), 1800)
+    }
+  }
+  return <section className="list"><h2>Backwaren Tagesende</h2>{BACKWAREN.map(b => <div className={`item bakery ${saved===b.artikelnummer ? 'savedRow' : ''}`} key={b.artikelnummer}>
     <div className="artikelnummer">{b.artikelnummer}</div>
-    <div className="grow"><b>{b.name}</b><p>Artikelnummer {b.artikelnummer}</p></div>
+    <div className="grow"><b>{b.name}</b><p>{saved===b.artikelnummer ? '✓ Gespeichert' : `Artikelnummer ${b.artikelnummer}`}</p></div>
     <input className="qty" inputMode="numeric" value={qty[b.artikelnummer] || ''} onChange={e=>setQty({...qty, [b.artikelnummer]: e.target.value.replace(/\D/g,'')})} placeholder="0" />
-    <button onClick={()=>onAdd(b, qty[b.artikelnummer])}>Abschrift</button>
+    <button disabled={busy===b.artikelnummer} className={saved===b.artikelnummer ? 'doneBtn' : ''} onClick={()=>saveBakery(b)}>{saved===b.artikelnummer ? '✓ Fertig' : busy===b.artikelnummer ? 'Speichert...' : 'Abschrift'}</button>
   </div>)}</section>
 }
 function Empty({text}) { return <div className="empty">{text}</div> }
