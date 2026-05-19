@@ -1,146 +1,344 @@
+
 import React, { useEffect, useMemo, useState } from 'react'
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
-const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
+const supabase = SUPABASE_URL && SUPABASE_ANON_KEY ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null
 
-const MITARBEITER = [
-  { nummer: '1', name: 'Denis', rolle: 'Mitarbeiter', passwort: '0000' },
-  { nummer: '2', name: 'Michael', rolle: 'Chef', passwort: '0000' },
-  { nummer: '3', name: 'Chris', rolle: 'Stationsleitung', passwort: '0000' },
-  { nummer: '4', name: 'Tizi', rolle: 'Mitarbeiter', passwort: '0000' },
-  { nummer: '5', name: 'Philip', rolle: 'Mitarbeiter', passwort: '0000' },
-  { nummer: '6', name: 'Anne', rolle: 'Mitarbeiter', passwort: '0000' },
-  { nummer: '7', name: 'Lars', rolle: 'Mitarbeiter', passwort: '0000' },
-  { nummer: '8', name: 'Mira', rolle: 'Mitarbeiter', passwort: '0000' },
-  { nummer: '9', name: 'Christian', rolle: 'Mitarbeiter', passwort: '0000' }
+const START_EMPLOYEES = [
+  { nummer: 1, name: 'Lars', rolle: 'chef', passwort: '0000', muss_passwort_aendern: true },
+  { nummer: 2, name: 'Philipp', rolle: 'stationsleitung', passwort: '0000', muss_passwort_aendern: true },
+  { nummer: 3, name: 'Denis', rolle: 'mitarbeiter', passwort: '0000', muss_passwort_aendern: true },
+  { nummer: 9, name: 'Chris', rolle: 'mitarbeiter', passwort: '0000', muss_passwort_aendern: true },
+  { nummer: 17, name: 'Tizi', rolle: 'mitarbeiter', passwort: '0000', muss_passwort_aendern: true },
+  { nummer: 19, name: 'Michael', rolle: 'chef_temp', passwort: '0000', muss_passwort_aendern: true },
+  { nummer: 21, name: 'Mira', rolle: 'mitarbeiter', passwort: '0000', muss_passwort_aendern: true },
+  { nummer: 22, name: 'Anne', rolle: 'mitarbeiter', passwort: '0000', muss_passwort_aendern: true },
 ]
 
 const BACKWAREN = [
-  { name: 'Brötchen', artikelnummer: '90371' },
-  { name: 'Baguette', artikelnummer: '128501' },
-  { name: 'Brezel', artikelnummer: '90506' },
-  { name: 'Käse Brezel', artikelnummer: '123284' },
-  { name: 'Schinken Käse Brezel', artikelnummer: '10006' },
-  { name: 'Rustico Lauge Schinken Käse', artikelnummer: '123991' },
-  { name: 'Rustico Tomate Mozzarella', artikelnummer: '123347' },
-  { name: 'Rustico mit Spinata', artikelnummer: '123268' },
-  { name: 'Rustico Farmerschinken', artikelnummer: '123267' },
-  { name: 'Rustico Lauge mit Leerdammer', artikelnummer: '123269' },
-  { name: 'Rustico Schnitzel', artikelnummer: '123322' },
-  { name: 'Chicken Burger', artikelnummer: '123981' },
-  { name: 'Brinker/Snack Rustico Ei', artikelnummer: '123341' },
-  { name: 'Brinker/Snack Rustico Schinken', artikelnummer: '123340' },
-  { name: 'Brinker/Snack Rustico Käse', artikelnummer: '123338' },
-  { name: 'Brinker/Snack Rustico Salami', artikelnummer: '123345' },
-  { name: 'Butter Croissant', artikelnummer: '103966' },
-  { name: 'Nuss Nugat Croissant', artikelnummer: '103965' },
-  { name: 'Schokobrötchen', artikelnummer: '103967' },
-  { name: 'Kakao Hörnchen', artikelnummer: '122058' },
-  { name: 'Berry Donut', artikelnummer: '82965' },
-  { name: 'Vanille Donut', artikelnummer: '200232' },
-  { name: 'Pink Donut', artikelnummer: '90709' },
-  { name: 'Pizza Donut Salami', artikelnummer: '125260' },
-  { name: 'Marzipan Croissant', artikelnummer: '103964' },
-  { name: 'Mexicostange', artikelnummer: '103887' },
-  { name: 'Pizza Salami', artikelnummer: '125241' },
-  { name: 'Pizza Classico', artikelnummer: '82862' },
-  { name: 'Fußballbrötchen Gouda', artikelnummer: '103622', neu: true },
-  { name: 'Muschelbrötchen Käse Salami', artikelnummer: '103950', neu: true }
+  { artikelnummer: '101', name: 'Buttercroissant' },
+  { artikelnummer: '102', name: 'Schokocroissant' },
+  { artikelnummer: '103', name: 'Käsebrezel' },
+  { artikelnummer: '104', name: 'Laugenbrezel' },
+  { artikelnummer: '105', name: 'Pizzaschnecke Salami' },
+  { artikelnummer: '106', name: 'Pizzaschnecke Käse' },
+  { artikelnummer: '107', name: 'Börek Käse' },
+  { artikelnummer: '108', name: 'Börek Spinat' },
+  { artikelnummer: '109', name: 'Donut Schoko' },
+  { artikelnummer: '110', name: 'Donut Pink' },
+  { artikelnummer: '111', name: 'Muffin Schoko' },
+  { artikelnummer: '112', name: 'Muffin Blueberry' },
+  { artikelnummer: '113', name: 'Belegtes Brötchen Käse' },
+  { artikelnummer: '114', name: 'Belegtes Brötchen Salami' },
+  { artikelnummer: '115', name: 'Belegtes Brötchen Schinken' },
+  { artikelnummer: '116', name: 'Hotdog Brötchen' },
 ]
 
-const todayISO = () => new Date().toISOString().slice(0, 10)
-const daysUntil = (date) => {
-  if (!date) return 999
-  const start = new Date(); start.setHours(0,0,0,0)
-  const end = new Date(date); end.setHours(0,0,0,0)
-  return Math.round((end - start) / 86400000)
+function todayISO() { return new Date().toISOString().slice(0, 10) }
+function daysUntil(dateString) {
+  if (!dateString) return 999
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const target = new Date(dateString + 'T00:00:00')
+  return Math.ceil((target - today) / 86400000)
 }
-const statusFor = (mhd) => {
-  const d = daysUntil(mhd)
-  if (d < 0) return { text: 'Abgelaufen', cls: 'danger' }
-  if (d <= 2) return { text: 'Bald fällig', cls: 'warn' }
-  if (d <= 7) return { text: 'Diese Woche', cls: 'soon' }
-  return { text: 'Okay', cls: 'ok' }
+function canEditImages(user) { return ['chef', 'chef_temp', 'stationsleitung'].includes(user?.rolle) }
+function roleLabel(role) {
+  if (role === 'chef') return 'Chef'
+  if (role === 'chef_temp') return 'Chef-Rechte Einrichtung'
+  if (role === 'stationsleitung') return 'Stationsleitung'
+  return 'Mitarbeiter'
 }
-
-function useLocalStorage(key, initialValue) {
-  const [value, setValue] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(key)) ?? initialValue } catch { return initialValue }
+function mapCategory(text='') {
+  const t = text.toLowerCase()
+  if (t.includes('drink') || t.includes('beverage') || t.includes('wasser') || t.includes('cola')) return 'Getränke'
+  if (t.includes('milk') || t.includes('dairy') || t.includes('joghurt')) return 'Milchprodukte'
+  if (t.includes('snack') || t.includes('chips') || t.includes('nuts')) return 'Snacks'
+  if (t.includes('chocolate') || t.includes('candy') || t.includes('sweet')) return 'Süßwaren'
+  if (t.includes('sandwich') || t.includes('bakery') || t.includes('bread')) return 'Backwaren'
+  return 'Sonstiges'
+}
+async function fetchProductByBarcode(barcode) {
+  const clean = String(barcode || '').trim()
+  if (!clean) return null
+  try {
+    const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${clean}.json?fields=product_name,brands,image_front_url,categories,categories_tags`)
+    const data = await res.json()
+    if (data.status !== 1 || !data.product) return null
+    const p = data.product
+    return {
+      name: [p.brands, p.product_name].filter(Boolean).join(' · ') || p.product_name || clean,
+      bild_url: p.image_front_url || '',
+      kategorie: mapCategory(`${p.categories || ''} ${(p.categories_tags || []).join(' ')}`)
+    }
+  } catch { return null }
+}
+async function scanBarcode() {
+  if (!('BarcodeDetector' in window)) {
+    alert('Barcode-Scan wird auf diesem Gerät nicht unterstützt. Bitte Barcode manuell eingeben.')
+    return null
+  }
+  const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+  const video = document.createElement('video')
+  video.srcObject = stream
+  video.setAttribute('playsinline', 'true')
+  await video.play()
+  const detector = new window.BarcodeDetector({ formats: ['ean_13','ean_8','upc_a','upc_e','code_128'] })
+  return new Promise(resolve => {
+    let done = false
+    const box = document.createElement('div')
+    box.className = 'scannerOverlay'
+    box.innerHTML = '<div class="scanTitle">Barcode vor die Kamera halten</div><button class="scanCancel">Abbrechen</button>'
+    const cancel = box.querySelector('.scanCancel')
+    video.className = 'scanVideo'
+    box.insertBefore(video, cancel)
+    document.body.appendChild(box)
+    const stop = val => {
+      if (done) return
+      done = true
+      stream.getTracks().forEach(t => t.stop())
+      box.remove()
+      resolve(val)
+    }
+    cancel.onclick = () => stop(null)
+    async function loop() {
+      if (done) return
+      try {
+        const codes = await detector.detect(video)
+        if (codes.length) return stop(codes[0].rawValue)
+      } catch {}
+      requestAnimationFrame(loop)
+    }
+    loop()
   })
-  useEffect(() => { localStorage.setItem(key, JSON.stringify(value)) }, [key, value])
-  return [value, setValue]
+}
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader()
+    r.onload = () => resolve(r.result)
+    r.onerror = reject
+    r.readAsDataURL(file)
+  })
+}
+async function notify(items) {
+  if (!('Notification' in window)) return
+  const permission = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission()
+  if (permission !== 'granted') return
+  const urgent = items.filter(x => daysUntil(x.mhd) <= 2)
+  if (!urgent.length) return
+  const body = urgent.slice(0, 5).map(x => `${x.name} · MHD ${new Date(x.mhd).toLocaleDateString('de-DE')} · ${x.menge} Stk.`).join('\\n')
+  const reg = await navigator.serviceWorker?.ready.catch(() => null)
+  if (reg?.showNotification) reg.showNotification('MHD Warnung', { body, tag: 'mhd-warning', renotify: true })
+  else new Notification('MHD Warnung', { body })
 }
 
 export default function App() {
-  const [session, setSession] = useLocalStorage('mhd_session_v2', null)
-  const [users, setUsers] = useLocalStorage('mhd_users_v2', MITARBEITER)
-  const [entries, setEntries] = useLocalStorage('mhd_entries_v2', [])
-  const [activeTab, setActiveTab] = useState('mhd')
-  const [login, setLogin] = useState({ nummer: '', passwort: '', remember: true })
-  const [newPw, setNewPw] = useState('')
-  const [form, setForm] = useState({ barcode: '', name: '', artikelnummer: '', kategorie: 'Getränke', mhd: '', menge: 1, bild: '', mitarbeiter: '' })
-  const [search, setSearch] = useState('')
-  const currentUser = users.find(u => u.nummer === session?.nummer)
+  const [ready, setReady] = useState(false)
+  const [employees, setEmployees] = useState([])
+  const [user, setUser] = useState(null)
+  const [remember, setRemember] = useState(true)
+  const [login, setLogin] = useState({ nummer: '', passwort: '' })
+  const [newPassword, setNewPassword] = useState('')
+  const [items, setItems] = useState([])
+  const [writeoffs, setWriteoffs] = useState([])
+  const [tab, setTab] = useState('dashboard')
+  const [error, setError] = useState('')
+  const [form, setForm] = useState({ barcode:'', name:'', kategorie:'Sonstiges', mhd:todayISO(), menge:1, bild_url:'' })
+  const db = Boolean(supabase)
 
   useEffect(() => {
-    if (currentUser && !form.mitarbeiter) setForm(f => ({ ...f, mitarbeiter: currentUser.name }))
-  }, [currentUser])
+    navigator.serviceWorker?.register('/sw.js').catch(() => {})
+    const saved = localStorage.getItem('mhd_user')
+    if (saved) setUser(JSON.parse(saved))
+    init()
+  }, [])
 
-  const loginSubmit = (e) => {
+  async function init() {
+    if (!db) { setEmployees(START_EMPLOYEES); setReady(true); return }
+    await supabase.from('mitarbeiter').upsert(START_EMPLOYEES, { onConflict: 'nummer' })
+    const { data: emps } = await supabase.from('mitarbeiter').select('*').order('nummer')
+    const { data: list } = await supabase.from('mhd_artikel').select('*').order('mhd')
+    const { data: abs } = await supabase.from('abschriften').select('*').order('created_at', { ascending:false })
+    setEmployees(emps || START_EMPLOYEES)
+    setItems(list || [])
+    setWriteoffs(abs || [])
+    setReady(true)
+  }
+
+  async function reloadLists() {
+    if (!db) return
+    const { data: list } = await supabase.from('mhd_artikel').select('*').order('mhd')
+    const { data: abs } = await supabase.from('abschriften').select('*').order('created_at', { ascending:false })
+    setItems(list || [])
+    setWriteoffs(abs || [])
+  }
+
+  async function doLogin(e) {
     e.preventDefault()
-    const user = users.find(u => u.nummer === login.nummer && u.passwort === login.passwort)
-    if (!user) return alert('Login fehlgeschlagen. Nummer oder Passwort prüfen.')
-    setSession({ nummer: user.nummer, name: user.name, rolle: user.rolle, mussPasswortAendern: user.passwort === '0000' })
-  }
-  const saveNewPassword = () => {
-    if (!/^\d{4}$/.test(newPw)) return alert('Bitte genau 4 Zahlen eingeben.')
-    setUsers(users.map(u => u.nummer === session.nummer ? { ...u, passwort: newPw } : u))
-    setSession({ ...session, mussPasswortAendern: false })
-    setNewPw('')
-  }
-  const logout = () => { localStorage.removeItem('mhd_session_v2'); setSession(null) }
-
-  const lookupBarcode = async () => {
-    if (!form.barcode) return
-    try {
-      const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${form.barcode}.json`)
-      const data = await res.json()
-      if (data.status === 1 && data.product) {
-        setForm(f => ({ ...f, name: data.product.product_name || f.name, bild: data.product.image_front_url || data.product.image_url || f.bild }))
-      } else alert('Produkt online nicht gefunden. Manuell eintragen oder eigenes Bild später ergänzen.')
-    } catch { alert('Online-Suche gerade nicht erreichbar.') }
+    setError('')
+    const nr = Number(login.nummer)
+    const employee = employees.find(x => Number(x.nummer) === nr && String(x.passwort) === String(login.passwort))
+    if (!employee) return setError('Nummer oder Passwort falsch.')
+    setUser(employee)
+    if (remember) localStorage.setItem('mhd_user', JSON.stringify(employee))
   }
 
-  const addEntry = async (e) => {
-    e.preventDefault()
-    if (!form.name || !form.mhd) return alert('Produktname und MHD eintragen.')
-    const item = { id: crypto.randomUUID(), ...form, menge: Number(form.menge || 1), created_at: new Date().toISOString() }
-    setEntries([item, ...entries])
-    if (supabase) { try { await supabase.from('mhd_artikel').insert(item) } catch {} }
-    setForm({ barcode: '', name: '', artikelnummer: '', kategorie: 'Getränke', mhd: '', menge: 1, bild: '', mitarbeiter: currentUser?.name || '' })
+  async function changePassword() {
+    if (!/^[0-9]{4}$/.test(newPassword)) return setError('Bitte genau 4 Zahlen eingeben.')
+    const updated = { ...user, passwort: newPassword, muss_passwort_aendern: false }
+    if (db) await supabase.from('mitarbeiter').update({ passwort: newPassword, muss_passwort_aendern: false }).eq('nummer', user.nummer)
+    setEmployees(prev => prev.map(e => e.nummer === user.nummer ? updated : e))
+    setUser(updated)
+    localStorage.setItem('mhd_user', JSON.stringify(updated))
+    setNewPassword('')
   }
 
-  const filtered = entries.filter(e => `${e.name} ${e.barcode} ${e.artikelnummer} ${e.mitarbeiter}`.toLowerCase().includes(search.toLowerCase()))
+  function logout() { localStorage.removeItem('mhd_user'); setUser(null) }
+
+  async function barcodeLookup(code=form.barcode) {
+    setError('')
+    const p = await fetchProductByBarcode(code)
+    if (!p) return setError('Kein Produkt online gefunden. Bitte manuell eintragen oder Bild hochladen.')
+    setForm(f => ({...f, barcode: code, name: p.name || f.name, kategorie: p.kategorie || f.kategorie, bild_url: p.bild_url || f.bild_url}))
+  }
+  async function doScan() {
+    const code = await scanBarcode()
+    if (code) { setForm(f => ({...f, barcode: code})); await barcodeLookup(code) }
+  }
+  async function uploadImage(e) {
+    if (!canEditImages(user)) return setError('Nur Chef oder Stationsleitung dürfen Bilder ändern.')
+    const file = e.target.files?.[0]
+    if (!file) return
+    const dataUrl = await fileToDataUrl(file)
+    setForm(f => ({...f, bild_url: dataUrl}))
+  }
+  async function addItem() {
+    if (!form.name || !form.mhd) return setError('Artikelname und MHD fehlen.')
+    const payload = {
+      barcode: form.barcode || '', name: form.name, kategorie: form.kategorie, mhd: form.mhd,
+      menge: Number(form.menge || 1), bild_url: form.bild_url || '', mitarbeiter: user.name, erstellt_von: user.nummer
+    }
+    if (db) {
+      const { error } = await supabase.from('mhd_artikel').insert(payload)
+      if (error) return setError(error.message)
+      await reloadLists()
+    } else setItems(prev => [{id: Date.now(), ...payload}, ...prev])
+    setForm({ barcode:'', name:'', kategorie:'Sonstiges', mhd:todayISO(), menge:1, bild_url:'' })
+  }
+  async function writeOff(item, grund='Abgelaufen') {
+    const payload = { ...item, artikel_id: item.id, grund, datum: todayISO(), mitarbeiter: user.name }
+    delete payload.id
+    if (db) {
+      await supabase.from('abschriften').insert(payload)
+      await supabase.from('mhd_artikel').delete().eq('id', item.id)
+      await reloadLists()
+    } else {
+      setWriteoffs(prev => [{ id: Date.now(), created_at: new Date().toISOString(), ...payload }, ...prev])
+      setItems(prev => prev.filter(x => x.id !== item.id))
+    }
+  }
+  async function addBakeryWriteoff(bw, menge) {
+    const payload = {
+      name: bw.name, artikelnummer: bw.artikelnummer, barcode: '', kategorie: 'Backwaren', mhd: todayISO(),
+      menge: Number(menge || 0), bild_url: '', grund: 'Backwaren Tagesende', datum: todayISO(), mitarbeiter: user.name
+    }
+    if (!payload.menge) return
+    if (db) { await supabase.from('abschriften').insert(payload); await reloadLists() }
+    else setWriteoffs(prev => [{ id: Date.now(), created_at: new Date().toISOString(), ...payload }, ...prev])
+  }
+
   const stats = useMemo(() => ({
-    total: entries.length,
-    expired: entries.filter(e => daysUntil(e.mhd) < 0).length,
-    soon: entries.filter(e => daysUntil(e.mhd) >= 0 && daysUntil(e.mhd) <= 2).length,
-    week: entries.filter(e => daysUntil(e.mhd) >= 0 && daysUntil(e.mhd) <= 7).length
-  }), [entries])
+    total: items.length,
+    expired: items.filter(i => daysUntil(i.mhd) < 0).length,
+    urgent: items.filter(i => daysUntil(i.mhd) >= 0 && daysUntil(i.mhd) <= 2).length,
+    week: items.filter(i => daysUntil(i.mhd) > 2 && daysUntil(i.mhd) <= 7).length
+  }), [items])
 
-  if (!session) return <div className="loginPage"><form className="loginCard" onSubmit={loginSubmit}><div className="brandStripe"/><h1>MHD Kontrolle</h1><p>Tankstelle Ludweiler</p><input placeholder="Mitarbeiter-Nummer" value={login.nummer} onChange={e=>setLogin({...login, nummer:e.target.value})}/><input placeholder="Passwort" type="password" value={login.passwort} onChange={e=>setLogin({...login, passwort:e.target.value})}/><label className="check"><input type="checkbox" checked={login.remember} onChange={e=>setLogin({...login, remember:e.target.checked})}/> dauerhaft eingeloggt bleiben</label><button>Einloggen</button><small>Erstpasswort: 0000</small></form></div>
-  if (session.mussPasswortAendern) return <div className="loginPage"><div className="loginCard"><div className="brandStripe"/><h1>Passwort ändern</h1><p>Beim ersten Login bitte neues 4-stelliges Passwort setzen.</p><input placeholder="Neues Passwort, z. B. 1234" type="password" value={newPw} onChange={e=>setNewPw(e.target.value)}/><button onClick={saveNewPassword}>Speichern</button></div></div>
+  if (!ready) return <div className="center">Lade App...</div>
+  if (!db) return <div className="fatal">Supabase ENV Variablen fehlen.</div>
 
-  return <div className="app"><header><div><small>Shell-Farben · ohne Logo</small><h1>MHD Kontrolle</h1><p>{currentUser?.name} · {currentUser?.rolle}</p></div><button className="logout" onClick={logout}>Abmelden</button></header>
-    <section className="stats"><div><b>{stats.total}</b><span>Gesamt</span></div><div><b>{stats.expired}</b><span>Abgelaufen</span></div><div><b>{stats.soon}</b><span>Bald</span></div><div><b>{stats.week}</b><span>Woche</span></div></section>
-    <nav><button onClick={()=>setActiveTab('mhd')} className={activeTab==='mhd'?'on':''}>MHD</button><button onClick={()=>setActiveTab('backwaren')} className={activeTab==='backwaren'?'on':''}>Backwaren</button><button onClick={()=>setActiveTab('mitarbeiter')} className={activeTab==='mitarbeiter'?'on':''}>Mitarbeiter</button></nav>
+  if (!user) return (
+    <main className="loginPage">
+      <section className="loginCard">
+        <div className="brandBadge">MHD</div>
+        <h1>Tankstellen MHD Kontrolle</h1>
+        <p>Shell-Farben ohne Logo · Mitarbeiter-Login</p>
+        <form onSubmit={doLogin}>
+          <label>Mitarbeiternummer</label>
+          <input inputMode="numeric" value={login.nummer} onChange={e=>setLogin({...login, nummer:e.target.value})} />
+          <label>Passwort</label>
+          <input inputMode="numeric" type="password" value={login.passwort} onChange={e=>setLogin({...login, passwort:e.target.value})} />
+          <label className="check"><input type="checkbox" checked={remember} onChange={e=>setRemember(e.target.checked)} /> Eingeloggt bleiben</label>
+          {error && <div className="error">{error}</div>}
+          <button>Einloggen</button>
+        </form>
+        <small>Bitte beim ersten Login ein neues Passwort setzen.</small>
+      </section>
+    </main>
+  )
 
-    {activeTab==='mhd' && <><form className="panel form" onSubmit={addEntry}><div className="row"><input placeholder="Barcode" value={form.barcode} onChange={e=>setForm({...form, barcode:e.target.value})}/><button type="button" className="secondary" onClick={lookupBarcode}>Bild/Name suchen</button></div><input placeholder="Produktname" value={form.name} onChange={e=>setForm({...form, name:e.target.value})}/><input placeholder="Artikelnummer optional" value={form.artikelnummer} onChange={e=>setForm({...form, artikelnummer:e.target.value})}/><div className="row"><input type="date" value={form.mhd} onChange={e=>setForm({...form, mhd:e.target.value})}/><input type="number" min="1" value={form.menge} onChange={e=>setForm({...form, menge:e.target.value})}/></div><div className="row"><select value={form.kategorie} onChange={e=>setForm({...form, kategorie:e.target.value})}><option>Getränke</option><option>Kühlung</option><option>Milchprodukte</option><option>Snacks</option><option>Süßwaren</option><option>Backshop</option><option>Sonstiges</option></select><select value={form.mitarbeiter} onChange={e=>setForm({...form, mitarbeiter:e.target.value})}>{users.map(u=><option key={u.nummer}>{u.name}</option>)}</select></div><input placeholder="Bild-URL optional, Bilder später möglich" value={form.bild} onChange={e=>setForm({...form, bild:e.target.value})}/><button>Artikel speichern</button></form><input className="search" placeholder="Suchen nach Artikel, Barcode oder Mitarbeiter" value={search} onChange={e=>setSearch(e.target.value)}/><div className="cards">{filtered.map(e=>{ const s=statusFor(e.mhd); return <article className="card" key={e.id}>{e.bild?<img src={e.bild}/>:<div className="placeholder">Bild später</div>}<div><h3>{e.name}</h3><p>{e.kategorie} · Menge {e.menge}</p><p>MHD: {e.mhd} · {e.mitarbeiter}</p>{e.artikelnummer && <p>Art.-Nr. {e.artikelnummer}</p>}<span className={'badge '+s.cls}>{s.text}</span></div></article>})}</div></>}
+  if (user.muss_passwort_aendern || user.passwort === '0000') return (
+    <main className="loginPage">
+      <section className="loginCard">
+        <h1>Neues Passwort setzen</h1>
+        <p>{user.name}, bitte ein eigenes 4-stelliges Passwort vergeben.</p>
+        <input inputMode="numeric" maxLength="4" value={newPassword} onChange={e=>setNewPassword(e.target.value.replace(/\D/g,''))} />
+        {error && <div className="error">{error}</div>}
+        <button onClick={changePassword}>Speichern</button>
+      </section>
+    </main>
+  )
 
-    {activeTab==='backwaren' && <section className="panel"><h2>Backwaren Tagesende</h2><p className="muted">Exakt aus deiner Liste. Rechts Verderb/Menge eintragen.</p><div className="bakeryList">{BACKWAREN.map(b=><div className={b.neu?'bakery new':'bakery'} key={b.artikelnummer}><div><b>{b.name}</b><span>{b.artikelnummer}</span></div><input type="number" min="0" placeholder="Verderb"/></div>)}</div></section>}
-
-    {activeTab==='mitarbeiter' && <section className="panel"><h2>Mitarbeiter & Rollen</h2>{users.map(u=><div className="employee" key={u.nummer}><div><b>{u.name}</b><span>Nr. {u.nummer}</span></div><select value={u.rolle} onChange={e=>setUsers(users.map(x=>x.nummer===u.nummer?{...x, rolle:e.target.value}:x))}><option>Chef</option><option>Stationsleitung</option><option>Mitarbeiter</option></select></div>)}</section>}
-  </div>
+  return (
+    <main className="app">
+      <header className="topbar">
+        <div><h1>MHD Kontrolle</h1><p>{user.name} · {roleLabel(user.rolle)}</p></div>
+        <button className="ghost" onClick={logout}>Abmelden</button>
+      </header>
+      <section className="stats">
+        <Card label="Artikel" value={stats.total} />
+        <Card label="Abgelaufen" value={stats.expired} danger />
+        <Card label="Bald" value={stats.urgent} warn />
+        <Card label="Woche" value={stats.week} />
+      </section>
+      <nav className="tabs">
+        {['dashboard','erfassen','backwaren','abschriften','bilder'].map(t => <button key={t} onClick={()=>setTab(t)} className={tab===t?'active':''}>{t}</button>)}
+      </nav>
+      {error && <div className="error">{error}</div>}
+      {tab === 'dashboard' && <section className="list">
+        <button className="notify" onClick={()=>notify(items)}>Benachrichtigungen testen</button>
+        {items.map(item => <Article key={item.id} item={item} onWriteOff={writeOff} />)}
+        {!items.length && <Empty text="Noch keine MHD-Artikel vorhanden." />}
+      </section>}
+      {tab === 'erfassen' && <section className="formCard">
+        <h2>Schnell erfassen</h2>
+        <div className="row"><input placeholder="Barcode" value={form.barcode} onChange={e=>setForm({...form, barcode:e.target.value})} /><button onClick={doScan}>Scan</button><button onClick={()=>barcodeLookup()}>Auto-Suche</button></div>
+        <input placeholder="Artikelname" value={form.name} onChange={e=>setForm({...form, name:e.target.value})} />
+        <select value={form.kategorie} onChange={e=>setForm({...form, kategorie:e.target.value})}>{['Getränke','Kühlung','Milchprodukte','Snacks','Süßwaren','Backwaren','Sonstiges'].map(x => <option key={x}>{x}</option>)}</select>
+        <div className="row"><input type="date" value={form.mhd} onChange={e=>setForm({...form, mhd:e.target.value})} /><input type="number" min="1" value={form.menge} onChange={e=>setForm({...form, menge:e.target.value})} /></div>
+        {canEditImages(user) && <label className="upload">Bild/Screenshot hochladen<input type="file" accept="image/*" onChange={uploadImage} /></label>}
+        {form.bild_url && <img className="preview" src={form.bild_url} />}
+        <button className="primary" onClick={addItem}>Artikel speichern</button>
+      </section>}
+      {tab === 'backwaren' && <Backwaren onAdd={addBakeryWriteoff} />}
+      {tab === 'abschriften' && <section className="list">
+        {writeoffs.map(w => <div className="item" key={w.id || `${w.name}-${w.created_at}`}><div className="thumb">{w.bild_url ? <img src={w.bild_url} /> : '📦'}</div><div><b>{w.artikelnummer ? `${w.artikelnummer} · ` : ''}{w.name}</b><p>{w.grund} · {w.menge} Stk. · {w.mitarbeiter}</p></div></div>)}
+        {!writeoffs.length && <Empty text="Noch keine Abschriften." />}
+      </section>}
+      {tab === 'bilder' && <section className="formCard"><h2>Bilder verwalten</h2><p>{canEditImages(user) ? 'Du darfst Bilder ändern: Auto-Suche oder Upload/Screenshot.' : 'Nur Chef oder Stationsleitung dürfen Bilder ändern.'}</p></section>}
+    </main>
+  )
 }
+function Card({label, value, danger, warn}) { return <div className={`stat ${danger?'danger':''} ${warn?'warn':''}`}><span>{label}</span><b>{value}</b></div> }
+function Article({ item, onWriteOff }) {
+  const days = daysUntil(item.mhd)
+  const status = days < 0 ? 'abgelaufen' : days <= 2 ? 'bald' : days <= 7 ? 'woche' : 'ok'
+  return <div className={`item ${status}`}><div className="thumb">{item.bild_url ? <img src={item.bild_url} /> : '📦'}</div><div className="grow"><b>{item.name}</b><p>{item.kategorie} · {item.barcode || 'ohne Barcode'}</p><p>MHD {new Date(item.mhd).toLocaleDateString('de-DE')} · {item.menge} Stk. · {days < 0 ? `${Math.abs(days)} Tage drüber` : `${days} Tage`}</p></div><button onClick={()=>onWriteOff(item, days < 0 ? 'Abgelaufen' : 'Sonstiges')}>Abschrift</button></div>
+}
+function Backwaren({ onAdd }) {
+  const [qty, setQty] = useState({})
+  return <section className="list"><h2>Backwaren Tagesende</h2>{BACKWAREN.map(b => <div className="item" key={b.artikelnummer}><div className="artikelnummer">{b.artikelnummer}</div><div className="grow"><b>{b.name}</b><p>Artikelnummer {b.artikelnummer}</p></div><input className="qty" inputMode="numeric" value={qty[b.artikelnummer] || ''} onChange={e=>setQty({...qty, [b.artikelnummer]: e.target.value.replace(/\D/g,'')})} placeholder="0" /><button onClick={()=>onAdd(b, qty[b.artikelnummer])}>Abschrift</button></div>)}</section>
+}
+function Empty({text}) { return <div className="empty">{text}</div> }
