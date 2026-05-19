@@ -108,7 +108,7 @@ export default function App(){
 
   async function addItem(){ setError(''); if(!form.name||!form.mhd) return setError('Name und MHD fehlen.'); const payload={...form,artikel:form.name,name:form.name,menge:Number(form.menge||1),mitarbeiter:user.name,erstellt_von:Number(user.nummer)}; if(db){const {error}=await supabase.from('mhd_artikel').insert(payload); if(error)return setError(error.message); await reload()} else localItems([{id:Date.now(),created_at:nowISO(),...payload},...items]); setForm({barcode:'',artikelnummer:'',name:'',kategorie:'Sonstiges',mhd:todayISO(),menge:1,bild_url:''}); setSuccess('Artikel gespeichert.') }
   async function lookupBarcode(){ const p=await openFoodFacts(form.barcode); if(!p)return setError('Kein Produkt gefunden.'); setForm(f=>({...f,...p})); setSuccess('Produkt gefunden.') }
-  async function uploadFormImg(e){ const f=e.target.files?.[0]; if(!f)return; setForm(p=>({...p,bild_url:await fileToDataUrl(f)})) }
+  async function uploadFormImg(e){ const f=e.target.files?.[0]; if(!f)return; const imageUrl=await fileToDataUrl(f); setForm(p=>({...p,bild_url:imageUrl})) }
 
   async function writeOff(payload){
     const final={artikel_id:payload.artikel_id||null,artikelnummer:payload.artikelnummer||'',artikel:payload.name||payload.artikel||'Artikel',name:payload.name||payload.artikel||'Artikel',kategorie:payload.kategorie||'',mhd:payload.mhd||todayISO(),menge:Number(payload.menge||1),bild_url:payload.bild_url||'',grund:payload.grund||'Abschrift',datum:todayISO(),mitarbeiter:user.name,mitarbeiter_nummer:Number(user.nummer),status:'abgeschlossen'}
