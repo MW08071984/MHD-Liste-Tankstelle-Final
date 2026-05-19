@@ -18,22 +18,36 @@ const START_EMPLOYEES = [
 ]
 
 const BACKWAREN = [
-  { artikelnummer: '101', name: 'Buttercroissant' },
-  { artikelnummer: '102', name: 'Schokocroissant' },
-  { artikelnummer: '103', name: 'Käsebrezel' },
-  { artikelnummer: '104', name: 'Laugenbrezel' },
-  { artikelnummer: '105', name: 'Pizzaschnecke Salami' },
-  { artikelnummer: '106', name: 'Pizzaschnecke Käse' },
-  { artikelnummer: '107', name: 'Börek Käse' },
-  { artikelnummer: '108', name: 'Börek Spinat' },
-  { artikelnummer: '109', name: 'Donut Schoko' },
-  { artikelnummer: '110', name: 'Donut Pink' },
-  { artikelnummer: '111', name: 'Muffin Schoko' },
-  { artikelnummer: '112', name: 'Muffin Blueberry' },
-  { artikelnummer: '113', name: 'Belegtes Brötchen Käse' },
-  { artikelnummer: '114', name: 'Belegtes Brötchen Salami' },
-  { artikelnummer: '115', name: 'Belegtes Brötchen Schinken' },
-  { artikelnummer: '116', name: 'Hotdog Brötchen' },
+  { artikelnummer: '90371', name: 'Brötchen' },
+  { artikelnummer: '128501', name: 'Baguette' },
+  { artikelnummer: '90506', name: 'Brezel' },
+  { artikelnummer: '123284', name: 'Käse Brezel' },
+  { artikelnummer: '10006', name: 'Schinken Käse Brezel' },
+  { artikelnummer: '123991', name: 'Rustico Lauge Schinken Käse' },
+  { artikelnummer: '123347', name: 'Rustico Tomate Mozzarella' },
+  { artikelnummer: '123268', name: 'Rustico mit Spianata' },
+  { artikelnummer: '123267', name: 'Rustico Farmerschinken' },
+  { artikelnummer: '123269', name: 'Rustico Lauge mit Leerdammer' },
+  { artikelnummer: '123322', name: 'Rustico Schnitzel' },
+  { artikelnummer: '123981', name: 'Chicken Burger' },
+  { artikelnummer: '123341', name: 'Brinker/Snack Rustico Ei' },
+  { artikelnummer: '123340', name: 'Brinker/Snack Rustico Schinken' },
+  { artikelnummer: '123338', name: 'Brinker/Snack Rustico Käse' },
+  { artikelnummer: '123345', name: 'Brinker/Snack Rustico Salami' },
+  { artikelnummer: '103966', name: 'Butter Croissant' },
+  { artikelnummer: '103965', name: 'Nuss Nugat Croissant' },
+  { artikelnummer: '103967', name: 'Schokobrötchen' },
+  { artikelnummer: '122058', name: 'Kakao Hörnchen' },
+  { artikelnummer: '82965', name: 'Berry Donut' },
+  { artikelnummer: '200232', name: 'Vanille Donut' },
+  { artikelnummer: '90709', name: 'Pink Donut' },
+  { artikelnummer: '125260', name: 'Pizza Donut Salami' },
+  { artikelnummer: '103964', name: 'Marzipan Croissant' },
+  { artikelnummer: '103887', name: 'Mexicostange' },
+  { artikelnummer: '125241', name: 'Pizza Salami' },
+  { artikelnummer: '82862', name: 'Pizza Classico' },
+  { artikelnummer: '103622', name: 'Fußballbrötchen Gouda' },
+  { artikelnummer: '103950', name: 'Muschelbrötchen Käse Salami' },
 ]
 
 function todayISO() { return new Date().toISOString().slice(0, 10) }
@@ -274,7 +288,7 @@ export default function App() {
           {error && <div className="error">{error}</div>}
           <button>Einloggen</button>
         </form>
-        <small>Erstpasswort: 0000 · Danach neues 4-stelliges Passwort setzen.</small>
+        <small>Bitte beim ersten Login ein neues Passwort setzen.</small>
       </section>
     </main>
   )

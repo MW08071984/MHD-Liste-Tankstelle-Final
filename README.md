@@ -20,3 +20,6 @@ Enthalten:
 
 Wichtig:
 ZIP entpacken und den INHALT direkt ins GitHub Repository hochladen, nicht den Ordner selbst.
+
+
+Update: Backwarenliste wurde exakt nach dem Foto mit echten Artikelnummern korrigiert. Shell-Farben sind jetzt in der ganzen App aktiv.

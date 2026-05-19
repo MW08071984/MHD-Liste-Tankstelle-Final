@@ -1,1 +1,64 @@
 *{box-sizing:border-box}body{margin:0;font-family:Inter,Arial,sans-serif;background:#fff4b8;color:#2d1200}button,input,select{font:inherit}button{border:0;border-radius:16px;padding:12px 14px;background:#d71920;color:#fff7cc;font-weight:800;box-shadow:0 8px 20px #0002}input,select{width:100%;border:2px solid #ffd54a;border-radius:16px;padding:13px;background:#fffdf0;color:#2d1200}.center,.fatal{min-height:100vh;display:grid;place-items:center;padding:24px}.fatal{background:#d71920;color:#fff7cc;font-weight:900}.loginPage{min-height:100vh;display:grid;place-items:center;padding:18px;background:linear-gradient(160deg,#d71920,#f5bd00 55%,#fff4b8)}.loginCard{width:min(430px,100%);background:#fffdf0;border:3px solid #f5bd00;border-radius:30px;padding:24px;box-shadow:0 20px 60px #0004}.brandBadge{width:70px;height:70px;background:#d71920;color:#ffe15a;border-radius:24px;display:grid;place-items:center;font-size:26px;font-weight:900}.loginCard h1{margin:16px 0 6px}.loginCard form{display:grid;gap:10px}.check{display:flex;gap:10px;align-items:center}.check input{width:auto}.app{max-width:760px;margin:0 auto;min-height:100vh;padding:14px 14px 100px}.topbar{position:sticky;top:0;z-index:3;background:#fff4b8dd;backdrop-filter:blur(10px);display:flex;justify-content:space-between;align-items:center;padding:10px 0}.topbar h1{margin:0;font-size:28px;color:#d71920}.topbar p{margin:3px 0 0}.ghost{background:#fffdf0;color:#d71920;border:2px solid #d71920;box-shadow:none}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:8px 0 14px}.stat{background:#fffdf0;border:2px solid #ffd54a;border-radius:22px;padding:12px;box-shadow:0 10px 22px #0001}.stat span{font-size:12px;font-weight:800;color:#7b4b00}.stat b{display:block;font-size:24px;color:#d71920}.stat.danger{background:#ffe4e5}.stat.warn{background:#fff0a0}.tabs{position:sticky;top:66px;z-index:2;display:flex;gap:8px;overflow:auto;padding:8px 0;background:#fff4b8dd}.tabs button{white-space:nowrap;background:#fffdf0;color:#d71920;border:2px solid #ffd54a;box-shadow:none;text-transform:capitalize}.tabs button.active{background:#d71920;color:#fff7cc}.formCard,.list{display:grid;gap:12px}.formCard{background:#fffdf0;border:2px solid #ffd54a;border-radius:28px;padding:16px;box-shadow:0 10px 30px #0001}.row{display:grid;grid-template-columns:1fr auto auto;gap:8px}.primary,.notify{width:100%}.upload{display:block;border:2px dashed #d71920;border-radius:18px;padding:15px;text-align:center;background:#fff7cc;font-weight:900}.upload input{display:none}.preview{width:120px;height:120px;object-fit:cover;border-radius:22px;border:3px solid #ffd54a}.item{display:flex;gap:12px;align-items:center;background:#fffdf0;border:2px solid #ffd54a;border-radius:24px;padding:12px;box-shadow:0 10px 24px #0001}.item.abgelaufen{border-color:#d71920;background:#ffe4e5}.item.bald{border-color:#f39200;background:#fff0a0}.item.woche{border-color:#ffd54a}.thumb{width:58px;height:58px;border-radius:18px;background:#fff4b8;display:grid;place-items:center;font-size:24px;overflow:hidden;flex:none}.thumb img{width:100%;height:100%;object-fit:cover}.grow{flex:1;min-width:0}.item b{font-size:16px}.item p{margin:3px 0;color:#6b4300;font-size:13px}.artikelnummer{width:54px;height:54px;border-radius:17px;background:#d71920;color:#fff7cc;display:grid;place-items:center;font-weight:900}.qty{width:70px;text-align:center}.error{background:#ffe4e5;color:#b00010;border:2px solid #d71920;border-radius:18px;padding:12px;font-weight:800}.empty{text-align:center;padding:30px;background:#fffdf0;border-radius:24px;color:#7b4b00}.scannerOverlay{position:fixed;inset:0;z-index:9999;background:#000d;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:18px}.scanTitle{color:white;font-size:20px;font-weight:900;margin-bottom:16px}.scanVideo{width:min(520px,100%);border-radius:24px}.scanCancel{margin-top:16px;background:white;color:#d71920}@media(max-width:520px){.stats{grid-template-columns:repeat(2,1fr)}.row{grid-template-columns:1fr}.item{align-items:flex-start}.item button{padding:10px;font-size:13px}.topbar h1{font-size:23px}}
+
+/* Shell-Farben komplett für die ganze App */
+body{
+  background:
+    radial-gradient(circle at top left, rgba(255,230,0,.55), transparent 38%),
+    linear-gradient(180deg,#fff2a8 0%,#ffd84a 42%,#fff8d6 100%) !important;
+}
+.app{
+  background:linear-gradient(180deg,#fff7c2,#ffe36a 55%,#fff7c2);
+  border-left:1px solid rgba(215,25,32,.18);
+  border-right:1px solid rgba(215,25,32,.18);
+}
+.topbar{
+  background:linear-gradient(135deg,#d71920 0%,#a90f16 100%) !important;
+  color:#fff7cc;
+  border-radius:0 0 26px 26px;
+  padding:16px;
+  margin:-14px -14px 14px;
+  box-shadow:0 12px 30px rgba(120,0,0,.25);
+}
+.topbar h1{color:#ffe15a !important}
+.topbar p{color:#fff7cc}
+.ghost{
+  background:#ffe15a !important;
+  color:#9b0d12 !important;
+  border:2px solid #fff7cc !important;
+  font-weight:900;
+}
+.stat{
+  background:linear-gradient(145deg,#fffdf0,#ffe15a) !important;
+  border:2px solid #d71920 !important;
+}
+.stat b{color:#9b0d12 !important}
+.tabs{
+  background:linear-gradient(90deg,#ffe15a,#fff4b8) !important;
+  border-radius:20px;
+}
+.tabs button{
+  background:#fffdf0 !important;
+  border:2px solid #d71920 !important;
+  color:#9b0d12 !important;
+}
+.tabs button.active{
+  background:#d71920 !important;
+  color:#ffe15a !important;
+}
+.formCard,.item,.empty{
+  background:linear-gradient(145deg,#fffdf0,#fff1a8) !important;
+  border:2px solid #d71920 !important;
+}
+.item button,.primary,.notify{
+  background:#d71920 !important;
+  color:#ffe15a !important;
+}
+.artikelnummer{
+  background:#d71920 !important;
+  color:#ffe15a !important;
+  border:2px solid #ffe15a;
+}
+input,select{
+  border:2px solid #d71920 !important;
+  background:#fffdf0 !important;
+}
