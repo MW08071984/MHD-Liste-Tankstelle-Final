@@ -1,0 +1,5 @@
+Diese ZIP erzwingt die öffentliche npm Registry:
+https://registry.npmjs.org/
+
+Einfach ZIP hochladen und deployen.
+Falls Vercel fragt: Clear Build Cache auswählen.

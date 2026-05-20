@@ -1,5 +1,5 @@
 {
   "framework": "vite",
-  "installCommand": "npm install --legacy-peer-deps",
+  "installCommand": "npm install --registry=https://registry.npmjs.org/ --legacy-peer-deps",
   "buildCommand": "npm run build"
 }
