@@ -1,0 +1,7 @@
+DIESE ZIP IST BEREITS GEBAUT.
+
+Wichtig:
+- Diese ZIP enthält KEIN package.json.
+- Vercel muss kein npm install mehr machen.
+- Einfach als neue ZIP hochladen.
+- Wenn Vercel fragt: Framework Preset = Other / Static.
