@@ -68,3 +68,20 @@ input,select{width:100%;border:3px solid var(--red);border-radius:18px;padding:1
   background:#d71920 !important;
   color:#ffd900 !important;
 }
+
+/* Barcode Scanner Android/iPhone */
+.scannerButton{width:100%;font-size:22px;padding:18px;background:linear-gradient(90deg,#d71920,#8b1016)!important;color:#ffd900!important;border:3px solid #ffd900!important}
+.scannerOverlay{z-index:2000}.scannerCard{background:#fffdf0!important;color:#210b00!important}.scannerCard p{font-weight:800;color:#5a2d00}.scannerVideo{width:100%;min-height:280px;max-height:58vh;background:#111;border:4px solid #d71920;border-radius:22px;object-fit:cover}.scannerManual{display:grid;grid-template-columns:1fr auto;gap:8px}.scannerManual button{white-space:nowrap}.ghost{background:#fff!important;color:#8b1016!important;border:3px solid #d71920!important}@media(max-width:560px){.scannerVideo{min-height:360px}.scannerManual{grid-template-columns:1fr}.scannerButton{min-height:62px}}
+
+/* Push Button */
+.pushButton{
+  width:100%;
+  margin:10px 0;
+  background:linear-gradient(90deg,#d71920,#8b1016)!important;
+  color:#ffd900!important;
+  border:3px solid #ffd900!important;
+  border-radius:18px!important;
+  padding:14px!important;
+  font-weight:1000!important;
+  box-shadow:0 8px 24px rgba(90,0,0,.22);
+}

@@ -12,3 +12,6 @@ Wichtig:
 1. SUPABASE_FIX_FINAL.sql in Supabase ausführen.
 2. ZIP in GitHub/Vercel hochladen.
 3. Nach Deployment STRG+F5.
+
+
+Update: Barcode-Scanner für Samsung/Android und iPhone eingebaut. Beim Erfassen gibt es jetzt den Button "📷 Barcode scannen". Zusätzlich sind die festen Regal-Kategorien integriert.

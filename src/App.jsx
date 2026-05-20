@@ -25,7 +25,7 @@ const BACKWAREN = [
   ['103622','Fußballbrötchen Gouda'], ['103950','Muschelbrötchen Käse Salami'],
 ].map(([artikelnummer, name]) => ({ artikelnummer, name }))
 
-const CATS = ['Getränke','Kühlung','Milchprodukte','Snacks','Süßwaren','Backwaren','Sonstiges']
+const CATS = ['🥤 Große Kühlung','🍕 Pizza & Tiefkühltruhe','⚡ Red Bull Zapfsäule','🥨 Chips & Snacks','🍺 Biergondel','🧴 Haushalt','🥪 Go Fresh Kühlung','⚡ Red Bull Kühler Groß','🍫 Süßwaren Kassenbereich','🍬 Gummibärchen & Candy','🥐 Backwaren','🥗 Frischekühlschrank zum Belegen','Sonstiges']
 const todayISO = () => new Date().toISOString().slice(0,10)
 const nowISO = () => new Date().toISOString()
 const isAdmin = u => ['chef','chef_temp','stationsleitung'].includes(u?.rolle)
@@ -45,13 +45,66 @@ async function openFoodFacts(barcode){
   }catch{ return null }
 }
 
+
+async function enablePushNotifications() {
+  if (!('serviceWorker' in navigator)) {
+    alert('Push wird von diesem Browser nicht unterstützt.')
+    return
+  }
+  if (!('Notification' in window)) {
+    alert('Benachrichtigungen werden von diesem Browser nicht unterstützt.')
+    return
+  }
+  const permission = await Notification.requestPermission()
+  if (permission !== 'granted') {
+    alert('Benachrichtigungen wurden nicht erlaubt.')
+    return
+  }
+  const registration = await navigator.serviceWorker.register('/sw.js')
+  await navigator.serviceWorker.ready
+
+  // Lokaler Test-Push funktioniert direkt auf Android/Samsung und iPhone-PWA.
+  await registration.showNotification('MHD Kontrolle aktiviert', {
+    body: 'Benachrichtigungen sind jetzt auf diesem Gerät aktiv.',
+    icon: '/icon-192.png',
+    badge: '/icon-192.png',
+    tag: 'push-aktiviert',
+    renotify: true
+  })
+}
+
+async function sendLocalMhdWarning(items = []) {
+  if (!('Notification' in window)) return
+  const permission = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission()
+  if (permission !== 'granted') return
+  const urgent = (items || []).filter(item => {
+    if (!item.mhd) return false
+    const today = new Date()
+    today.setHours(0,0,0,0)
+    const target = new Date(item.mhd + 'T00:00:00')
+    const days = Math.ceil((target - today) / 86400000)
+    return days <= 2
+  })
+  const body = urgent.length
+    ? urgent.slice(0,5).map(x => `${x.name || x.artikel} · MHD ${new Date(x.mhd).toLocaleDateString('de-DE')} · ${x.menge || 1} Stk.`).join('\\n')
+    : 'Aktuell keine fälligen MHD-Artikel.'
+  const registration = await navigator.serviceWorker.ready
+  await registration.showNotification('MHD Warnung', {
+    body,
+    icon: '/icon-192.png',
+    badge: '/icon-192.png',
+    tag: 'mhd-warning',
+    renotify: true
+  })
+}
+
 export default function App(){
   const [ready,setReady]=useState(false), [user,setUser]=useState(null), [employees,setEmployees]=useState([])
   const [items,setItems]=useState([]), [writeoffs,setWriteoffs]=useState([]), [online,setOnline]=useState([]), [settings,setSettings]=useState({})
   const [tab,setTab]=useState('dashboard'), [error,setError]=useState(''), [success,setSuccess]=useState('')
   const [login,setLogin]=useState({nummer:'',passwort:'',remember:true}), [newPassword,setNewPassword]=useState('')
   const [form,setForm]=useState({barcode:'',artikelnummer:'',name:'',kategorie:'Sonstiges',mhd:todayISO(),menge:1,bild_url:''})
-  const [editArticle,setEditArticle]=useState(null), [editWriteoff,setEditWriteoff]=useState(null)
+  const [editArticle,setEditArticle]=useState(null), [editWriteoff,setEditWriteoff]=useState(null), [scannerOpen,setScannerOpen]=useState(false)
   const db = !!supabase
 
   useEffect(()=>{ navigator.serviceWorker?.register('/sw.js').catch(()=>{}); const saved=localStorage.getItem('mhd_user'); if(saved){try{setUser(JSON.parse(saved))}catch{}}; init() },[])
@@ -109,6 +162,13 @@ export default function App(){
   async function addItem(){ setError(''); if(!form.name||!form.mhd) return setError('Name und MHD fehlen.'); const payload={...form,artikel:form.name,name:form.name,menge:Number(form.menge||1),mitarbeiter:user.name,erstellt_von:Number(user.nummer)}; if(db){const {error}=await supabase.from('mhd_artikel').insert(payload); if(error)return setError(error.message); await reload()} else localItems([{id:Date.now(),created_at:nowISO(),...payload},...items]); setForm({barcode:'',artikelnummer:'',name:'',kategorie:'Sonstiges',mhd:todayISO(),menge:1,bild_url:''}); setSuccess('Artikel gespeichert.') }
   async function lookupBarcode(){ const p=await openFoodFacts(form.barcode); if(!p)return setError('Kein Produkt gefunden.'); setForm(f=>({...f,...p})); setSuccess('Produkt gefunden.') }
   async function uploadFormImg(e){ const f=e.target.files?.[0]; if(!f)return; const imageUrl=await fileToDataUrl(f); setForm(p=>({...p,bild_url:imageUrl})) }
+  async function handleBarcodeScan(code){
+    const clean = String(code || '').trim()
+    if(!clean) return
+    setForm(f=>({...f, barcode:clean, artikelnummer:f.artikelnummer || clean}))
+    setScannerOpen(false)
+    setSuccess('Barcode erkannt: ' + clean)
+  }
 
   async function writeOff(payload){
     const final={artikel_id:payload.artikel_id||null,artikelnummer:payload.artikelnummer||'',artikel:payload.name||payload.artikel||'Artikel',name:payload.name||payload.artikel||'Artikel',kategorie:payload.kategorie||'',mhd:payload.mhd||todayISO(),menge:Number(payload.menge||1),bild_url:payload.bild_url||'',grund:payload.grund||'Abschrift',datum:todayISO(),mitarbeiter:user.name,mitarbeiter_nummer:Number(user.nummer),status:'abgeschlossen'}
@@ -135,16 +195,61 @@ export default function App(){
     {error&&<div className="error">{error}</div>}{success&&<div className="success">{success}</div>}
     {tab==='dashboard'&&<Dashboard items={items} setTab={setTab} writeOffArticle={writeOffArticle} user={user} setEditArticle={setEditArticle}/>}
     {tab==='artikel'&&<ArticleList items={items} user={user} setEditArticle={setEditArticle} writeOffArticle={writeOffArticle}/>}
-    {tab==='erfassen'&&<Erfassen form={form} setForm={setForm} addItem={addItem} lookupBarcode={lookupBarcode} uploadFormImg={uploadFormImg} user={user}/>}
+    {tab==='erfassen'&&<Erfassen form={form} setForm={setForm} addItem={addItem} lookupBarcode={lookupBarcode} uploadFormImg={uploadFormImg} user={user} openScanner={()=>setScannerOpen(true)}/>}
     {tab==='backwaren'&&<Backwaren writeOff={writeOff}/>}
     {tab==='abschriften'&&<Abschriften writeoffs={writeoffs} user={user} setEditWriteoff={setEditWriteoff} deleteWriteoff={deleteWriteoff}/>}
     {tab==='bilder'&&<Bilder items={items} user={user} reload={reload}/>}
     {tab==='dienstplan'&&<Dienstplan settings={settings} saveSetting={saveSetting} user={user}/>}
     {tab==='online'&&isAdmin(user)&&<Online online={online}/>}
     {tab==='settings'&&isAdmin(user)&&<Settings/>}
+    {scannerOpen&&<ScannerModal onClose={()=>setScannerOpen(false)} onDetected={handleBarcodeScan}/> }
     {editArticle&&<ArticleModal data={editArticle} close={()=>setEditArticle(null)} save={saveArticle}/>}
     {editWriteoff&&<WriteoffModal data={editWriteoff} close={()=>setEditWriteoff(null)} save={saveWriteoff}/>}
   </main>
+}
+
+
+function ScannerModal({onClose,onDetected}){
+  const videoRef = React.useRef(null)
+  const readerRef = React.useRef(null)
+  const [msg,setMsg] = useState('Kamera wird gestartet...')
+  const [manual,setManual] = useState('')
+  useEffect(()=>{
+    let cancelled=false
+    async function loadZxing(){
+      if(window.ZXing) return true
+      await new Promise((resolve,reject)=>{
+        const s=document.createElement('script')
+        s.src='https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js'
+        s.onload=resolve
+        s.onerror=reject
+        document.head.appendChild(s)
+      })
+      return !!window.ZXing
+    }
+    async function start(){
+      try{
+        await loadZxing()
+        if(cancelled) return
+        const reader = new window.ZXing.BrowserMultiFormatReader()
+        readerRef.current = reader
+        setMsg('Barcode vor die Kamera halten. Auf iPhone bitte Kamera erlauben.')
+        await reader.decodeFromVideoDevice(undefined, videoRef.current, (result, err)=>{
+          if(result){
+            const code = result.getText()
+            try{ reader.reset() }catch{}
+            onDetected(code)
+          }
+        })
+      }catch(e){
+        console.warn(e)
+        setMsg('Kamera konnte nicht gestartet werden. Bitte Berechtigung erlauben oder Barcode manuell eingeben.')
+      }
+    }
+    start()
+    return ()=>{ cancelled=true; try{ readerRef.current?.reset() }catch{} }
+  },[])
+  return <div className="modalOverlay scannerOverlay"><div className="modalCard scannerCard"><h2>Barcode scannen</h2><p>{msg}</p><video ref={videoRef} className="scannerVideo" autoPlay muted playsInline></video><div className="scannerManual"><input inputMode="numeric" placeholder="Barcode manuell eingeben" value={manual} onChange={e=>setManual(e.target.value.replace(/\D/g,''))}/><button disabled={!manual} onClick={()=>onDetected(manual)}>Übernehmen</button></div><button className="ghost" onClick={onClose}>Scanner schließen</button></div></div>
 }
 
 function Login({login,setLogin,error,doLogin}){return <main className="loginPage"><section className="loginCard"><div className="brandBadge">MHD</div><h1>Tankstelle Ludweiler</h1><p>Mitarbeiter-Login</p><form onSubmit={doLogin}><label>Mitarbeiternummer</label><input inputMode="numeric" value={login.nummer} onChange={e=>setLogin({...login,nummer:e.target.value})}/><label>Passwort</label><input type="password" inputMode="numeric" value={login.passwort} onChange={e=>setLogin({...login,passwort:e.target.value})}/><label className="check"><input type="checkbox" checked={login.remember} onChange={e=>setLogin({...login,remember:e.target.checked})}/> Dauerhaft eingeloggt bleiben</label>{error&&<div className="error">{error}</div>}<button>Einloggen</button></form></section></main>}
@@ -152,7 +257,7 @@ function Stat({label,value,click}){return <button className="stat" onClick={clic
 function Dashboard(p){return <section className="list"><button className="primary" onClick={()=>p.setTab('erfassen')}>+ Schnell erfassen</button>{p.items.map(i=><Article key={i.id} item={i} {...p}/>)}</section>}
 function ArticleList(p){return <section className="list"><h2>Artikel</h2>{p.items.map(i=><Article key={i.id} item={i} {...p}/>)}</section>}
 function Article({item,user,setEditArticle,writeOffArticle}){const d=daysUntil(item.mhd);return <div className="item"><div className="thumb">{item.bild_url?<img src={item.bild_url}/>: '📦'}</div><div className="grow"><b>{item.name||item.artikel}</b><p>{item.artikelnummer?`Art.-Nr. ${item.artikelnummer} · `:''}{item.kategorie} · {item.barcode||'ohne Barcode'}</p><p>MHD {item.mhd?new Date(item.mhd).toLocaleDateString('de-DE'):''} · {item.menge} Stk. · {d<0?`${Math.abs(d)} Tage drüber`:`${d} Tage`}</p></div><div className="actions">{isAdmin(user)&&<button onClick={()=>setEditArticle(item)}>Bearbeiten</button>}<button onClick={()=>writeOffArticle(item)}>Abschrift</button></div></div>}
-function Erfassen({form,setForm,addItem,lookupBarcode,uploadFormImg,user}){return <section className="formCard"><h2>Artikel erfassen</h2><input placeholder="Barcode" value={form.barcode} onChange={e=>setForm({...form,barcode:e.target.value})}/><button onClick={lookupBarcode}>Auto-Suche</button><input placeholder="Artikelnummer" value={form.artikelnummer} onChange={e=>setForm({...form,artikelnummer:e.target.value})}/><input placeholder="Name" value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/><select value={form.kategorie} onChange={e=>setForm({...form,kategorie:e.target.value})}>{CATS.map(c=><option key={c}>{c}</option>)}</select><input type="date" value={form.mhd} onChange={e=>setForm({...form,mhd:e.target.value})}/><input type="number" min="1" value={form.menge} onChange={e=>setForm({...form,menge:e.target.value})}/>{isAdmin(user)&&<label className="upload">Bild/Screenshot hochladen<input type="file" accept="image/*" onChange={uploadFormImg}/></label>}{form.bild_url&&<img className="preview" src={form.bild_url}/>}<button className="primary" onClick={addItem}>Speichern</button></section>}
+function Erfassen({form,setForm,addItem,lookupBarcode,uploadFormImg,user,openScanner}){return <section className="formCard"><h2>Artikel erfassen</h2><button type="button" className="scannerButton" onClick={openScanner}>📷 Barcode scannen</button><input placeholder="Barcode" value={form.barcode} onChange={e=>setForm({...form,barcode:e.target.value})}/><button type="button" onClick={lookupBarcode}>Auto-Suche</button><input placeholder="Artikelnummer" value={form.artikelnummer} onChange={e=>setForm({...form,artikelnummer:e.target.value})}/><input placeholder="Name" value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/><select value={form.kategorie} onChange={e=>setForm({...form,kategorie:e.target.value})}>{CATS.map(c=><option key={c}>{c}</option>)}</select><input type="date" value={form.mhd} onChange={e=>setForm({...form,mhd:e.target.value})}/><input type="number" min="1" value={form.menge} onChange={e=>setForm({...form,menge:e.target.value})}/>{isAdmin(user)&&<label className="upload">Bild/Screenshot hochladen<input type="file" accept="image/*" onChange={uploadFormImg}/></label>}{form.bild_url&&<img className="preview" src={form.bild_url}/>}<button className="primary" onClick={addItem}>Speichern</button></section>}
 function Backwaren({writeOff}){const [qty,setQty]=useState({}); const [sent,setSent]=useState(false); const entries=BACKWAREN.map(b=>({...b,menge:Number(qty[b.artikelnummer]||0)})).filter(b=>b.menge>0); const total=entries.reduce((s,b)=>s+b.menge,0); async function submit(){if(!entries.length)return alert('Bitte Mengen eintragen.'); setSent(true); for(const e of entries) await writeOff({artikelnummer:e.artikelnummer,name:e.name,kategorie:'Backwaren',mhd:todayISO(),menge:e.menge,grund:'Backwaren Tagesende'}); setQty({}); setSent(false)} return <section className="list backwarenPage"><div className="stickySubmit"><div><h2>Backwaren Tagesende</h2><p>{entries.length} Positionen · {total} Stück</p></div><button disabled={!entries.length||sent} onClick={submit}>{sent?'Speichern...':'Alles absenden'}</button></div><div className="submitHint">Erst Mengen eintragen. Bis zum Absenden kannst du alles ändern. Nach dem Absenden kann nur Chef/Stationsleitung ändern.</div>{BACKWAREN.map(b=><div className={'item bakery '+(Number(qty[b.artikelnummer]||0)>0?'selectedBakery':'')} key={b.artikelnummer}><div className="artikelnummer">{b.artikelnummer}</div><div className="grow"><b>{b.name}</b><p>Artikelnummer {b.artikelnummer}</p></div><input className="qty" inputMode="numeric" value={qty[b.artikelnummer]||''} onChange={e=>setQty({...qty,[b.artikelnummer]:e.target.value.replace(/\D/g,'')})} placeholder="0"/></div>)}<button className="fixedSubmit" disabled={!entries.length||sent} onClick={submit}>{sent?'Speichern...':`Backwaren absenden (${total})`}</button></section>}
 function Abschriften({writeoffs,user,setEditWriteoff,deleteWriteoff}){return <section className="list"><h2>Abschriften</h2>{writeoffs.map(w=><div className="item" key={w.id}><div className="artikelnummer small">{w.artikelnummer||'MHD'}</div><div className="grow"><b>{w.name||w.artikel}</b><p>{w.grund} · {w.menge} Stk. · {w.mitarbeiter} · {new Date(w.datum||w.created_at).toLocaleDateString('de-DE')}</p></div>{isAdmin(user)&&<div className="actions"><button onClick={()=>setEditWriteoff(w)}>Bearbeiten</button><button onClick={()=>deleteWriteoff(w)}>Löschen</button></div>}</div>)}</section>}
 function Bilder({items,user,reload}){async function upload(item,e){const f=e.target.files?.[0]; if(!f)return; const url=await fileToDataUrl(f); const {error}=await supabase.from('mhd_artikel').update({bild_url:url}).eq('id',item.id); if(!error) reload()} return <section className="formCard"><h2>Bilder verwalten</h2><p>Nur Chef/Stationsleitung kann Bilder ändern.</p>{items.map(i=><div className="item" key={i.id}><div className="thumb">{i.bild_url?<img src={i.bild_url}/>: '📦'}</div><div className="grow"><b>{i.name}</b></div>{isAdmin(user)&&<label className="miniUpload">Upload<input type="file" accept="image/*" onChange={e=>upload(i,e)}/></label>}</div>)}</section>}
