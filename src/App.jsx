@@ -1,5 +1,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
 import { supabase } from './main.jsx'
 
 const DEFAULT_EMPLOYEES = [
@@ -74,6 +76,44 @@ async function openFoodFacts(barcode){
     }
   }catch{
     return null
+  }
+}
+
+
+function exportAbschriftenPDF(abschriften = []){
+  try{
+    const doc = new jsPDF()
+    const now = new Date().toLocaleDateString('de-DE')
+
+    doc.setFontSize(18)
+    doc.text('MHD Abschriften', 14, 18)
+
+    doc.setFontSize(10)
+    doc.text('Erstellt am: ' + now, 14, 26)
+
+    const rows = abschriften.map((item) => [
+      item.artikelnummer || '',
+      item.name || item.artikel || '',
+      String(item.menge || 0),
+      item.mhd ? new Date(item.mhd).toLocaleDateString('de-DE') : '',
+      item.grund || '',
+      item.mitarbeiter || '',
+      item.datum ? new Date(item.datum).toLocaleDateString('de-DE') : (item.created_at ? new Date(item.created_at).toLocaleDateString('de-DE') : '')
+    ])
+
+    autoTable(doc, {
+      startY: 34,
+      head: [['Artikelnummer', 'Name', 'Menge', 'MHD', 'Grund', 'Mitarbeiter', 'Datum']],
+      body: rows,
+      styles: { fontSize: 8, cellPadding: 2 },
+      headStyles: { fillColor: [215, 25, 32], textColor: [255, 217, 0] },
+      alternateRowStyles: { fillColor: [255, 248, 210] }
+    })
+
+    doc.save('mhd-abschriften.pdf')
+  }catch(err){
+    alert('PDF Fehler: ' + err.message)
+    console.error(err)
   }
 }
 
@@ -675,7 +715,11 @@ function Backwaren({backwaren,saveBackwarenList,writeOff,user}){
 
 function Abschriften({writeoffs,user,setEditWriteoff,deleteWriteoff,undoWriteoff}){
   return <section className="list">
-    <h2>Abschriften</h2>
+    <div className="sectionHeader">
+      <h2>Abschriften</h2>
+      <button className="pdfButton" onClick={() => exportAbschriftenPDF(writeoffs)}>PDF drucken</button>
+    </div>
+    {writeoffs.length === 0 && <div className="empty">Keine Abschriften vorhanden.</div>}
     {writeoffs.map(w => <div className="item" key={w.id}>
       <div className="artikelnummer small">{w.artikelnummer || 'MHD'}</div>
       <div className="grow"><b>{w.name || w.artikel}</b><p>{w.grund} · {w.menge} Stk. · {w.mitarbeiter} · {new Date(w.datum || w.created_at).toLocaleDateString('de-DE')}</p></div>
