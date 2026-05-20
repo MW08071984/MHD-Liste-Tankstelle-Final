@@ -27,3 +27,7 @@ FINAL UPDATE:
 - Manuelle Eingabe wird auf Bestand gekürzt.
 - Chef/Stationsleitung/Michael kann Abschriften rückgängig machen.
 - Rückgängig stellt die Menge wieder in Artikelübersicht her und löscht die Abschrift.
+
+FINAL PDF UPDATE:
+- PDF drucken ist wieder auf der Abschriften-Seite integriert.
+- Bestandsgrenze und Rückgängig-Funktion bleiben erhalten.

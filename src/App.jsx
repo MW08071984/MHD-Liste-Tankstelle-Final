@@ -127,6 +127,7 @@ export default function App(){
   const [online, setOnline] = useState([])
   const [backwaren, setBackwaren] = useState(DEFAULT_BACKWAREN)
   const [tab, setTab] = useState('dashboard')
+  const [articleFilter, setArticleFilter] = useState('all')
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [login, setLogin] = useState({ nummer:'', passwort:'', remember:true })
@@ -472,12 +473,34 @@ export default function App(){
     })
   }
 
-  const stats = useMemo(() => ({
-    total:items.length,
-    expired:items.filter(i => daysUntil(i.mhd) < 0).length,
-    urgent:items.filter(i => daysUntil(i.mhd) >= 0 && daysUntil(i.mhd) <= 2).length,
-    week:items.filter(i => daysUntil(i.mhd) > 2 && daysUntil(i.mhd) <= 7).length
-  }), [items])
+  const stats = useMemo(() => {
+    const expiredItems = items.filter(i => daysUntil(i.mhd) < 0)
+    const urgentItems = items.filter(i => daysUntil(i.mhd) >= 0 && daysUntil(i.mhd) <= 3)
+    const weekItems = items.filter(i => daysUntil(i.mhd) >= 0 && daysUntil(i.mhd) <= 7)
+    const nextDue = [...weekItems].sort((a,b) => daysUntil(a.mhd) - daysUntil(b.mhd))[0]
+    return {
+      total:items.length,
+      expired:expiredItems.length,
+      urgent:urgentItems.length,
+      week:weekItems.length,
+      expiredText: expiredItems.length === 1 ? '1 Artikel abgelaufen' : `${expiredItems.length} Artikel abgelaufen`,
+      urgentText: urgentItems.length === 1 ? '1 Artikel in 1-3 Tagen' : `${urgentItems.length} Artikel in 1-3 Tagen`,
+      weekText: nextDue ? `${weekItems.length} Artikel · nächster in ${daysUntil(nextDue.mhd)} Tagen` : '0 Artikel',
+      totalText: items.length === 1 ? '1 Artikel gesamt' : `${items.length} Artikel gesamt`
+    }
+  }, [items])
+
+  function openArticleFilter(filter){
+    setArticleFilter(filter)
+    setTab('artikel')
+  }
+
+  const filteredItems = useMemo(() => {
+    if(articleFilter === 'expired') return items.filter(i => daysUntil(i.mhd) < 0)
+    if(articleFilter === 'urgent') return items.filter(i => daysUntil(i.mhd) >= 0 && daysUntil(i.mhd) <= 3)
+    if(articleFilter === 'week') return items.filter(i => daysUntil(i.mhd) >= 0 && daysUntil(i.mhd) <= 7)
+    return items
+  }, [items, articleFilter])
 
   if(!ready) return <main className="center">Lade App...</main>
   if(!db) return <main className="center">Supabase ENV fehlt.</main>
@@ -516,10 +539,10 @@ export default function App(){
     </header>
 
     <section className="stats">
-      <Stat label="Artikel" value={stats.total} onClick={() => setTab('artikel')}/>
-      <Stat label="Abgelaufen" value={stats.expired}/>
-      <Stat label="Bald" value={stats.urgent}/>
-      <Stat label="Woche" value={stats.week}/>
+      <Stat label="Artikel" value={stats.totalText} tone="normal" onClick={() => openArticleFilter('all')}/>
+      <Stat label="Abgelaufen" value={stats.expiredText} tone="expired" onClick={() => openArticleFilter('expired')}/>
+      <Stat label="Bald" value={stats.urgentText} tone="urgent" onClick={() => openArticleFilter('urgent')}/>
+      <Stat label="Woche" value={stats.weekText} tone="week" onClick={() => openArticleFilter('week')}/>
     </section>
 
     <nav className="tabs">
@@ -530,7 +553,7 @@ export default function App(){
     {success && <div className="success">{success}</div>}
 
     {tab === 'dashboard' && <Dashboard items={items} setTab={setTab} user={user} writeOffArticle={writeOffArticle} setEditArticle={setEditArticle}/>}
-    {tab === 'artikel' && <ArticleList items={items} user={user} writeOffArticle={writeOffArticle} setEditArticle={setEditArticle}/>}
+    {tab === 'artikel' && <ArticleList items={filteredItems} allCount={items.length} articleFilter={articleFilter} setArticleFilter={setArticleFilter} user={user} writeOffArticle={writeOffArticle} setEditArticle={setEditArticle}/>}
     {tab === 'erfassen' && <Erfassen form={form} setForm={setForm} setScannerOpen={setScannerOpen} lookupBarcode={lookupBarcode} uploadFormImg={uploadFormImg} addItem={addItem} user={user}/>}
     {tab === 'backwaren' && <Backwaren backwaren={backwaren} saveBackwarenList={saveBackwarenList} writeOff={writeOff} user={user}/>}
     {tab === 'abschriften' && <Abschriften writeoffs={writeoffs} user={user} setEditWriteoff={setEditWriteoff} deleteWriteoff={deleteWriteoff} undoWriteoff={undoWriteoff}/>}
@@ -565,7 +588,7 @@ function Login({login,setLogin,error,doLogin}){
   </main>
 }
 
-function Stat({label,value,onClick}){ return <button className="stat" onClick={onClick}><span>{label}</span><b>{value}</b></button> }
+function Stat({label,value,onClick,tone='normal'}){ return <button className={'stat '+tone} onClick={onClick}><span>{label}</span><b>{value}</b></button> }
 
 function Dashboard({items,setTab,user,writeOffArticle,setEditArticle}){
   return <section className="list">
@@ -574,9 +597,17 @@ function Dashboard({items,setTab,user,writeOffArticle,setEditArticle}){
   </section>
 }
 
-function ArticleList({items,user,writeOffArticle,setEditArticle}){
+function ArticleList({items,allCount,articleFilter,setArticleFilter,user,writeOffArticle,setEditArticle}){
+  const title = articleFilter === 'expired' ? 'Abgelaufene Artikel' : articleFilter === 'urgent' ? 'Bald ablaufende Artikel' : articleFilter === 'week' ? 'Artikel diese Woche' : 'Artikel'
   return <section className="list">
-    <h2>Artikel</h2>
+    <div className="sectionHeader">
+      <div>
+        <h2>{title}</h2>
+        <p className="filterInfo">{items.length} von {allCount} Artikeln</p>
+      </div>
+      {articleFilter !== 'all' && <button className="ghostSmall" onClick={() => setArticleFilter('all')}>Alle anzeigen</button>}
+    </div>
+    {items.length === 0 && <div className="empty">Keine passenden Artikel vorhanden.</div>}
     {items.map(item => <Article key={item.id} item={item} user={user} writeOffArticle={writeOffArticle} setEditArticle={setEditArticle}/>)}
   </section>
 }
@@ -606,7 +637,8 @@ function Article({item,user,writeOffArticle,setEditArticle}){
     setSafeAmount(current + delta)
   }
 
-  return <div className="item articleItem">
+  const stateClass = days < 0 ? 'expiredArticle' : (days >= 0 && days <= 3 ? 'urgentArticle' : '')
+  return <div className={'item articleItem ' + stateClass}>
     <div className="thumb">{item.bild_url ? <img src={item.bild_url}/> : '📦'}</div>
     <div className="grow">
       <b>{item.name || item.artikel}</b>
