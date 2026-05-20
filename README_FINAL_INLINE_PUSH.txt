@@ -1,0 +1,1 @@
+Finale Version mit direkter Rückmeldung am Ort, verbessertem Scanner, Stammdaten je EAN, Bildübernahme und Push-Aktivierung für alle Geräte. Echte automatische Server-Pushs zu festen Uhrzeiten benötigen zusätzlich später eine Edge Function/Cron.

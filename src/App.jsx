@@ -62,6 +62,24 @@ function fileToDataUrl(file){
   })
 }
 
+function InlineFeedback({msg}){
+  if(!msg) return null
+  return <div className={'inlineFeedback ' + msg.type}>{msg.text}</div>
+}
+
+function localNotify(title, body){
+  try{
+    if('Notification' in window && Notification.permission === 'granted'){
+      navigator.serviceWorker?.ready.then(reg => reg.showNotification(title, {
+        body,
+        icon:'/icon-192.png',
+        badge:'/icon-192.png',
+        tag:'mhd-kontrolle'
+      }))
+    }
+  }catch{}
+}
+
 async function openFoodFacts(barcode){
   if(!barcode) return null
   try{
@@ -127,7 +145,6 @@ export default function App(){
   const [online, setOnline] = useState([])
   const [backwaren, setBackwaren] = useState(DEFAULT_BACKWAREN)
   const [tab, setTab] = useState('dashboard')
-  const [articleFilter, setArticleFilter] = useState('all')
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [login, setLogin] = useState({ nummer:'', passwort:'', remember:true })
@@ -135,6 +152,7 @@ export default function App(){
   const [scannerOpen, setScannerOpen] = useState(false)
   const [editArticle, setEditArticle] = useState(null)
   const [editWriteoff, setEditWriteoff] = useState(null)
+  const [inlineMsg, setInlineMsg] = useState({})
   const [form, setForm] = useState({
     barcode:'',
     artikelnummer:'',
@@ -146,6 +164,15 @@ export default function App(){
   })
 
   const db = !!supabase
+
+  function msgAt(key, type, text){
+    setInlineMsg(prev => ({...prev, [key]: {type, text}}))
+    setTimeout(() => setInlineMsg(prev => {
+      const next = {...prev}
+      delete next[key]
+      return next
+    }), 5000)
+  }
 
   useEffect(() => {
     navigator.serviceWorker?.register('/sw.js').catch(()=>{})
@@ -253,10 +280,39 @@ export default function App(){
 
   async function lookupBarcode(){
     setError('')
+    if(!form.barcode){
+      msgAt('erfassen','error','Bitte erst Barcode eingeben oder scannen.')
+      return
+    }
+
+    if(db){
+      const { data: master } = await supabase.from('artikel_stammdaten').select('*').eq('barcode', form.barcode).maybeSingle()
+      if(master){
+        setForm(f => ({
+          ...f,
+          artikelnummer: master.artikelnummer || f.artikelnummer || f.barcode,
+          name: master.name || f.name,
+          kategorie: master.kategorie || f.kategorie,
+          bild_url: master.bild_url || f.bild_url
+        }))
+        msgAt('erfassen','success','✓ Artikel aus Stammdaten übernommen.')
+        return
+      }
+    }
+
     const result = await openFoodFacts(form.barcode)
-    if(!result) return setError('Kein Produkt gefunden.')
-    setForm(f => ({ ...f, ...result }))
-    setSuccess('Produkt gefunden.')
+    if(!result){
+      msgAt('erfassen','warning','Kein Produkt gefunden. Bitte manuell eintragen.')
+      return
+    }
+    setForm(f => ({
+      ...f,
+      artikelnummer: f.artikelnummer || f.barcode,
+      name: result.name || f.name,
+      kategorie: result.kategorie || f.kategorie,
+      bild_url: result.bild_url || f.bild_url
+    }))
+    msgAt('erfassen','success', result.bild_url ? '✓ Produkt gefunden und Bild übernommen.' : '✓ Produkt gefunden.')
   }
 
   async function uploadFormImg(e){
@@ -268,7 +324,10 @@ export default function App(){
 
   async function addItem(){
     setError('')
-    if(!form.name || !form.mhd) return setError('Name und MHD fehlen.')
+    if(!form.name || !form.mhd){
+      msgAt('erfassen','error','Name und MHD fehlen.')
+      return
+    }
     const payload = {
       barcode:form.barcode || '',
       artikelnummer:form.artikelnummer || form.barcode || '',
@@ -282,12 +341,25 @@ export default function App(){
       erstellt_von:Number(user.nummer)
     }
     if(db){
+      if(payload.barcode){
+        await supabase.from('artikel_stammdaten').upsert({
+          barcode: payload.barcode,
+          artikelnummer: payload.artikelnummer,
+          name: payload.name,
+          kategorie: payload.kategorie,
+          bild_url: payload.bild_url,
+          updated_at: nowISO()
+        }, { onConflict:'barcode' })
+      }
       const { error } = await supabase.from('mhd_artikel').insert(payload)
-      if(error) return setError(error.message)
+      if(error){
+        msgAt('erfassen','error', error.message)
+        return setError(error.message)
+      }
       await loadAll()
     }
     setForm({ barcode:'', artikelnummer:'', name:'', kategorie:'Sonstiges', mhd:todayISO(), menge:1, bild_url:'' })
-    setSuccess('Artikel gespeichert.')
+    msgAt('erfassen','success','✓ Artikel gespeichert und Stammdaten aktualisiert.')
   }
 
   async function writeOff(payload){
@@ -324,8 +396,8 @@ export default function App(){
     const bestand = Math.max(0, Number(item.menge || 0))
     const qty = Math.max(0, Number(amount || 0))
 
-    if(qty < 1) return setError('Bitte Menge größer als 0 eingeben.')
-    if(qty > bestand) return setError(`Nicht genügend Bestand vorhanden. Maximal ${bestand} Stück möglich.`)
+    if(qty < 1){ msgAt('article_'+item.id,'error','Bitte Menge größer als 0 eingeben.'); return setError('Bitte Menge größer als 0 eingeben.') }
+    if(qty > bestand){ msgAt('article_'+item.id,'error',`Nicht genügend Bestand vorhanden. Maximal ${bestand} Stück möglich.`); return setError(`Nicht genügend Bestand vorhanden. Maximal ${bestand} Stück möglich.`) }
 
     const ok = await writeOff({ ...item, artikel_id:item.id, menge:qty, grund: daysUntil(item.mhd) < 0 ? 'Abgelaufen' : 'MHD Abschrift' })
     if(ok && db){
@@ -333,6 +405,7 @@ export default function App(){
       if(rest <= 0) await supabase.from('mhd_artikel').delete().eq('id', item.id)
       else await supabase.from('mhd_artikel').update({ menge:rest }).eq('id', item.id)
       await loadAll()
+      msgAt('article_'+item.id,'success',`✓ ${qty} Stück abgeschrieben.`)
     }
   }
 
@@ -350,9 +423,21 @@ export default function App(){
     }
     const { error } = await supabase.from('mhd_artikel').update(payload).eq('id', data.id)
     if(error) return setError(error.message)
+
+    if(payload.barcode){
+      await supabase.from('artikel_stammdaten').upsert({
+        barcode: payload.barcode,
+        artikelnummer: payload.artikelnummer,
+        name: payload.name,
+        kategorie: payload.kategorie,
+        bild_url: payload.bild_url,
+        updated_at: nowISO()
+      }, { onConflict:'barcode' })
+    }
+
     setEditArticle(null)
     await loadAll()
-    setSuccess('Artikel gespeichert.')
+    setSuccess('Artikel gespeichert und Stammdaten aktualisiert.')
   }
 
   async function saveWriteoff(data){
@@ -467,40 +552,45 @@ export default function App(){
     const permission = await Notification.requestPermission()
     if(permission !== 'granted') return alert('Benachrichtigungen wurden nicht erlaubt.')
     const reg = await navigator.serviceWorker.ready
+
+    if(db){
+      await supabase.from('push_subscriptions').insert({
+        mitarbeiter_nummer: Number(user.nummer),
+        endpoint: 'local-browser-' + Number(user.nummer) + '-' + Date.now(),
+        p256dh: '',
+        auth: ''
+      })
+    }
+
     await reg.showNotification('MHD Kontrolle aktiviert', {
-      body:'Benachrichtigungen sind aktiv.',
+      body:'Benachrichtigungen sind auf diesem Gerät aktiv.',
       icon:'/icon-192.png'
     })
+    msgAt('settings','success','✓ Push auf diesem Gerät aktiviert.')
   }
 
-  const stats = useMemo(() => {
-    const expiredItems = items.filter(i => daysUntil(i.mhd) < 0)
-    const urgentItems = items.filter(i => daysUntil(i.mhd) >= 0 && daysUntil(i.mhd) <= 3)
-    const weekItems = items.filter(i => daysUntil(i.mhd) >= 0 && daysUntil(i.mhd) <= 7)
-    const nextDue = [...weekItems].sort((a,b) => daysUntil(a.mhd) - daysUntil(b.mhd))[0]
-    return {
-      total:items.length,
-      expired:expiredItems.length,
-      urgent:urgentItems.length,
-      week:weekItems.length,
-      expiredText: expiredItems.length === 1 ? '1 Artikel abgelaufen' : `${expiredItems.length} Artikel abgelaufen`,
-      urgentText: urgentItems.length === 1 ? '1 Artikel in 1-3 Tagen' : `${urgentItems.length} Artikel in 1-3 Tagen`,
-      weekText: nextDue ? `${weekItems.length} Artikel · nächster in ${daysUntil(nextDue.mhd)} Tagen` : '0 Artikel',
-      totalText: items.length === 1 ? '1 Artikel gesamt' : `${items.length} Artikel gesamt`
-    }
-  }, [items])
+  useEffect(() => {
+    if(!user || !items.length) return
+    const due = items.filter(i => {
+      const d = daysUntil(i.mhd)
+      return d < 0 || d === 0 || d === 1
+    })
+    if(!due.length) return
+    const key = new Date().toISOString().slice(0,10) + '_' + due.map(i=>i.id).join(',')
+    if(localStorage.getItem('mhd_last_notify_key') === key) return
+    localStorage.setItem('mhd_last_notify_key', key)
+    const expired = due.filter(i=>daysUntil(i.mhd)<0).length
+    const today = due.filter(i=>daysUntil(i.mhd)===0).length
+    const tomorrow = due.filter(i=>daysUntil(i.mhd)===1).length
+    localNotify('MHD Kontrolle', `${expired} abgelaufen · ${today} heute · ${tomorrow} morgen`)
+  }, [user, items])
 
-  function openArticleFilter(filter){
-    setArticleFilter(filter)
-    setTab('artikel')
-  }
-
-  const filteredItems = useMemo(() => {
-    if(articleFilter === 'expired') return items.filter(i => daysUntil(i.mhd) < 0)
-    if(articleFilter === 'urgent') return items.filter(i => daysUntil(i.mhd) >= 0 && daysUntil(i.mhd) <= 3)
-    if(articleFilter === 'week') return items.filter(i => daysUntil(i.mhd) >= 0 && daysUntil(i.mhd) <= 7)
-    return items
-  }, [items, articleFilter])
+  const stats = useMemo(() => ({
+    total:items.length,
+    expired:items.filter(i => daysUntil(i.mhd) < 0).length,
+    urgent:items.filter(i => daysUntil(i.mhd) >= 0 && daysUntil(i.mhd) <= 2).length,
+    week:items.filter(i => daysUntil(i.mhd) > 2 && daysUntil(i.mhd) <= 7).length
+  }), [items])
 
   if(!ready) return <main className="center">Lade App...</main>
   if(!db) return <main className="center">Supabase ENV fehlt.</main>
@@ -539,10 +629,10 @@ export default function App(){
     </header>
 
     <section className="stats">
-      <Stat label="Artikel" value={stats.totalText} tone="normal" onClick={() => openArticleFilter('all')}/>
-      <Stat label="Abgelaufen" value={stats.expiredText} tone="expired" onClick={() => openArticleFilter('expired')}/>
-      <Stat label="Bald" value={stats.urgentText} tone="urgent" onClick={() => openArticleFilter('urgent')}/>
-      <Stat label="Woche" value={stats.weekText} tone="week" onClick={() => openArticleFilter('week')}/>
+      <Stat label="Artikel" value={stats.total} onClick={() => setTab('artikel')}/>
+      <Stat label="Abgelaufen" value={stats.expired}/>
+      <Stat label="Bald" value={stats.urgent}/>
+      <Stat label="Woche" value={stats.week}/>
     </section>
 
     <nav className="tabs">
@@ -552,18 +642,18 @@ export default function App(){
     {error && <div className="error">{error}</div>}
     {success && <div className="success">{success}</div>}
 
-    {tab === 'dashboard' && <Dashboard items={items} setTab={setTab} user={user} writeOffArticle={writeOffArticle} setEditArticle={setEditArticle}/>}
-    {tab === 'artikel' && <ArticleList items={filteredItems} allCount={items.length} articleFilter={articleFilter} setArticleFilter={setArticleFilter} user={user} writeOffArticle={writeOffArticle} setEditArticle={setEditArticle}/>}
-    {tab === 'erfassen' && <Erfassen form={form} setForm={setForm} setScannerOpen={setScannerOpen} lookupBarcode={lookupBarcode} uploadFormImg={uploadFormImg} addItem={addItem} user={user}/>}
+    {tab === 'dashboard' && <Dashboard items={items} setTab={setTab} user={user} writeOffArticle={writeOffArticle} setEditArticle={setEditArticle} inlineMsg={inlineMsg}/>}
+    {tab === 'artikel' && <ArticleList items={items} user={user} writeOffArticle={writeOffArticle} setEditArticle={setEditArticle} inlineMsg={inlineMsg}/>}
+    {tab === 'erfassen' && <Erfassen form={form} setForm={setForm} setScannerOpen={setScannerOpen} lookupBarcode={lookupBarcode} uploadFormImg={uploadFormImg} addItem={addItem} user={user} inlineMsg={inlineMsg}/>}
     {tab === 'backwaren' && <Backwaren backwaren={backwaren} saveBackwarenList={saveBackwarenList} writeOff={writeOff} user={user}/>}
     {tab === 'abschriften' && <Abschriften writeoffs={writeoffs} user={user} setEditWriteoff={setEditWriteoff} deleteWriteoff={deleteWriteoff} undoWriteoff={undoWriteoff}/>}
     {tab === 'bilder' && isAdmin(user) && <Bilder items={items} reload={loadAll}/>}
     {tab === 'dienstplan' && <Dienstplan settings={settings} saveSetting={saveSetting} user={user}/>}
     {tab === 'online' && isAdmin(user) && <Online online={online}/>}
     {tab === 'verwaltung' && isAdmin(user) && <Verwaltung employees={employees} saveEmployee={saveEmployee} deleteEmployee={deleteEmployee} resetPassword={resetPassword}/>}
-    {tab === 'settings' && isAdmin(user) && <Settings enablePush={enablePush}/>}
+    {tab === 'settings' && isAdmin(user) && <Settings enablePush={enablePush} inlineMsg={inlineMsg}/>}
 
-    {scannerOpen && <Scanner onClose={() => setScannerOpen(false)} onDetected={(code) => { setForm(f => ({...f, barcode:code, artikelnummer:f.artikelnummer || code})); setScannerOpen(false) }}/>}
+    {scannerOpen && <Scanner onClose={() => setScannerOpen(false)} onDetected={(code) => { setForm(f => ({...f, barcode:code, artikelnummer:f.artikelnummer || code})); msgAt('erfassen','success','✓ Barcode gescannt. Jetzt Auto-Suche drücken.'); setScannerOpen(false) }}/>}
     {editArticle && <ArticleModal item={editArticle} close={() => setEditArticle(null)} save={saveArticle}/>}
     {editWriteoff && <WriteoffModal item={editWriteoff} close={() => setEditWriteoff(null)} save={saveWriteoff}/>}
   </main>
@@ -588,31 +678,23 @@ function Login({login,setLogin,error,doLogin}){
   </main>
 }
 
-function Stat({label,value,onClick,tone='normal'}){ return <button className={'stat '+tone} onClick={onClick}><span>{label}</span><b>{value}</b></button> }
+function Stat({label,value,onClick}){ return <button className="stat" onClick={onClick}><span>{label}</span><b>{value}</b></button> }
 
-function Dashboard({items,setTab,user,writeOffArticle,setEditArticle}){
+function Dashboard({items,setTab,user,writeOffArticle,setEditArticle,inlineMsg}){
   return <section className="list">
     <button className="primary" onClick={() => setTab('erfassen')}>+ Schnell erfassen</button>
-    {items.slice(0,8).map(item => <Article key={item.id} item={item} user={user} writeOffArticle={writeOffArticle} setEditArticle={setEditArticle}/>)}
+    {items.slice(0,8).map(item => <Article key={item.id} item={item} user={user} writeOffArticle={writeOffArticle} setEditArticle={setEditArticle} inlineMsg={inlineMsg}/>)}
   </section>
 }
 
-function ArticleList({items,allCount,articleFilter,setArticleFilter,user,writeOffArticle,setEditArticle}){
-  const title = articleFilter === 'expired' ? 'Abgelaufene Artikel' : articleFilter === 'urgent' ? 'Bald ablaufende Artikel' : articleFilter === 'week' ? 'Artikel diese Woche' : 'Artikel'
+function ArticleList({items,user,writeOffArticle,setEditArticle,inlineMsg}){
   return <section className="list">
-    <div className="sectionHeader">
-      <div>
-        <h2>{title}</h2>
-        <p className="filterInfo">{items.length} von {allCount} Artikeln</p>
-      </div>
-      {articleFilter !== 'all' && <button className="ghostSmall" onClick={() => setArticleFilter('all')}>Alle anzeigen</button>}
-    </div>
-    {items.length === 0 && <div className="empty">Keine passenden Artikel vorhanden.</div>}
-    {items.map(item => <Article key={item.id} item={item} user={user} writeOffArticle={writeOffArticle} setEditArticle={setEditArticle}/>)}
+    <h2>Artikel</h2>
+    {items.map(item => <Article key={item.id} item={item} user={user} writeOffArticle={writeOffArticle} setEditArticle={setEditArticle} inlineMsg={inlineMsg}/>)}
   </section>
 }
 
-function Article({item,user,writeOffArticle,setEditArticle}){
+function Article({item,user,writeOffArticle,setEditArticle,inlineMsg}){
   const bestand = Math.max(0, Number(item.menge || 0))
   const [amount, setAmount] = useState(String(bestand > 0 ? 1 : 0))
   const days = daysUntil(item.mhd)
@@ -637,8 +719,7 @@ function Article({item,user,writeOffArticle,setEditArticle}){
     setSafeAmount(current + delta)
   }
 
-  const stateClass = days < 0 ? 'expiredArticle' : (days >= 0 && days <= 3 ? 'urgentArticle' : '')
-  return <div className={'item articleItem ' + stateClass}>
+  return <div className="item articleItem">
     <div className="thumb">{item.bild_url ? <img src={item.bild_url}/> : '📦'}</div>
     <div className="grow">
       <b>{item.name || item.artikel}</b>
@@ -663,11 +744,12 @@ function Article({item,user,writeOffArticle,setEditArticle}){
         {isAdmin(user) && <button onClick={() => setEditArticle(item)}>Bearbeiten</button>}
         <button disabled={bestand < 1 || Number(amount || 0) < 1 || Number(amount || 0) > bestand} onClick={() => writeOffArticle(item, Number(amount || 0))}>Abschreiben</button>
       </div>
+      <InlineFeedback msg={inlineMsg?.['article_'+item.id]}/>
     </div>
   </div>
 }
 
-function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addItem,user}){
+function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addItem,user,inlineMsg}){
   return <section className="formCard">
     <h2>Artikel erfassen</h2>
     <button className="scannerButton" onClick={() => setScannerOpen(true)}>📷 Barcode scannen</button>
@@ -680,6 +762,7 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
     <input type="number" min="1" value={form.menge} onChange={e => setForm({...form, menge:e.target.value})}/>
     {isAdmin(user) && <label className="upload">Bild/Screenshot hochladen<input type="file" accept="image/*" onChange={uploadFormImg}/></label>}
     {form.bild_url && <img className="preview" src={form.bild_url}/>}
+    <InlineFeedback msg={inlineMsg?.erfassen}/>
     <button className="primary" onClick={addItem}>Speichern</button>
   </section>
 }
@@ -829,10 +912,10 @@ function Verwaltung({employees,saveEmployee,deleteEmployee,resetPassword}){
   </section>
 }
 
-function Settings({enablePush}){
+function Settings({enablePush,inlineMsg}){
   return <section className="formCard">
     <h2>Einstellungen</h2>
-    <button onClick={enablePush}>🔔 Push aktivieren/testen</button>
+    <button onClick={enablePush}>🔔 Push aktivieren/testen</button><InlineFeedback msg={inlineMsg?.settings}/>
     <div className="adminBox"><b>Verwaltung</b><p>Backwaren, Mitarbeiter, Bilder und Artikel sind nur für Chef/Stationsleitung/Michael vollständig bearbeitbar.</p></div>
   </section>
 }
@@ -845,12 +928,12 @@ function ArticleModal({item,close,save}){
   }
   return <div className="modalOverlay"><div className="modalCard">
     <h2>Artikel bearbeiten</h2>
-    <input placeholder="Artikelnummer" value={data.artikelnummer || ''} onChange={e => setData({...data, artikelnummer:e.target.value})}/>
-    <input placeholder="Name" value={data.name || data.artikel || ''} onChange={e => setData({...data, name:e.target.value})}/>
+    <label>Artikelnummer</label><input placeholder="Artikelnummer" value={data.artikelnummer || ''} onChange={e => setData({...data, artikelnummer:e.target.value})}/>
+    <label>Artikelname</label><input placeholder="Name" value={data.name || data.artikel || ''} onChange={e => setData({...data, name:e.target.value})}/>
     <select value={data.kategorie || 'Sonstiges'} onChange={e => setData({...data, kategorie:e.target.value})}>{CATEGORIES.map(c => <option key={c}>{c}</option>)}</select>
     <input type="date" value={data.mhd || todayISO()} onChange={e => setData({...data, mhd:e.target.value})}/>
     <input type="number" min="1" value={data.menge || 1} onChange={e => setData({...data, menge:e.target.value})}/>
-    <input placeholder="Barcode" value={data.barcode || ''} onChange={e => setData({...data, barcode:e.target.value})}/>
+    <label>EAN / Barcode</label><input placeholder="EAN / Barcode" value={data.barcode || ''} onChange={e => setData({...data, barcode:e.target.value.replace(/\D/g,'')})}/>
     <label className="upload">Bild hochladen<input type="file" accept="image/*" onChange={upload}/></label>
     {data.bild_url && <img className="preview" src={data.bild_url}/>}
     <div className="modalActions"><button onClick={close}>Abbrechen</button><button onClick={() => save(data)}>Speichern</button></div>
@@ -874,36 +957,52 @@ function Scanner({onClose,onDetected}){
   const videoRef = useRef(null)
   const [manual, setManual] = useState('')
   const [message, setMessage] = useState('Kamera wird gestartet...')
+  const [scanMsg, setScanMsg] = useState(null)
+
   useEffect(() => {
     let cancelled = false
     let reader
     async function load(){
-      if(!window.ZXing){
-        await new Promise((resolve,reject) => {
-          const script = document.createElement('script')
-          script.src = 'https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js'
-          script.onload = resolve
-          script.onerror = reject
-          document.head.appendChild(script)
-        })
-      }
-      if(cancelled) return
-      reader = new window.ZXing.BrowserMultiFormatReader()
-      setMessage('Barcode vor die Kamera halten.')
-      await reader.decodeFromVideoDevice(undefined, videoRef.current, (result) => {
-        if(result){
-          const code = result.getText()
-          try{ reader.reset() }catch{}
-          onDetected(code)
+      try{
+        if(!window.ZXing){
+          await new Promise((resolve,reject) => {
+            const script = document.createElement('script')
+            script.src = 'https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js'
+            script.onload = resolve
+            script.onerror = reject
+            document.head.appendChild(script)
+          })
         }
-      })
+        if(cancelled) return
+
+        reader = new window.ZXing.BrowserMultiFormatReader()
+        const devices = await window.ZXing.BrowserCodeReader.listVideoInputDevices()
+        const backCam = devices.find(d => /back|rear|environment|rück/i.test(d.label))
+        const deviceId = backCam?.deviceId || devices[devices.length - 1]?.deviceId
+
+        setMessage('Barcode ruhig vor die Kamera halten. Wenn es nicht klappt, unten manuell eingeben.')
+        await reader.decodeFromVideoDevice(deviceId, videoRef.current, (result) => {
+          if(result){
+            const code = result.getText()
+            setScanMsg({type:'success', text:'✓ Barcode erkannt: ' + code})
+            try{ reader.reset() }catch{}
+            setTimeout(()=>onDetected(code), 350)
+          }
+        })
+      }catch(e){
+        console.warn(e)
+        setMessage('Kamera konnte nicht scannen. Bitte Berechtigung erlauben oder Code manuell eingeben.')
+        setScanMsg({type:'error', text:'Scanner nicht bereit. Manuelle Eingabe ist möglich.'})
+      }
     }
-    load().catch(() => setMessage('Kamera konnte nicht gestartet werden. Bitte Berechtigung erlauben oder Code manuell eingeben.'))
+    load()
     return () => { cancelled = true; try{ reader?.reset() }catch{} }
   }, [])
+
   return <div className="modalOverlay"><div className="modalCard scannerCard">
     <h2>Barcode scannen</h2>
     <p>{message}</p>
+    <InlineFeedback msg={scanMsg}/>
     <video ref={videoRef} className="scannerVideo" autoPlay muted playsInline></video>
     <input inputMode="numeric" placeholder="Barcode manuell eingeben" value={manual} onChange={e => setManual(e.target.value.replace(/\D/g,''))}/>
     <button disabled={!manual} onClick={() => onDetected(manual)}>Übernehmen</button>

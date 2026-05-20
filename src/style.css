@@ -52,58 +52,9 @@
   }
 }
 
-
-/* Dashboard klickbare Filter + MHD Farben */
-.stat{
-  cursor:pointer;
-}
-.stat b{
-  font-size:24px;
-  line-height:1.15;
-  margin-top:8px;
-  word-break:break-word;
-}
-.stat.expired{
-  background:linear-gradient(145deg,#ffdddd,#ff7b7b)!important;
-  border-color:#b00000!important;
-}
-.stat.expired b,.stat.expired span{
-  color:#750000!important;
-}
-.stat.urgent{
-  background:linear-gradient(145deg,#fff0d0,#ffb347)!important;
-  border-color:#ff7a00!important;
-}
-.stat.urgent b,.stat.urgent span{
-  color:#783600!important;
-}
-.stat.week{
-  background:linear-gradient(145deg,#fffdf0,#ffe66d)!important;
-}
-.expiredArticle{
-  background:linear-gradient(145deg,#ffe0e0,#ffb8b8)!important;
-  border-color:#b00000!important;
-}
-.expiredArticle b{
-  color:#7b0000!important;
-}
-.urgentArticle{
-  background:linear-gradient(145deg,#fff3d2,#ffc46b)!important;
-  border-color:#ff7a00!important;
-}
-.urgentArticle b{
-  color:#7a3b00!important;
-}
-.filterInfo{
-  margin:4px 0 0;
-  font-weight:900;
-  color:#7b1018;
-}
-@media(max-width:560px){
-  .stat{
-    min-height:104px;
-  }
-  .stat b{
-    font-size:18px;
-  }
-}
+/* Inline Rückmeldungen direkt am Ort */
+.inlineFeedback{width:100%;border-radius:16px;padding:12px 14px;margin:8px 0;font-weight:1000;border:3px solid}
+.inlineFeedback.success{background:#e9ffd9;border-color:#4a9900;color:#245000}
+.inlineFeedback.warning{background:#fff2c6;border-color:#ff9800;color:#704000}
+.inlineFeedback.error{background:#ffe2e2;border-color:#d71920;color:#7b0000}
+.modalCard label{font-weight:1000;margin-top:4px;color:#7b1018}
