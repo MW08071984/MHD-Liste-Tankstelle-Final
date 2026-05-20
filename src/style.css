@@ -52,9 +52,27 @@
   }
 }
 
-/* Inline Rückmeldungen direkt am Ort */
-.inlineFeedback{width:100%;border-radius:16px;padding:12px 14px;margin:8px 0;font-weight:1000;border:3px solid}
+
+/* Scanner + klare Formularlabels */
+.formCard label,
+.modalCard label{
+  font-weight:1000;
+  color:#7b1018;
+  margin:6px 0 -4px;
+  display:block;
+}
+.scannerVideo{
+  min-height:260px;
+  object-fit:cover;
+}
+.inlineFeedback{
+  width:100%;
+  border-radius:16px;
+  padding:12px 14px;
+  margin:8px 0;
+  font-weight:1000;
+  border:3px solid;
+}
 .inlineFeedback.success{background:#e9ffd9;border-color:#4a9900;color:#245000}
 .inlineFeedback.warning{background:#fff2c6;border-color:#ff9800;color:#704000}
 .inlineFeedback.error{background:#ffe2e2;border-color:#d71920;color:#7b0000}
-.modalCard label{font-weight:1000;margin-top:4px;color:#7b1018}
