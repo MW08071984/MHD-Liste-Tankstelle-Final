@@ -1,0 +1,2 @@
+Diese ZIP direkt in Vercel hochladen.
+Keine zusätzlichen Einstellungen nötig.
