@@ -1,0 +1,2 @@
+-- Keine SQL Änderung notwendig
+-- Bestandsschutz läuft komplett in der App
