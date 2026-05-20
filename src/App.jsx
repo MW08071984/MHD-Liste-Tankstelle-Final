@@ -132,6 +132,7 @@ export default function App(){
   const [online, setOnline] = useState([])
   const [backwaren, setBackwaren] = useState(DEFAULT_BACKWAREN)
   const [tab, setTab] = useState('dashboard')
+  const [articleFilter, setArticleFilter] = useState('all')
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [login, setLogin] = useState({ nummer:'', passwort:'', remember:true })
@@ -267,10 +268,54 @@ export default function App(){
 
   async function lookupBarcode(){
     setError('')
+    if(!form.barcode){
+      msgAt('erfassen','error','Bitte erst Barcode eingeben oder scannen.')
+      return
+    }
+
+    if(db){
+      const { data: master } = await supabase.from('artikel_stammdaten').select('*').eq('barcode', form.barcode).maybeSingle()
+      if(master){
+        setForm(f => ({
+          ...f,
+          artikelnummer: master.artikelnummer || f.artikelnummer || f.barcode,
+          name: master.name || f.name,
+          kategorie: master.kategorie || f.kategorie,
+          bild_url: master.bild_url || f.bild_url
+        }))
+        msgAt('erfassen','success','✓ Artikel aus Stammdaten übernommen.')
+        return
+      }
+    }
+
     const result = await openFoodFacts(form.barcode)
-    if(!result) return setError('Kein Produkt gefunden.')
-    setForm(f => ({ ...f, ...result }))
-    setSuccess('Produkt gefunden.')
+    if(!result){
+      msgAt('erfassen','warning','Kein Produkt im Internet gefunden. Bitte manuell eintragen.')
+      return
+    }
+
+    const next = {
+      barcode: form.barcode,
+      artikelnummer: form.artikelnummer || form.barcode,
+      name: result.name || form.name,
+      kategorie: result.kategorie || form.kategorie,
+      bild_url: result.bild_url || form.bild_url
+    }
+
+    setForm(f => ({...f, ...next}))
+
+    if(db && next.barcode){
+      await supabase.from('artikel_stammdaten').upsert({
+        barcode: next.barcode,
+        artikelnummer: next.artikelnummer,
+        name: next.name,
+        kategorie: next.kategorie,
+        bild_url: next.bild_url,
+        updated_at: nowISO()
+      }, { onConflict:'barcode' })
+    }
+
+    msgAt('erfassen','success', next.bild_url ? '✓ Produkt gefunden, Bild übernommen und Stammdaten gespeichert.' : '✓ Produkt gefunden und Stammdaten gespeichert.')
   }
 
   async function uploadFormImg(e){
@@ -282,7 +327,10 @@ export default function App(){
 
   async function addItem(){
     setError('')
-    if(!form.name || !form.mhd) return setError('Name und MHD fehlen.')
+    if(!form.name || !form.mhd){
+      msgAt('erfassen','error','Name und MHD fehlen.')
+      return
+    }
     const payload = {
       barcode:form.barcode || '',
       artikelnummer:form.artikelnummer || form.barcode || '',
@@ -296,12 +344,25 @@ export default function App(){
       erstellt_von:Number(user.nummer)
     }
     if(db){
+      if(payload.barcode){
+        await supabase.from('artikel_stammdaten').upsert({
+          barcode: payload.barcode,
+          artikelnummer: payload.artikelnummer,
+          name: payload.name,
+          kategorie: payload.kategorie,
+          bild_url: payload.bild_url,
+          updated_at: nowISO()
+        }, { onConflict:'barcode' })
+      }
       const { error } = await supabase.from('mhd_artikel').insert(payload)
-      if(error) return setError(error.message)
+      if(error){
+        msgAt('erfassen','error', error.message)
+        return setError(error.message)
+      }
       await loadAll()
     }
     setForm({ barcode:'', artikelnummer:'', name:'', kategorie:'Sonstiges', mhd:todayISO(), menge:1, bild_url:'' })
-    setSuccess('Artikel gespeichert.')
+    msgAt('erfassen','success','✓ Artikel gespeichert und Stammdaten aktualisiert.')
   }
 
   async function writeOff(payload){
@@ -487,12 +548,35 @@ export default function App(){
     })
   }
 
-  const stats = useMemo(() => ({
-    total:items.length,
-    expired:items.filter(i => daysUntil(i.mhd) < 0).length,
-    urgent:items.filter(i => daysUntil(i.mhd) >= 0 && daysUntil(i.mhd) <= 2).length,
-    week:items.filter(i => daysUntil(i.mhd) > 2 && daysUntil(i.mhd) <= 7).length
-  }), [items])
+  const stats = useMemo(() => {
+    const expiredItems = items.filter(i => daysUntil(i.mhd) < 0)
+    const urgentItems = items.filter(i => daysUntil(i.mhd) >= 0 && daysUntil(i.mhd) <= 3)
+    const weekItems = items.filter(i => daysUntil(i.mhd) >= 0 && daysUntil(i.mhd) <= 7)
+    const nextDue = [...weekItems].sort((a,b) => daysUntil(a.mhd) - daysUntil(b.mhd))[0]
+    return {
+      total:items.length,
+      expired:expiredItems.length,
+      urgent:urgentItems.length,
+      week:weekItems.length,
+      totalText: items.length === 1 ? '1 Artikel gesamt' : `${items.length} Artikel gesamt`,
+      expiredText: expiredItems.length === 1 ? '1 Artikel abgelaufen' : `${expiredItems.length} Artikel abgelaufen`,
+      urgentText: urgentItems.length === 1 ? '1 Artikel in 1-3 Tagen' : `${urgentItems.length} Artikel in 1-3 Tagen`,
+      weekText: nextDue ? `${weekItems.length} Artikel · nächster in ${daysUntil(nextDue.mhd)} Tagen` : '0 Artikel'
+    }
+  }, [items])
+
+  function openArticleFilter(filter){
+    setArticleFilter(filter)
+    setTab('artikel')
+    window.scrollTo({top:0, behavior:'smooth'})
+  }
+
+  const filteredItems = useMemo(() => {
+    if(articleFilter === 'expired') return items.filter(i => daysUntil(i.mhd) < 0)
+    if(articleFilter === 'urgent') return items.filter(i => daysUntil(i.mhd) >= 0 && daysUntil(i.mhd) <= 3)
+    if(articleFilter === 'week') return items.filter(i => daysUntil(i.mhd) >= 0 && daysUntil(i.mhd) <= 7)
+    return items
+  }, [items, articleFilter])
 
   if(!ready) return <main className="center">Lade App...</main>
   if(!db) return <main className="center">Supabase ENV fehlt.</main>
@@ -531,10 +615,10 @@ export default function App(){
     </header>
 
     <section className="stats">
-      <Stat label="Artikel" value={stats.total} onClick={() => setTab('artikel')}/>
-      <Stat label="Abgelaufen" value={stats.expired}/>
-      <Stat label="Bald" value={stats.urgent}/>
-      <Stat label="Woche" value={stats.week}/>
+      <Stat label="Artikel" value={stats.totalText} tone="normal" onClick={() => openArticleFilter('all')}/>
+      <Stat label="Abgelaufen" value={stats.expiredText} tone="expired" onClick={() => openArticleFilter('expired')}/>
+      <Stat label="Bald" value={stats.urgentText} tone="urgent" onClick={() => openArticleFilter('urgent')}/>
+      <Stat label="Woche" value={stats.weekText} tone="week" onClick={() => openArticleFilter('week')}/>
     </section>
 
     <nav className="tabs">
@@ -545,7 +629,7 @@ export default function App(){
     {success && <div className="success">{success}</div>}
 
     {tab === 'dashboard' && <Dashboard items={items} setTab={setTab} user={user} writeOffArticle={writeOffArticle} setEditArticle={setEditArticle} inlineMsg={inlineMsg}/>}
-    {tab === 'artikel' && <ArticleList items={items} user={user} writeOffArticle={writeOffArticle} setEditArticle={setEditArticle}/>}
+    {tab === 'artikel' && <ArticleList items={filteredItems} allCount={items.length} articleFilter={articleFilter} setArticleFilter={setArticleFilter} user={user} writeOffArticle={writeOffArticle} setEditArticle={setEditArticle} inlineMsg={inlineMsg}/>}
     {tab === 'erfassen' && <Erfassen form={form} setForm={setForm} setScannerOpen={setScannerOpen} lookupBarcode={lookupBarcode} uploadFormImg={uploadFormImg} addItem={addItem} user={user} inlineMsg={inlineMsg}/>}
     {tab === 'backwaren' && <Backwaren backwaren={backwaren} saveBackwarenList={saveBackwarenList} writeOff={writeOff} user={user}/>}
     {tab === 'abschriften' && <Abschriften writeoffs={writeoffs} user={user} setEditWriteoff={setEditWriteoff} deleteWriteoff={deleteWriteoff} undoWriteoff={undoWriteoff}/>}
@@ -555,7 +639,7 @@ export default function App(){
     {tab === 'verwaltung' && isAdmin(user) && <Verwaltung employees={employees} saveEmployee={saveEmployee} deleteEmployee={deleteEmployee} resetPassword={resetPassword}/>}
     {tab === 'settings' && isAdmin(user) && <Settings enablePush={enablePush}/>}
 
-    {scannerOpen && <Scanner onClose={() => setScannerOpen(false)} onDetected={(code) => { setForm(f => ({...f, barcode:code, artikelnummer:f.artikelnummer || code})); setScannerOpen(false) }}/>}
+    {scannerOpen && <Scanner onClose={() => setScannerOpen(false)} onDetected={(code) => { setForm(f => ({...f, barcode:code, artikelnummer:f.artikelnummer || code})); msgAt('erfassen','success','✓ Barcode gescannt. Jetzt Auto-Suche drücken.'); setScannerOpen(false) }}/>}
     {editArticle && <ArticleModal item={editArticle} close={() => setEditArticle(null)} save={saveArticle}/>}
     {editWriteoff && <WriteoffModal item={editWriteoff} close={() => setEditWriteoff(null)} save={saveWriteoff}/>}
   </main>
@@ -580,7 +664,7 @@ function Login({login,setLogin,error,doLogin}){
   </main>
 }
 
-function Stat({label,value,onClick}){ return <button className="stat" onClick={onClick}><span>{label}</span><b>{value}</b></button> }
+function Stat({label,value,onClick,tone='normal'}){ return <button className={'stat '+tone} onClick={onClick}><span>{label}</span><b>{value}</b></button> }
 
 function Dashboard({items,setTab,user,writeOffArticle,setEditArticle}){
   return <section className="list">
@@ -589,10 +673,18 @@ function Dashboard({items,setTab,user,writeOffArticle,setEditArticle}){
   </section>
 }
 
-function ArticleList({items,user,writeOffArticle,setEditArticle}){
+function ArticleList({items,allCount,articleFilter,setArticleFilter,user,writeOffArticle,setEditArticle,inlineMsg}){
+  const title = articleFilter === 'expired' ? 'Abgelaufene Artikel' : articleFilter === 'urgent' ? 'Bald ablaufende Artikel' : articleFilter === 'week' ? 'Artikel diese Woche' : 'Artikel'
   return <section className="list">
-    <h2>Artikel</h2>
-    {items.map(item => <Article key={item.id} item={item} user={user} writeOffArticle={writeOffArticle} setEditArticle={setEditArticle}/>)}
+    <div className="sectionHeader">
+      <div>
+        <h2>{title}</h2>
+        <p className="filterInfo">{items.length} von {allCount} Artikeln</p>
+      </div>
+      {articleFilter !== 'all' && <button className="ghostSmall" onClick={() => setArticleFilter('all')}>Alle anzeigen</button>}
+    </div>
+    {items.length === 0 && <div className="empty">Keine passenden Artikel vorhanden.</div>}
+    {items.map(item => <Article key={item.id} item={item} user={user} writeOffArticle={writeOffArticle} setEditArticle={setEditArticle} inlineMsg={inlineMsg}/>)}
   </section>
 }
 
@@ -621,7 +713,8 @@ function Article({item,user,writeOffArticle,setEditArticle}){
     setSafeAmount(current + delta)
   }
 
-  return <div className="item articleItem">
+  const stateClass = days < 0 ? 'expiredArticle' : (days >= 0 && days <= 3 ? 'urgentArticle' : '')
+  return <div className={'item articleItem ' + stateClass}>
     <div className="thumb">{item.bild_url ? <img src={item.bild_url}/> : '📦'}</div>
     <div className="grow">
       <b>{item.name || item.artikel}</b>
