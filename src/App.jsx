@@ -280,11 +280,15 @@ export default function App(){
   }
 
   async function writeOffArticle(item, amount){
-    const qty = Number(amount || 0)
+    const bestand = Math.max(0, Number(item.menge || 0))
+    const qty = Math.max(0, Number(amount || 0))
+
     if(qty < 1) return setError('Bitte Menge größer als 0 eingeben.')
+    if(qty > bestand) return setError(`Nicht genügend Bestand vorhanden. Maximal ${bestand} Stück möglich.`)
+
     const ok = await writeOff({ ...item, artikel_id:item.id, menge:qty, grund: daysUntil(item.mhd) < 0 ? 'Abgelaufen' : 'MHD Abschrift' })
     if(ok && db){
-      const rest = Math.max(0, Number(item.menge || 0) - qty)
+      const rest = Math.max(0, bestand - qty)
       if(rest <= 0) await supabase.from('mhd_artikel').delete().eq('id', item.id)
       else await supabase.from('mhd_artikel').update({ menge:rest }).eq('id', item.id)
       await loadAll()
@@ -335,6 +339,55 @@ export default function App(){
     if(error) return setError(error.message)
     await loadAll()
     setSuccess('Abschrift gelöscht.')
+  }
+
+  async function undoWriteoff(item){
+    if(!isAdmin(user)) return setError('Nur Chef/Stationsleitung darf Abschriften rückgängig machen.')
+    if(!confirm('Abschrift rückgängig machen und Bestand wiederherstellen?')) return
+
+    const qty = Number(item.menge || 0)
+    if(qty < 1) return setError('Keine gültige Menge zum Rückgängig machen.')
+
+    const artikelNummer = item.artikelnummer || ''
+    const barcode = item.barcode || ''
+    let existing = null
+
+    if(artikelNummer){
+      const { data } = await supabase.from('mhd_artikel').select('*').eq('artikelnummer', artikelNummer).eq('mhd', item.mhd).maybeSingle()
+      existing = data
+    }
+
+    if(!existing && barcode){
+      const { data } = await supabase.from('mhd_artikel').select('*').eq('barcode', barcode).eq('mhd', item.mhd).maybeSingle()
+      existing = data
+    }
+
+    if(existing){
+      const newQty = Number(existing.menge || 0) + qty
+      const { error:updateError } = await supabase.from('mhd_artikel').update({ menge:newQty }).eq('id', existing.id)
+      if(updateError) return setError(updateError.message)
+    } else {
+      const payload = {
+        barcode: item.barcode || '',
+        artikelnummer: item.artikelnummer || '',
+        artikel: item.name || item.artikel || 'Artikel',
+        name: item.name || item.artikel || 'Artikel',
+        kategorie: item.kategorie || 'Sonstiges',
+        mhd: item.mhd || todayISO(),
+        menge: qty,
+        bild_url: item.bild_url || '',
+        mitarbeiter: user.name,
+        erstellt_von: Number(user.nummer)
+      }
+      const { error:insertError } = await supabase.from('mhd_artikel').insert(payload)
+      if(insertError) return setError(insertError.message)
+    }
+
+    const { error:deleteError } = await supabase.from('abschriften').delete().eq('id', item.id)
+    if(deleteError) return setError(deleteError.message)
+
+    await loadAll()
+    setSuccess('Abschrift rückgängig gemacht. Artikel ist wieder im Bestand.')
   }
 
   async function saveEmployee(emp){
@@ -440,7 +493,7 @@ export default function App(){
     {tab === 'artikel' && <ArticleList items={items} user={user} writeOffArticle={writeOffArticle} setEditArticle={setEditArticle}/>}
     {tab === 'erfassen' && <Erfassen form={form} setForm={setForm} setScannerOpen={setScannerOpen} lookupBarcode={lookupBarcode} uploadFormImg={uploadFormImg} addItem={addItem} user={user}/>}
     {tab === 'backwaren' && <Backwaren backwaren={backwaren} saveBackwarenList={saveBackwarenList} writeOff={writeOff} user={user}/>}
-    {tab === 'abschriften' && <Abschriften writeoffs={writeoffs} user={user} setEditWriteoff={setEditWriteoff} deleteWriteoff={deleteWriteoff}/>}
+    {tab === 'abschriften' && <Abschriften writeoffs={writeoffs} user={user} setEditWriteoff={setEditWriteoff} deleteWriteoff={deleteWriteoff} undoWriteoff={undoWriteoff}/>}
     {tab === 'bilder' && isAdmin(user) && <Bilder items={items} reload={loadAll}/>}
     {tab === 'dienstplan' && <Dienstplan settings={settings} saveSetting={saveSetting} user={user}/>}
     {tab === 'online' && isAdmin(user) && <Online online={online}/>}
@@ -489,28 +542,54 @@ function ArticleList({items,user,writeOffArticle,setEditArticle}){
 }
 
 function Article({item,user,writeOffArticle,setEditArticle}){
-  const [amount, setAmount] = useState(String(item.menge || 1))
+  const bestand = Math.max(0, Number(item.menge || 0))
+  const [amount, setAmount] = useState(String(bestand > 0 ? 1 : 0))
   const days = daysUntil(item.mhd)
-  function step(delta){
-    const next = Math.max(0, Number(amount || 0) + delta)
+
+  useEffect(() => {
+    const current = Number(amount || 0)
+    if(current > bestand) setAmount(String(bestand))
+    if(bestand > 0 && current < 1) setAmount('1')
+    if(bestand <= 0) setAmount('0')
+  }, [bestand])
+
+  function setSafeAmount(value){
+    let next = Number(value || 0)
+    if(Number.isNaN(next)) next = 0
+    if(next < 0) next = 0
+    if(next > bestand) next = bestand
     setAmount(String(next))
   }
+
+  function step(delta){
+    const current = Number(amount || 0)
+    setSafeAmount(current + delta)
+  }
+
   return <div className="item articleItem">
     <div className="thumb">{item.bild_url ? <img src={item.bild_url}/> : '📦'}</div>
     <div className="grow">
       <b>{item.name || item.artikel}</b>
       <p>{item.artikelnummer ? `Art.-Nr. ${item.artikelnummer} · ` : ''}{item.kategorie || 'Sonstiges'}</p>
-      <p>MHD {item.mhd ? new Date(item.mhd).toLocaleDateString('de-DE') : '-'} · Bestand {item.menge || 1} Stk. · {days < 0 ? `${Math.abs(days)} Tage drüber` : `${days} Tage`}</p>
+      <p>MHD {item.mhd ? new Date(item.mhd).toLocaleDateString('de-DE') : '-'} · Bestand {bestand} Stk. · {days < 0 ? `${Math.abs(days)} Tage drüber` : `${days} Tage`}</p>
     </div>
     <div className="writeBox">
       <div className="stepper">
-        <button onClick={() => step(-1)}>−</button>
-        <input className="qty" inputMode="numeric" value={amount} onChange={e => setAmount(e.target.value.replace(/\D/g,''))}/>
-        <button onClick={() => step(1)}>+</button>
+        <button onClick={() => step(-1)} disabled={Number(amount || 0) <= 0}>−</button>
+        <input
+          className="qty"
+          inputMode="numeric"
+          type="number"
+          min="0"
+          max={bestand}
+          value={amount}
+          onChange={e => setSafeAmount(e.target.value)}
+        />
+        <button onClick={() => step(1)} disabled={Number(amount || 0) >= bestand}>+</button>
       </div>
       <div className="actions">
         {isAdmin(user) && <button onClick={() => setEditArticle(item)}>Bearbeiten</button>}
-        <button onClick={() => writeOffArticle(item, Number(amount || 0))}>Abschreiben</button>
+        <button disabled={bestand < 1 || Number(amount || 0) < 1 || Number(amount || 0) > bestand} onClick={() => writeOffArticle(item, Number(amount || 0))}>Abschreiben</button>
       </div>
     </div>
   </div>
@@ -594,13 +673,17 @@ function Backwaren({backwaren,saveBackwarenList,writeOff,user}){
   </section>
 }
 
-function Abschriften({writeoffs,user,setEditWriteoff,deleteWriteoff}){
+function Abschriften({writeoffs,user,setEditWriteoff,deleteWriteoff,undoWriteoff}){
   return <section className="list">
     <h2>Abschriften</h2>
     {writeoffs.map(w => <div className="item" key={w.id}>
       <div className="artikelnummer small">{w.artikelnummer || 'MHD'}</div>
       <div className="grow"><b>{w.name || w.artikel}</b><p>{w.grund} · {w.menge} Stk. · {w.mitarbeiter} · {new Date(w.datum || w.created_at).toLocaleDateString('de-DE')}</p></div>
-      {isAdmin(user) && <div className="actions"><button onClick={() => setEditWriteoff(w)}>Bearbeiten</button><button onClick={() => deleteWriteoff(w)}>Löschen</button></div>}
+      {isAdmin(user) && <div className="actions">
+        <button onClick={() => setEditWriteoff(w)}>Bearbeiten</button>
+        <button onClick={() => undoWriteoff(w)}>Rückgängig</button>
+        <button onClick={() => deleteWriteoff(w)}>Löschen</button>
+      </div>}
     </div>)}
   </section>
 }

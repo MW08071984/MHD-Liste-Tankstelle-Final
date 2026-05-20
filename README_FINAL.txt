@@ -19,3 +19,11 @@ WICHTIG:
 2. Danach komplette ZIP in Vercel hochladen
 3. Deploy abwarten
 4. Fertig
+
+
+FINAL UPDATE:
+- Abschreibmenge kann nicht mehr höher als Bestand sein.
+- Plus-Button stoppt beim Bestand.
+- Manuelle Eingabe wird auf Bestand gekürzt.
+- Chef/Stationsleitung/Michael kann Abschriften rückgängig machen.
+- Rückgängig stellt die Menge wieder in Artikelübersicht her und löscht die Abschrift.

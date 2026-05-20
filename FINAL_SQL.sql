@@ -26,3 +26,7 @@ alter table public.mitarbeiter disable row level security;
 alter table public.mhd_artikel disable row level security;
 alter table public.abschriften disable row level security;
 alter table public.app_settings disable row level security;
+
+
+-- Für Bestandsgrenze und Rückgängig-Funktion ist keine neue SQL-Spalte nötig.
+-- Die Funktion nutzt vorhandene Tabellen mhd_artikel und abschriften.
