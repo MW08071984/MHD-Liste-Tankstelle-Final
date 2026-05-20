@@ -16,7 +16,7 @@ computing gzip size...
 [2mdist/[22m[2massets/[22m[36mindex.es-NhJAbGNq.js           [39m[1m[2m150.69 kB[22m[1m[22m[2m │ gzip:  51.55 kB[22m
 [2mdist/[22m[2massets/[22m[36mhtml2canvas.esm-CBrSDip1.js    [39m[1m[2m201.42 kB[22m[1m[22m[2m │ gzip:  48.03 kB[22m
 [2mdist/[22m[2massets/[22m[36mindex-C8rKlEVc.js              [39m[1m[33m544.65 kB[39m[22m[2m │ gzip: 177.99 kB[22m
-[32m✓ built in 4.15s[39m
+[32m✓ built in 4.97s[39m
 [33m
 (!) Some chunks are larger than 500 kB after minification. Consider:
 - Using dynamic import() to code-split the application
