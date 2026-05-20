@@ -139,6 +139,7 @@ export default function App(){
   const [scannerOpen, setScannerOpen] = useState(false)
   const [editArticle, setEditArticle] = useState(null)
   const [editWriteoff, setEditWriteoff] = useState(null)
+  const [inlineMsg, setInlineMsg] = useState({})
   const [form, setForm] = useState({
     barcode:'',
     artikelnummer:'',
@@ -150,6 +151,15 @@ export default function App(){
   })
 
   const db = !!supabase
+
+  function msgAt(key, type, text){
+    setInlineMsg(prev => ({...prev, [key]: {type, text}}))
+    setTimeout(() => setInlineMsg(prev => {
+      const next = {...prev}
+      delete next[key]
+      return next
+    }), 5000)
+  }
 
   useEffect(() => {
     navigator.serviceWorker?.register('/sw.js').catch(()=>{})
@@ -534,7 +544,7 @@ export default function App(){
     {error && <div className="error">{error}</div>}
     {success && <div className="success">{success}</div>}
 
-    {tab === 'dashboard' && <Dashboard items={items} setTab={setTab} user={user} writeOffArticle={writeOffArticle} setEditArticle={setEditArticle}/>}
+    {tab === 'dashboard' && <Dashboard items={items} setTab={setTab} user={user} writeOffArticle={writeOffArticle} setEditArticle={setEditArticle} inlineMsg={inlineMsg}/>}
     {tab === 'artikel' && <ArticleList items={items} user={user} writeOffArticle={writeOffArticle} setEditArticle={setEditArticle}/>}
     {tab === 'erfassen' && <Erfassen form={form} setForm={setForm} setScannerOpen={setScannerOpen} lookupBarcode={lookupBarcode} uploadFormImg={uploadFormImg} addItem={addItem} user={user} inlineMsg={inlineMsg}/>}
     {tab === 'backwaren' && <Backwaren backwaren={backwaren} saveBackwarenList={saveBackwarenList} writeOff={writeOff} user={user}/>}
@@ -574,7 +584,7 @@ function Stat({label,value,onClick}){ return <button className="stat" onClick={o
 
 function Dashboard({items,setTab,user,writeOffArticle,setEditArticle}){
   return <section className="list">
-    <button className="primary" onClick={() => setTab('erfassen')}>+ Schnell erfassen</button>
+    <button className="primary" onClick={() => { setTab('erfassen'); window.scrollTo({top:0, behavior:'smooth'}) }}>+ Schnell erfassen</button>
     {items.slice(0,8).map(item => <Article key={item.id} item={item} user={user} writeOffArticle={writeOffArticle} setEditArticle={setEditArticle}/>)}
   </section>
 }
