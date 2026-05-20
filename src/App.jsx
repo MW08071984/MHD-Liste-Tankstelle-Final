@@ -77,23 +77,6 @@ async function openFoodFacts(barcode){
   }
 }
 
-
-async function downloadWriteoffsPdf(writeoffs){
-  const rows = (writeoffs||[]).map(w =>
-    `${w.artikelnummer || '-'} | ${w.name || w.artikel || 'Artikel'} | Menge ${w.menge || 1} | ${w.grund || 'Abschrift'} | ${w.mitarbeiter || '-'} | ${new Date(w.datum || w.created_at).toLocaleDateString('de-DE')}`
-  ).join('\n')
-
-  const text = `MHD Abschriften\n\nErstellt: ${new Date().toLocaleString('de-DE')}\n\n${rows}`
-
-  const blob = new Blob([text], { type:'application/pdf' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `abschriften_${new Date().toISOString().slice(0,10)}.pdf`
-  a.click()
-  URL.revokeObjectURL(url)
-}
-
 export default function App(){
   const [ready, setReady] = useState(false)
   const [user, setUser] = useState(null)
@@ -297,13 +280,8 @@ export default function App(){
   }
 
   async function writeOffArticle(item, amount){
-    const bestand = Number(item.menge || 0)
-    const qty = Math.min(Number(amount || 0), bestand)
+    const qty = Number(amount || 0)
     if(qty < 1) return setError('Bitte Menge größer als 0 eingeben.')
-    if(Number(amount || 0) > bestand) {
-      setError(`Du kannst maximal ${bestand} Stück abschreiben.`)
-      return
-    }
     const ok = await writeOff({ ...item, artikel_id:item.id, menge:qty, grund: daysUntil(item.mhd) < 0 ? 'Abgelaufen' : 'MHD Abschrift' })
     if(ok && db){
       const rest = Math.max(0, Number(item.menge || 0) - qty)
@@ -511,41 +489,28 @@ function ArticleList({items,user,writeOffArticle,setEditArticle}){
 }
 
 function Article({item,user,writeOffArticle,setEditArticle}){
-  const bestand = Number(item.menge || 0)
-  const [amount, setAmount] = useState(String(Math.min(Math.max(1, bestand), bestand || 1)))
+  const [amount, setAmount] = useState(String(item.menge || 1))
   const days = daysUntil(item.mhd)
-
-  function clamp(value){
-    const number = Number(value || 0)
-    if(number < 0) return 0
-    if(number > bestand) return bestand
-    return number
-  }
-
   function step(delta){
-    setAmount(String(clamp(Number(amount || 0) + delta)))
+    const next = Math.max(0, Number(amount || 0) + delta)
+    setAmount(String(next))
   }
-
-  function changeManual(value){
-    setAmount(String(clamp(value.replace(/\D/g,''))))
-  }
-
   return <div className="item articleItem">
     <div className="thumb">{item.bild_url ? <img src={item.bild_url}/> : '📦'}</div>
     <div className="grow">
       <b>{item.name || item.artikel}</b>
       <p>{item.artikelnummer ? `Art.-Nr. ${item.artikelnummer} · ` : ''}{item.kategorie || 'Sonstiges'}</p>
-      <p>MHD {item.mhd ? new Date(item.mhd).toLocaleDateString('de-DE') : '-'} · Bestand {bestand} Stk. · {days < 0 ? `${Math.abs(days)} Tage drüber` : `${days} Tage`}</p>
+      <p>MHD {item.mhd ? new Date(item.mhd).toLocaleDateString('de-DE') : '-'} · Bestand {item.menge || 1} Stk. · {days < 0 ? `${Math.abs(days)} Tage drüber` : `${days} Tage`}</p>
     </div>
     <div className="writeBox">
       <div className="stepper">
         <button onClick={() => step(-1)}>−</button>
-        <input className="qty" inputMode="numeric" min="0" max={bestand} value={amount} onChange={e => changeManual(e.target.value)}/>
-        <button disabled={Number(amount || 0) >= bestand} onClick={() => step(1)}>+</button>
+        <input className="qty" inputMode="numeric" value={amount} onChange={e => setAmount(e.target.value.replace(/\D/g,''))}/>
+        <button onClick={() => step(1)}>+</button>
       </div>
       <div className="actions">
         {isAdmin(user) && <button onClick={() => setEditArticle(item)}>Bearbeiten</button>}
-        <button disabled={bestand < 1 || Number(amount || 0) < 1} onClick={() => writeOffArticle(item, Number(amount || 0))}>Abschreiben</button>
+        <button onClick={() => writeOffArticle(item, Number(amount || 0))}>Abschreiben</button>
       </div>
     </div>
   </div>
@@ -631,7 +596,7 @@ function Backwaren({backwaren,saveBackwarenList,writeOff,user}){
 
 function Abschriften({writeoffs,user,setEditWriteoff,deleteWriteoff}){
   return <section className="list">
-    <div className="stickySubmit"><div><h2>Abschriften</h2><p>Chef/Stationsleitung können bearbeiten und PDF herunterladen.</p></div><button onClick={() => downloadWriteoffsPdf(writeoffs)}>PDF Download</button></div>
+    <h2>Abschriften</h2>
     {writeoffs.map(w => <div className="item" key={w.id}>
       <div className="artikelnummer small">{w.artikelnummer || 'MHD'}</div>
       <div className="grow"><b>{w.name || w.artikel}</b><p>{w.grund} · {w.menge} Stk. · {w.mitarbeiter} · {new Date(w.datum || w.created_at).toLocaleDateString('de-DE')}</p></div>
