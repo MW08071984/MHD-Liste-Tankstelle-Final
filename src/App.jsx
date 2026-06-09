@@ -942,7 +942,7 @@ function Article({item,user,writeOffArticle,markArticleCheckedZero,setEditArticl
       </div>
       <div className="actions">
         {isAdmin(user) && <button onClick={() => setEditArticle(item)}>Bearbeiten</button>}
-        <button disabled={bestand < 1 || Number(amount || 0) < 1 || Number(amount || 0) > bestand} onClick={() => writeOffArticle(item, Number(amount || 0))}>Abschreiben</button>
+        <button disabled={days > 0 || bestand < 1 || Number(amount || 0) < 1 || Number(amount || 0) > bestand} onClick={() => writeOffArticle(item, Number(amount || 0))}>Abschreiben</button>
         <button
           className="checkedZeroBtn"
           disabled={days > 0}
