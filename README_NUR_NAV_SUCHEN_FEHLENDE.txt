@@ -1,0 +1,1 @@
+Geändert: Menüpunkte Artikel und Bilder entfernt. Erfassen kann per Scan oder Artikelnummer/EAN suchen. Fehlende EANs werden für Chef/Stationsleitung unter 'Fehlende Artikel' gelistet. Artikelliste bleibt unverändert.

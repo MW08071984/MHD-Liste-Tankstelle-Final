@@ -227,6 +227,7 @@ export default function App(){
   const [employees, setEmployees] = useState([])
   const [items, setItems] = useState([])
   const [masterArticles, setMasterArticles] = useState([])
+  const [missingArticles, setMissingArticles] = useState([])
   const [writeoffs, setWriteoffs] = useState([])
   const [settings, setSettings] = useState({})
   const [online, setOnline] = useState([])
@@ -309,6 +310,9 @@ export default function App(){
       const { data: masterData } = await supabase.from('artikel_stammdaten').select('*').order('name')
       setMasterArticles(masterData || [])
 
+      const { data: missingData } = await supabase.from('fehlende_artikel').select('*').order('created_at', { ascending:false })
+      setMissingArticles(missingData || [])
+
       const { data: absData } = await supabase.from('abschriften').select('*').order('created_at', { ascending:false })
       setWriteoffs(absData || [])
 
@@ -370,6 +374,42 @@ export default function App(){
     setUser(null)
   }
 
+  async function reportMissingArticle(barcode, hinweis='Artikel nicht in Artikelliste gefunden'){
+    const clean = String(barcode || '').replace(/\D/g,'')
+    if(!clean) return
+
+    const payload = {
+      barcode: clean,
+      hinweis,
+      gemeldet_von: user?.name || '',
+      gemeldet_von_nummer: Number(user?.nummer || 0),
+      status: 'offen'
+    }
+
+    if(db){
+      const { data: existing } = await supabase.from('fehlende_artikel').select('*').eq('barcode', clean).eq('status','offen').maybeSingle()
+      if(existing){
+        setMissingArticles(prev => prev.some(x => x.id === existing.id) ? prev : [existing, ...prev])
+        return
+      }
+      const { data, error } = await supabase.from('fehlende_artikel').insert(payload).select().single()
+      if(!error && data) setMissingArticles(prev => [data, ...prev])
+    }else{
+      setMissingArticles(prev => prev.some(x => x.barcode === clean && x.status === 'offen') ? prev : [{...payload, id:clean, created_at:nowISO()}, ...prev])
+    }
+  }
+
+  async function markMissingDone(row){
+    if(!isAdmin(user)) return setError('Keine Rechte.')
+    if(db){
+      await supabase.from('fehlende_artikel').update({status:'erledigt', erledigt_am:nowISO(), erledigt_von:user.name}).eq('id', row.id)
+      await loadAll()
+    }else{
+      setMissingArticles(prev => prev.filter(x => x.id !== row.id))
+    }
+    setSuccess('Fehlender Artikel erledigt.')
+  }
+
   async function lookupBarcode(){
     setError('')
     if(!form.barcode){
@@ -409,7 +449,8 @@ export default function App(){
 
     const result = await openFoodFacts(form.barcode)
     if(!result){
-      msgAt('erfassen','warning','Kein Produkt im Internet gefunden. Chef/Stationsleitung kann es in der Artikelliste anlegen.')
+      await reportMissingArticle(form.barcode, 'EAN wurde beim Erfassen gescannt, aber nicht in der Artikelliste gefunden.')
+      msgAt('erfassen','warning','Artikel nicht in Artikelliste gefunden. Chef/Stationsleitung sieht ihn unter Fehlende Artikel.')
       return
     }
 
@@ -808,12 +849,11 @@ export default function App(){
 
   const tabs = [
     ['dashboard','Übersicht'],
-    ['artikel','Artikel'],
     ['erfassen','Erfassen'],
     ['backwaren','Backwaren'],
     ['abschriften','Abschriften'],
     ['kontrollen','Kontrollen'],
-    ...(isAdmin(user) ? [['stammdaten','Artikelliste'], ['bilder','Bilder']] : []),
+    ...(isAdmin(user) ? [['stammdaten','Artikelliste'], ['fehlende','Fehlende Artikel'],] : []),
     ['dienstplan','Dienstplan'],
     ...(isAdmin(user) ? [['online','Online'], ['verwaltung','Verwaltung'], ['settings','Einstellungen']] : [])
   ]
@@ -847,20 +887,18 @@ export default function App(){
     {success && <div className="success">{success}</div>}
 
     {tab === 'dashboard' && <Dashboard items={items} setTab={setTab} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} inlineMsg={inlineMsg}/>}
-    {tab === 'artikel' && <ArticleList items={filteredItems} allCount={items.length} articleFilter={articleFilter} setArticleFilter={setArticleFilter} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} inlineMsg={inlineMsg}/>}
     {tab === 'erfassen' && <Erfassen form={form} setForm={setForm} setScannerOpen={setScannerOpen} lookupBarcode={lookupBarcode} uploadFormImg={uploadFormImg} addItem={addItem} user={user} inlineMsg={inlineMsg} masterArticles={masterArticles}/>}
     {tab === 'backwaren' && <Backwaren backwaren={backwaren} saveBackwarenList={saveBackwarenList} writeOff={writeOff} user={user}/>}
     {tab === 'abschriften' && <Abschriften writeoffs={writeoffs.filter(w => w.typ !== 'kontrolle')} user={user} setEditWriteoff={setEditWriteoff} deleteWriteoff={deleteWriteoff} undoWriteoff={undoWriteoff}/>}
     {tab === 'kontrollen' && <Kontrollen controls={writeoffs.filter(w => w.typ === 'kontrolle')} user={user} deleteWriteoff={deleteWriteoff}/>}
-    {tab === 'stammdaten' && isAdmin(user) && <MasterArticles masterArticles={masterArticles} saveMasterArticle={saveMasterArticle} deleteMasterArticle={deleteMasterArticle} setMasterScannerOpen={setMasterScannerOpen}/>}
-    {tab === 'bilder' && isAdmin(user) && <Bilder items={items} reload={loadAll}/>}
+    {tab === 'fehlende' && isAdmin(user) && <MissingArticles missingArticles={missingArticles} markMissingDone={markMissingDone}/>}\n    {tab === 'stammdaten' && isAdmin(user) && <MasterArticles masterArticles={masterArticles} saveMasterArticle={saveMasterArticle} deleteMasterArticle={deleteMasterArticle} setMasterScannerOpen={setMasterScannerOpen}/>}
     {tab === 'dienstplan' && <Dienstplan settings={settings} saveSetting={saveSetting} user={user}/>}
     {tab === 'online' && isAdmin(user) && <Online online={online}/>}
     {tab === 'verwaltung' && isAdmin(user) && <Verwaltung employees={employees} saveEmployee={saveEmployee} deleteEmployee={deleteEmployee} resetPassword={resetPassword}/>}
     {tab === 'settings' && isAdmin(user) && <Settings enablePush={enablePush}/>}
 
     {masterScannerOpen && <Scanner onClose={() => setMasterScannerOpen(false)} onDetected={(code) => { localStorage.setItem('mhd_master_scanned_ean', code); window.dispatchEvent(new CustomEvent('mhd-master-scan', {detail:code})); setMasterScannerOpen(false) }}/>} 
-    {scannerOpen && <Scanner onClose={() => setScannerOpen(false)} onDetected={(code) => { setForm(f => ({...f, barcode:code, artikelnummer:f.artikelnummer || code})); msgAt('erfassen','success','✓ Barcode gescannt. Jetzt Auto-Suche drücken.'); setScannerOpen(false) }}/>}
+    {scannerOpen && <Scanner onClose={() => setScannerOpen(false)} onDetected={(code) => { setForm(f => ({...f, barcode:code, artikelnummer:f.artikelnummer || code})); msgAt('erfassen','success','✓ Barcode gescannt. Suche läuft...'); setScannerOpen(false); setTimeout(() => document.getElementById('autoSearchButton')?.click(), 250) }}/>}
     {editArticle && <ArticleModal item={editArticle} close={() => setEditArticle(null)} save={saveArticle}/>}
     {editWriteoff && <WriteoffModal item={editWriteoff} close={() => setEditWriteoff(null)} save={saveWriteoff}/>}
   </main>
@@ -973,7 +1011,10 @@ function Article({item,user,writeOffArticle,markArticleCheckedZero,setEditArticl
 }
 
 function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addItem,user,inlineMsg,masterArticles=[]}){
+  const [searchArticleNumber, setSearchArticleNumber] = useState('')
+  const [searchMsg, setSearchMsg] = useState(null)
   function applyMaster(barcode){
+
     const a = masterArticles.find(x => String(x.barcode || '') === String(barcode || ''))
     if(!a) return
     setForm(f => ({
@@ -988,10 +1029,32 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
     }))
   }
 
+  function findByArticleNumber(){
+    const term = String(searchArticleNumber || '').trim()
+    if(!term){
+      setSearchMsg({type:'error', text:'Bitte Artikelnummer eingeben.'})
+      return
+    }
+    const found = masterArticles.find(a => String(a.artikelnummer || '').trim() === term || String(a.barcode || '').trim() === term)
+    if(!found){
+      setSearchMsg({type:'warning', text:'Kein Artikel mit dieser Artikelnummer/EAN in der Artikelliste gefunden.'})
+      return
+    }
+    applyMaster(found.barcode)
+    setSearchMsg({type:'success', text:'✓ Artikel übernommen: ' + (found.name || found.barcode)})
+  }
+
   return <section className="formCard">
     <h2>Artikel erfassen</h2>
     <p className="hint">Mitarbeiter wählen/scannen den Artikel. Name, Artikelnummer, Kategorie und Bild kommen aus der Artikelliste. Danach nur MHD und Menge eingeben.</p>
     <button className="scannerButton" onClick={() => setScannerOpen(true)}>📷 Barcode scannen</button>
+
+    <label>Artikelnummer oder EAN suchen</label>
+    <div className="searchRow">
+      <input placeholder="Artikelnummer oder EAN" value={searchArticleNumber} onChange={e => setSearchArticleNumber(e.target.value)}/>
+      <button type="button" onClick={findByArticleNumber}>Suchen</button>
+    </div>
+    <InlineFeedback msg={searchMsg}/>
 
     <label>Artikel aus Artikelliste</label>
     <select value={form.barcode || ''} onChange={e => applyMaster(e.target.value)}>
@@ -1002,7 +1065,7 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
     <label>EAN / Barcode</label>
     <input placeholder="EAN / Barcode" value={form.barcode} onChange={e => setForm({...form, barcode:e.target.value.replace(/\D/g,''), artikelnummer:form.artikelnummer || e.target.value.replace(/\D/g,'')})}/>
 
-    <button onClick={lookupBarcode}>Auto-Suche / aus Artikelliste übernehmen</button>
+    <button id="autoSearchButton" onClick={lookupBarcode}>Auto-Suche / aus Artikelliste übernehmen</button>
 
     <label>Artikelnummer</label>
     <input placeholder="wird aus Artikelliste übernommen" value={form.artikelnummer} readOnly={!isAdmin(user)} onChange={e => setForm({...form, artikelnummer:e.target.value})}/>
@@ -1149,6 +1212,26 @@ function Kontrollen({controls,user,deleteWriteoff}){
   </section>
 }
 
+
+function MissingArticles({missingArticles,markMissingDone}){
+  const open = missingArticles.filter(x => x.status !== 'erledigt')
+  return <section className="formCard">
+    <h2>Fehlende Artikel</h2>
+    <p className="hint">Hier landen EANs, die Mitarbeiter gescannt haben, aber nicht in der Artikelliste vorhanden sind. Chef/Stationsleitung kann sie danach in der Artikelliste einpflegen.</p>
+    {open.length === 0 && <div className="empty">Keine fehlenden Artikel vorhanden.</div>}
+    {open.map(row => <div className="item" key={row.id || row.barcode}>
+      <div className="artikelnummer small">EAN</div>
+      <div className="grow">
+        <b>{row.barcode}</b>
+        <p>{row.hinweis || 'Nicht in Artikelliste gefunden'} · {row.gemeldet_von || '-'} · {row.created_at ? new Date(row.created_at).toLocaleDateString('de-DE') : ''}</p>
+      </div>
+      <div className="actions">
+        <button onClick={() => navigator.clipboard?.writeText(row.barcode)}>EAN kopieren</button>
+        <button onClick={() => markMissingDone(row)}>Erledigt</button>
+      </div>
+    </div>)}
+  </section>
+}
 
 function MasterArticles({masterArticles,saveMasterArticle,deleteMasterArticle,setMasterScannerOpen}){
   const empty = { barcode:'', artikelnummer:'', name:'', kategorie:'Sonstiges', bild_url:'' }
