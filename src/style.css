@@ -108,3 +108,11 @@
     linear-gradient(45deg,transparent 75%,#ddd 75%) 10px 10px/20px 20px,
     linear-gradient(45deg,#ddd 25%,#fff 25%) 10px 10px/20px 20px;
 }
+
+
+/* Bestand 0 / Kontrolliert */
+.checkedZeroBtn{
+  background:#fffdf0!important;
+  color:#7b1018!important;
+  border:3px solid #7b1018!important;
+}

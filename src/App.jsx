@@ -168,9 +168,9 @@ function exportAbschriftenPDF(abschriften = []){
     const rows = abschriften.map((item) => [
       item.artikelnummer || '',
       item.name || item.artikel || '',
-      String(item.menge || 0),
+      (item.typ === 'kontrolle' ? '0 / kontrolliert' : String(item.menge || 0)),
       item.mhd ? new Date(item.mhd).toLocaleDateString('de-DE') : '',
-      item.grund || '',
+      (item.typ === 'kontrolle' ? 'Kontrolliert – Bestand 0' : (item.grund || '')),
       item.mitarbeiter || '',
       item.datum ? new Date(item.datum).toLocaleDateString('de-DE') : (item.created_at ? new Date(item.created_at).toLocaleDateString('de-DE') : '')
     ])
@@ -501,6 +501,44 @@ export default function App(){
     }
   }
 
+  async function markArticleCheckedZero(item){
+    if(!confirm('Artikel als kontrolliert markieren und aus der Übersicht entfernen?')) return
+
+    const payload = {
+      artikel_id:item.id || null,
+      barcode:item.barcode || '',
+      artikelnummer:item.artikelnummer || '',
+      artikel:item.name || item.artikel || 'Artikel',
+      name:item.name || item.artikel || 'Artikel',
+      kategorie:item.kategorie || '',
+      mhd:item.mhd || todayISO(),
+      menge:0,
+      bild_url:item.bild_url || '',
+      grund:'Kontrolliert – Bestand 0',
+      datum:todayISO(),
+      mitarbeiter:user.name,
+      mitarbeiter_nummer:Number(user.nummer),
+      status:'kontrolliert',
+      typ:'kontrolle'
+    }
+
+    if(db){
+      const { error:insertError } = await supabase.from('abschriften').insert(payload)
+      if(insertError) return setError('Kontrolle konnte nicht gespeichert werden: ' + insertError.message)
+
+      if(item.id){
+        const { error:deleteError } = await supabase.from('mhd_artikel').delete().eq('id', item.id)
+        if(deleteError) return setError(deleteError.message)
+      }
+
+      await loadAll()
+    }else{
+      localItems(items.filter(x => x.id !== item.id))
+    }
+
+    setSuccess('Artikel kontrolliert: Bestand 0. Er wurde aus der Übersicht entfernt.')
+  }
+
   async function saveMasterArticle(data){
     if(!isAdmin(user)) return setError('Keine Rechte.')
     const payload = {
@@ -757,8 +795,8 @@ export default function App(){
     {error && <div className="error">{error}</div>}
     {success && <div className="success">{success}</div>}
 
-    {tab === 'dashboard' && <Dashboard items={items} setTab={setTab} user={user} writeOffArticle={writeOffArticle} setEditArticle={setEditArticle} inlineMsg={inlineMsg}/>}
-    {tab === 'artikel' && <ArticleList items={filteredItems} allCount={items.length} articleFilter={articleFilter} setArticleFilter={setArticleFilter} user={user} writeOffArticle={writeOffArticle} setEditArticle={setEditArticle} inlineMsg={inlineMsg}/>}
+    {tab === 'dashboard' && <Dashboard items={items} setTab={setTab} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} inlineMsg={inlineMsg}/>}
+    {tab === 'artikel' && <ArticleList items={filteredItems} allCount={items.length} articleFilter={articleFilter} setArticleFilter={setArticleFilter} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} inlineMsg={inlineMsg}/>}
     {tab === 'erfassen' && <Erfassen form={form} setForm={setForm} setScannerOpen={setScannerOpen} lookupBarcode={lookupBarcode} uploadFormImg={uploadFormImg} addItem={addItem} user={user} inlineMsg={inlineMsg} masterArticles={masterArticles}/>}
     {tab === 'backwaren' && <Backwaren backwaren={backwaren} saveBackwarenList={saveBackwarenList} writeOff={writeOff} user={user}/>}
     {tab === 'abschriften' && <Abschriften writeoffs={writeoffs} user={user} setEditWriteoff={setEditWriteoff} deleteWriteoff={deleteWriteoff} undoWriteoff={undoWriteoff}/>}
@@ -797,14 +835,14 @@ function Login({login,setLogin,error,doLogin}){
 
 function Stat({label,value,onClick,tone='normal'}){ return <button className={'stat '+tone} onClick={onClick}><span>{label}</span><b>{value}</b></button> }
 
-function Dashboard({items,setTab,user,writeOffArticle,setEditArticle}){
+function Dashboard({items,setTab,user,writeOffArticle,markArticleCheckedZero,setEditArticle}){
   return <section className="list">
     <button className="primary" onClick={() => { setTab('erfassen'); window.scrollTo({top:0, behavior:'smooth'}) }}>+ Schnell erfassen</button>
-    {items.slice(0,8).map(item => <Article key={item.id} item={item} user={user} writeOffArticle={writeOffArticle} setEditArticle={setEditArticle}/>)}
+    {items.slice(0,8).map(item => <Article key={item.id} item={item} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle}/>)}
   </section>
 }
 
-function ArticleList({items,allCount,articleFilter,setArticleFilter,user,writeOffArticle,setEditArticle,inlineMsg}){
+function ArticleList({items,allCount,articleFilter,setArticleFilter,user,writeOffArticle,markArticleCheckedZero,setEditArticle,inlineMsg}){
   const title = articleFilter === 'expired' ? 'Abgelaufene Artikel' : articleFilter === 'urgent' ? 'Bald ablaufende Artikel' : articleFilter === 'week' ? 'Artikel diese Woche' : 'Artikel'
   return <section className="list">
     <div className="sectionHeader">
@@ -815,11 +853,11 @@ function ArticleList({items,allCount,articleFilter,setArticleFilter,user,writeOf
       {articleFilter !== 'all' && <button className="ghostSmall" onClick={() => setArticleFilter('all')}>Alle anzeigen</button>}
     </div>
     {items.length === 0 && <div className="empty">Keine passenden Artikel vorhanden.</div>}
-    {items.map(item => <Article key={item.id} item={item} user={user} writeOffArticle={writeOffArticle} setEditArticle={setEditArticle} inlineMsg={inlineMsg}/>)}
+    {items.map(item => <Article key={item.id} item={item} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} inlineMsg={inlineMsg}/>)}
   </section>
 }
 
-function Article({item,user,writeOffArticle,setEditArticle}){
+function Article({item,user,writeOffArticle,markArticleCheckedZero,setEditArticle}){
   const bestand = Math.max(0, Number(item.menge || 0))
   const [amount, setAmount] = useState(String(bestand > 0 ? 1 : 0))
   const days = daysUntil(item.mhd)
@@ -869,6 +907,7 @@ function Article({item,user,writeOffArticle,setEditArticle}){
       <div className="actions">
         {isAdmin(user) && <button onClick={() => setEditArticle(item)}>Bearbeiten</button>}
         <button disabled={bestand < 1 || Number(amount || 0) < 1 || Number(amount || 0) > bestand} onClick={() => writeOffArticle(item, Number(amount || 0))}>Abschreiben</button>
+        <button className="checkedZeroBtn" onClick={() => markArticleCheckedZero(item)}>Bestand 0 / Kontrolliert</button>
       </div>
     </div>
   </div>
@@ -998,7 +1037,7 @@ function Abschriften({writeoffs,user,setEditWriteoff,deleteWriteoff,undoWriteoff
     {writeoffs.length === 0 && <div className="empty">Keine Abschriften vorhanden.</div>}
     {writeoffs.map(w => <div className="item" key={w.id}>
       <div className="artikelnummer small">{w.artikelnummer || 'MHD'}</div>
-      <div className="grow"><b>{w.name || w.artikel}</b><p>{w.grund} · {w.menge} Stk. · {w.mitarbeiter} · {new Date(w.datum || w.created_at).toLocaleDateString('de-DE')}</p></div>
+      <div className="grow"><b>{w.typ === 'kontrolle' ? '✅ Kontrolliert – ' : '❌ Abschrift – '}{w.name || w.artikel}</b><p>{w.typ === 'kontrolle' ? 'Bestand war 0 · keine Abschrift' : `${w.grund} · ${w.menge} Stk.`} · {w.mitarbeiter} · {new Date(w.datum || w.created_at).toLocaleDateString('de-DE')}</p></div>
       {isAdmin(user) && <div className="actions">
         <button onClick={() => setEditWriteoff(w)}>Bearbeiten</button>
         <button onClick={() => undoWriteoff(w)}>Rückgängig</button>

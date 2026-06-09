@@ -1,0 +1,1 @@
+Ergänzt: Artikel können mit 'Bestand 0 / Kontrolliert' aus der Übersicht entfernt werden. Es wird ein Kontroll-Eintrag in Abschriften gespeichert, aber als 'keine Abschrift' angezeigt.
