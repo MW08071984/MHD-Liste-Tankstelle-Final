@@ -1010,69 +1010,138 @@ function Article({item,user,writeOffArticle,markArticleCheckedZero,setEditArticl
 }
 
 function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addItem,user,inlineMsg,masterArticles=[]}){
-  const [searchArticleNumber, setSearchArticleNumber] = useState('')
+  const [searchTerm, setSearchTerm] = useState('')
   const [searchMsg, setSearchMsg] = useState(null)
-  function applyMaster(barcode){
-    const a = masterArticles.find(x => String(x.barcode || '') === String(barcode || ''))
-    if(!a) return
-    fillFromMaster(a)
+
+  function übernehmen(article){
+    if(!article) return false
+    setForm(f => ({
+      ...f,
+      barcode: article.barcode || '',
+      artikelnummer: article.artikelnummer || '',
+      name: article.name || '',
+      kategorie: article.kategorie || 'Sonstiges',
+      bild_url: article.bild_url || '',
+      mhd: f.mhd || todayISO(),
+      menge: f.menge || 1
+    }))
+    setSearchMsg({type:'success', text:'✓ Artikel gefunden: ' + (article.name || article.barcode)})
+    return true
   }
 
-  function findByArticleNumber(){
-    const term = String(searchArticleNumber || '').trim()
-    if(!term){
-      setSearchMsg({type:'error', text:'Bitte Artikelnummer eingeben.'})
-      return
-    }
-    const found = masterArticles.find(a => String(a.artikelnummer || '').trim() === term || String(a.barcode || '').trim() === term)
-    if(!found){
-      setSearchMsg({type:'warning', text:'Kein Artikel mit dieser Artikelnummer/EAN in der Artikelliste gefunden.'})
-      return
-    }
-    applyMaster(found.barcode)
-    setSearchMsg({type:'success', text:'✓ Artikel übernommen: ' + (found.name || found.barcode)})
+  function suche(value){
+    const term = String(value || '').trim()
+    if(!term) return false
+
+    const found = masterArticles.find(a =>
+      String(a.artikelnummer || '').trim() === term ||
+      String(a.barcode || '').trim() === term
+    )
+
+    if(found) return übernehmen(found)
+
+    setSearchMsg({type:'warning', text:'Artikel nicht in Artikelliste gefunden.'})
+    return false
   }
+
+  function handleSearch(value){
+    setSearchTerm(value)
+    const term = String(value || '').trim()
+    if(term.length >= 3) suche(term)
+  }
+
+  function handleBarcode(value){
+    const clean = String(value || '').replace(/\D/g,'')
+    setForm(f => ({...f, barcode:clean, artikelnummer:f.artikelnummer || clean}))
+    if(clean.length >= 8) suche(clean)
+  }
+
+  useEffect(() => {
+    function onScan(e){
+      const code = String(e.detail || '').replace(/\D/g,'')
+      if(code){
+        setSearchTerm(code)
+        setForm(f => ({...f, barcode:code, artikelnummer:f.artikelnummer || code}))
+        setTimeout(() => suche(code), 50)
+      }
+    }
+    window.addEventListener('mhd-scan-code', onScan)
+    return () => window.removeEventListener('mhd-scan-code', onScan)
+  }, [masterArticles])
 
   return <section className="formCard">
     <h2>Artikel erfassen</h2>
-    <p className="hint">Mitarbeiter wählen/scannen den Artikel. Name, Artikelnummer, Kategorie und Bild kommen aus der Artikelliste. Danach nur MHD und Menge eingeben.</p>
-    <button className="scannerButton" onClick={() => setScannerOpen(true)}>📷 Barcode scannen</button>
+
+    <button className="scannerButton" type="button" onClick={() => setScannerOpen(true)}>📷 Barcode scannen</button>
 
     <label>Artikelnummer oder EAN suchen</label>
-    <div className="searchRow">
-      <input placeholder="Artikelnummer oder EAN" value={searchArticleNumber} onChange={e => handleArticleSearchChange(e.target.value)} onKeyDown={e => { if(e.key === 'Enter'){ e.preventDefault(); findByArticleNumber() } }}/>
-      <button type="button" onClick={findByArticleNumber}>Suchen</button>
-    </div>
+    <input
+      className="realInput"
+      type="text"
+      inputMode="numeric"
+      autoComplete="off"
+      placeholder="Artikelnummer oder EAN"
+      value={searchTerm}
+      onChange={e => handleSearch(e.target.value)}
+      onKeyDown={e => { if(e.key === 'Enter'){ e.preventDefault(); suche(searchTerm) } }}
+    />
     <InlineFeedback msg={searchMsg}/>
 
     <label>Artikel aus Artikelliste</label>
-    <select value={form.barcode || ''} onChange={e => applyMaster(e.target.value)}>
+    <select
+      className="realInput"
+      value={form.barcode || ''}
+      onChange={e => {
+        const found = masterArticles.find(a => String(a.barcode || '') === String(e.target.value || ''))
+        übernehmen(found)
+      }}
+    >
       <option value="">Artikel auswählen...</option>
-      {masterArticles.map(a => <option key={a.id || a.barcode} value={a.barcode}>{a.name} · {a.artikelnummer || a.barcode}</option>)}
+      {masterArticles.map(a => <option key={a.id || a.barcode} value={a.barcode}>{a.name || a.barcode} · {a.artikelnummer || a.barcode}</option>)}
     </select>
 
     <label>EAN / Barcode</label>
-    <input placeholder="EAN / Barcode" value={form.barcode} onChange={e => setForm({...form, barcode:e.target.value.replace(/\D/g,''), artikelnummer:form.artikelnummer || e.target.value.replace(/\D/g,'')})}/>
-
-    <button id="autoSearchButton" onClick={lookupBarcode}>Auto-Suche / aus Artikelliste übernehmen</button>
+    <input
+      className="realInput"
+      type="text"
+      inputMode="numeric"
+      autoComplete="off"
+      placeholder="EAN / Barcode"
+      value={form.barcode || ''}
+      onChange={e => handleBarcode(e.target.value)}
+    />
 
     <label>Artikelnummer</label>
-    <input placeholder="wird aus Artikelliste übernommen" value={form.artikelnummer} readOnly={!isAdmin(user)} onChange={e => setForm({...form, artikelnummer:e.target.value})}/>
+    <input
+      className="realInput"
+      placeholder="wird aus Artikelliste übernommen"
+      value={form.artikelnummer || ''}
+      readOnly={!isAdmin(user)}
+      onChange={e => setForm({...form, artikelnummer:e.target.value})}
+    />
 
     <label>Artikelname</label>
-    <input placeholder="wird aus Artikelliste übernommen" value={form.name} readOnly={!isAdmin(user)} onChange={e => setForm({...form, name:e.target.value})}/>
+    <input
+      className="realInput"
+      placeholder="wird aus Artikelliste übernommen"
+      value={form.name || ''}
+      readOnly={!isAdmin(user)}
+      onChange={e => setForm({...form, name:e.target.value})}
+    />
 
-    
-    
+    {isAdmin(user) && <>
+      <label>Kategorie</label>
+      <select className="realInput" value={form.kategorie || 'Sonstiges'} onChange={e => setForm({...form, kategorie:e.target.value})}>{CATEGORIES.map(c => <option key={c}>{c}</option>)}</select>
+    </>}
 
     <label>MHD</label>
-    <input type="date" value={form.mhd} onChange={e => setForm({...form, mhd:e.target.value})}/>
+    <input className="realInput" type="date" value={form.mhd || todayISO()} onChange={e => setForm({...form, mhd:e.target.value})}/>
 
     <label>Menge / Bestand</label>
-    <input type="number" min="1" value={form.menge} onChange={e => setForm({...form, menge:e.target.value})}/>
+    <input className="realInput" type="number" min="1" value={form.menge || 1} onChange={e => setForm({...form, menge:e.target.value})}/>
 
     {isAdmin(user) && <label className="upload">Bild/Screenshot hochladen<input type="file" accept="image/*" onChange={uploadFormImg}/></label>}
-    {form.bild_url && <img className="preview" src={form.bild_url}/>}    
+    {form.bild_url && <img className="preview" src={form.bild_url}/>}
     <InlineFeedback msg={inlineMsg?.erfassen}/>
     <button className="primary" onClick={addItem}>Speichern</button>
   </section>

@@ -215,3 +215,34 @@
 @media(max-width:560px){
   .searchRow{grid-template-columns:1fr}
 }
+
+
+/* Erfassen Input Fix */
+.searchRow{
+  display:grid;
+  grid-template-columns:1fr auto;
+  gap:8px;
+  align-items:center;
+}
+.searchRow input{
+  min-width:0;
+}
+.searchRow button{
+  min-height:54px;
+}
+@media(max-width:560px){
+  .searchRow{grid-template-columns:1fr}
+}
+
+
+/* Real Input Fix */
+.realInput{
+  pointer-events:auto!important;
+  opacity:1!important;
+  user-select:text!important;
+}
+.formCard input.realInput:not([readonly]),
+.formCard select.realInput{
+  background:#fff!important;
+  color:#111!important;
+}

@@ -1,0 +1,1 @@
+Fix: Eingabefelder in Erfassen wieder editierbar, Artikelliste-Dropdown sichtbar, Suche per Artikelnummer/EAN funktioniert automatisch.

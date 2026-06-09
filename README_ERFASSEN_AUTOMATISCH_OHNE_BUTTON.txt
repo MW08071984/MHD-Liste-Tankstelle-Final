@@ -1,0 +1,1 @@
+Fix: Eingaben aktiv, Auto-Suche-Button entfernt, Suche läuft direkt bei Eingabe/Scan.
