@@ -116,3 +116,50 @@
   color:#7b1018!important;
   border:3px solid #7b1018!important;
 }
+
+
+/* Tageslisten Abschriften/Kontrollen */
+.todayStats{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+  margin:10px 0;
+}
+.todayStats button{
+  background:#fffdf0;
+  color:#7b1018;
+  border:3px solid #d71920;
+  min-height:60px;
+}
+.dayGroup{
+  border:3px solid #d71920;
+  border-radius:24px;
+  overflow:hidden;
+  background:#fffdf0;
+}
+.dayHeader{
+  width:100%;
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  align-items:center;
+  background:linear-gradient(90deg,#d71920,#8b1016);
+  color:#ffd900;
+  border-radius:0;
+}
+.dayHeader.control{
+  background:linear-gradient(90deg,#2f8f00,#1f5f00);
+  color:#fff;
+}
+.dayContent{
+  display:grid;
+  gap:10px;
+  padding:12px;
+}
+.kontrolleItem{
+  border-color:#2f8f00!important;
+}
+@media(max-width:560px){
+  .todayStats{grid-template-columns:1fr}
+  .dayHeader{flex-direction:column;align-items:flex-start}
+}

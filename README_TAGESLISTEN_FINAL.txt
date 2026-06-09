@@ -1,0 +1,1 @@
+Final ergänzt: Abschriften und Kontrollen sind getrennt, tagesweise gruppiert und PDF-Liste kann pro Datum gespeichert werden.

@@ -154,37 +154,59 @@ async function openFoodFacts(barcode){
 }
 
 
-function exportAbschriftenPDF(abschriften = []){
+
+function entryDateKey(item){
+  const raw = item.datum || item.created_at || todayISO()
+  return String(raw).slice(0,10)
+}
+
+function formatDateDE(dateKey){
+  try{ return new Date(dateKey + 'T00:00:00').toLocaleDateString('de-DE') }catch{ return dateKey }
+}
+
+function groupByDay(entries = []){
+  const grouped = {}
+  entries.forEach(item => {
+    const key = entryDateKey(item)
+    if(!grouped[key]) grouped[key] = []
+    grouped[key].push(item)
+  })
+  return Object.entries(grouped).sort((a,b) => b[0].localeCompare(a[0]))
+}
+
+function exportAbschriftenPDF(abschriften = [], title = 'MHD Liste', dateKey = ''){
   try{
     const doc = new jsPDF()
     const now = new Date().toLocaleDateString('de-DE')
 
     doc.setFontSize(18)
-    doc.text('MHD Abschriften', 14, 18)
+    doc.text(title, 14, 18)
 
     doc.setFontSize(10)
     doc.text('Erstellt am: ' + now, 14, 26)
+    if(dateKey) doc.text('Liste vom: ' + formatDateDE(dateKey), 14, 32)
 
     const rows = abschriften.map((item) => [
       item.artikelnummer || '',
       item.name || item.artikel || '',
-      (item.typ === 'kontrolle' ? '0 / kontrolliert' : String(item.menge || 0)),
+      item.typ === 'kontrolle' ? '0 / kontrolliert' : String(item.menge || 0),
       item.mhd ? new Date(item.mhd).toLocaleDateString('de-DE') : '',
-      (item.typ === 'kontrolle' ? 'Kontrolliert – Bestand 0' : (item.grund || '')),
+      item.typ === 'kontrolle' ? 'Kontrolliert – Bestand 0' : (item.grund || ''),
       item.mitarbeiter || '',
       item.datum ? new Date(item.datum).toLocaleDateString('de-DE') : (item.created_at ? new Date(item.created_at).toLocaleDateString('de-DE') : '')
     ])
 
     autoTable(doc, {
-      startY: 34,
-      head: [['Artikelnummer', 'Name', 'Menge', 'MHD', 'Grund', 'Mitarbeiter', 'Datum']],
+      startY: dateKey ? 40 : 34,
+      head: [['Artikelnummer', 'Name', 'Menge', 'MHD', 'Typ/Grund', 'Mitarbeiter', 'Datum']],
       body: rows,
       styles: { fontSize: 8, cellPadding: 2 },
       headStyles: { fillColor: [215, 25, 32], textColor: [255, 217, 0] },
       alternateRowStyles: { fillColor: [255, 248, 210] }
     })
 
-    doc.save('abschriften-liste.pdf')
+    const suffix = dateKey ? '-' + dateKey : ''
+    doc.save((title || 'mhd-liste').toLowerCase().replaceAll(' ', '-') + suffix + '.pdf')
   }catch(err){
     alert('PDF Fehler: ' + err.message)
     console.error(err)
@@ -728,7 +750,9 @@ export default function App(){
       totalText: items.length === 1 ? '1 Artikel gesamt' : `${items.length} Artikel gesamt`,
       expiredText: expiredItems.length === 1 ? '1 Artikel abgelaufen' : `${expiredItems.length} Artikel abgelaufen`,
       urgentText: urgentItems.length === 1 ? '1 Artikel in 1-3 Tagen' : `${urgentItems.length} Artikel in 1-3 Tagen`,
-      weekText: nextDue ? `${weekItems.length} Artikel · nächster in ${daysUntil(nextDue.mhd)} Tagen` : '0 Artikel'
+      weekText: nextDue ? `${weekItems.length} Artikel · nächster in ${daysUntil(nextDue.mhd)} Tagen` : '0 Artikel',
+      todayWriteoffs: writeoffs.filter(w => entryDateKey(w) === todayISO() && w.typ !== 'kontrolle').length,
+      todayControls: writeoffs.filter(w => entryDateKey(w) === todayISO() && w.typ === 'kontrolle').length
     }
   }, [items])
 
@@ -767,6 +791,7 @@ export default function App(){
     ['erfassen','Erfassen'],
     ['backwaren','Backwaren'],
     ['abschriften','Abschriften'],
+    ['kontrollen','Kontrollen'],
     ...(isAdmin(user) ? [['stammdaten','Artikelliste'], ['bilder','Bilder']] : []),
     ['dienstplan','Dienstplan'],
     ...(isAdmin(user) ? [['online','Online'], ['verwaltung','Verwaltung'], ['settings','Einstellungen']] : [])
@@ -788,6 +813,11 @@ export default function App(){
       <Stat label="Woche" value={stats.weekText} tone="week" onClick={() => openArticleFilter('week')}/>
     </section>
 
+    <section className="todayStats">
+      <button onClick={() => setTab('abschriften')}>Heute ❌ Abschriften: <b>{stats.todayWriteoffs || 0}</b></button>
+      <button onClick={() => setTab('kontrollen')}>Heute ✅ Kontrollen: <b>{stats.todayControls || 0}</b></button>
+    </section>
+
     <nav className="tabs">
       {tabs.map(([key,label]) => <button key={key} className={tab === key ? 'active' : ''} onClick={() => setTab(key)}>{label}</button>)}
     </nav>
@@ -799,7 +829,7 @@ export default function App(){
     {tab === 'artikel' && <ArticleList items={filteredItems} allCount={items.length} articleFilter={articleFilter} setArticleFilter={setArticleFilter} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} inlineMsg={inlineMsg}/>}
     {tab === 'erfassen' && <Erfassen form={form} setForm={setForm} setScannerOpen={setScannerOpen} lookupBarcode={lookupBarcode} uploadFormImg={uploadFormImg} addItem={addItem} user={user} inlineMsg={inlineMsg} masterArticles={masterArticles}/>}
     {tab === 'backwaren' && <Backwaren backwaren={backwaren} saveBackwarenList={saveBackwarenList} writeOff={writeOff} user={user}/>}
-    {tab === 'abschriften' && <Abschriften writeoffs={writeoffs} user={user} setEditWriteoff={setEditWriteoff} deleteWriteoff={deleteWriteoff} undoWriteoff={undoWriteoff}/>}
+    {tab === 'abschriften' && <Abschriften writeoffs={writeoffs.filter(w => w.typ !== 'kontrolle')} user={user} setEditWriteoff={setEditWriteoff} deleteWriteoff={deleteWriteoff} undoWriteoff={undoWriteoff}/>}\n    {tab === 'kontrollen' && <Kontrollen controls={writeoffs.filter(w => w.typ === 'kontrolle')} user={user} deleteWriteoff={deleteWriteoff}/>}
     {tab === 'stammdaten' && isAdmin(user) && <MasterArticles masterArticles={masterArticles} saveMasterArticle={saveMasterArticle} deleteMasterArticle={deleteMasterArticle} setMasterScannerOpen={setMasterScannerOpen}/>}
     {tab === 'bilder' && isAdmin(user) && <Bilder items={items} reload={loadAll}/>}
     {tab === 'dienstplan' && <Dienstplan settings={settings} saveSetting={saveSetting} user={user}/>}
@@ -1029,106 +1059,63 @@ function Backwaren({backwaren,saveBackwarenList,writeOff,user}){
 }
 
 function Abschriften({writeoffs,user,setEditWriteoff,deleteWriteoff,undoWriteoff}){
+  const groups = groupByDay(writeoffs)
+  const [openDay, setOpenDay] = useState(groups[0]?.[0] || '')
+
   return <section className="list">
     <div className="sectionHeader">
       <h2>Abschriften</h2>
-      <button className="pdfButton" onClick={() => exportAbschriftenPDF(writeoffs)}>PDF-Liste speichern</button>
     </div>
-    {writeoffs.length === 0 && <div className="empty">Keine Abschriften vorhanden.</div>}
-    {writeoffs.map(w => <div className="item" key={w.id}>
-      <div className="artikelnummer small">{w.artikelnummer || 'MHD'}</div>
-      <div className="grow"><b>{w.typ === 'kontrolle' ? '✅ Kontrolliert – ' : '❌ Abschrift – '}{w.name || w.artikel}</b><p>{w.typ === 'kontrolle' ? 'Bestand war 0 · keine Abschrift' : `${w.grund} · ${w.menge} Stk.`} · {w.mitarbeiter} · {new Date(w.datum || w.created_at).toLocaleDateString('de-DE')}</p></div>
-      {isAdmin(user) && <div className="actions">
-        <button onClick={() => setEditWriteoff(w)}>Bearbeiten</button>
-        <button onClick={() => undoWriteoff(w)}>Rückgängig</button>
-        <button onClick={() => deleteWriteoff(w)}>Löschen</button>
+    {groups.length === 0 && <div className="empty">Keine Abschriften vorhanden.</div>}
+
+    {groups.map(([day, entries]) => <div className="dayGroup" key={day}>
+      <button className="dayHeader" onClick={() => setOpenDay(openDay === day ? '' : day)}>
+        <span>📅 {formatDateDE(day)}</span>
+        <b>❌ {entries.length} Abschriften</b>
+      </button>
+
+      {openDay === day && <div className="dayContent">
+        <button className="pdfButton" onClick={() => exportAbschriftenPDF(entries, 'Abschriften', day)}>PDF-Liste speichern</button>
+        {entries.map(w => <div className="item" key={w.id}>
+          <div className="artikelnummer small">{w.artikelnummer || 'MHD'}</div>
+          <div className="grow"><b>❌ Abschrift – {w.name || w.artikel}</b><p>{w.grund} · {w.menge} Stk. · {w.mitarbeiter} · {new Date(w.datum || w.created_at).toLocaleDateString('de-DE')}</p></div>
+          {isAdmin(user) && <div className="actions">
+            <button onClick={() => setEditWriteoff(w)}>Bearbeiten</button>
+            <button onClick={() => undoWriteoff(w)}>Rückgängig</button>
+            <button onClick={() => deleteWriteoff(w)}>Löschen</button>
+          </div>}
+        </div>)}
       </div>}
     </div>)}
   </section>
 }
 
-function MasterArticles({masterArticles,saveMasterArticle,deleteMasterArticle,setMasterScannerOpen}){
-  const empty = { barcode:'', artikelnummer:'', name:'', kategorie:'Sonstiges', bild_url:'' }
-  const [data,setData] = useState(empty)
-  const [msg,setMsg] = useState(null)
+function Kontrollen({controls,user,deleteWriteoff}){
+  const groups = groupByDay(controls)
+  const [openDay, setOpenDay] = useState(groups[0]?.[0] || '')
 
-  useEffect(() => {
-    function handler(e){
-      const code = String(e.detail || localStorage.getItem('mhd_master_scanned_ean') || '').replace(/\D/g,'')
-      if(!code) return
-      setData(prev => ({...prev, barcode:code}))
-      setMsg({type:'success', text:'✓ EAN gescannt: ' + code})
-    }
-    window.addEventListener('mhd-master-scan', handler)
-    return () => window.removeEventListener('mhd-master-scan', handler)
-  }, [])
+  return <section className="list">
+    <div className="sectionHeader">
+      <h2>Kontrollen</h2>
+    </div>
+    {groups.length === 0 && <div className="empty">Keine Kontrollen vorhanden.</div>}
 
-  async function upload(e){
-    const file = e.target.files?.[0]
-    if(!file) return
-    setData({...data, bild_url:await fileToDataUrl(file)})
-    setMsg({type:'success', text:'✓ Bild übernommen. Speichern nicht vergessen.'})
-  }
+    {groups.map(([day, entries]) => <div className="dayGroup" key={day}>
+      <button className="dayHeader control" onClick={() => setOpenDay(openDay === day ? '' : day)}>
+        <span>📅 {formatDateDE(day)}</span>
+        <b>✅ {entries.length} Kontrollen</b>
+      </button>
 
-  async function removeBg(){
-    if(!data.bild_url){
-      setMsg({type:'warning', text:'Bitte erst ein Bild hochladen oder automatisch übernehmen.'})
-      return
-    }
-    try{
-      setMsg({type:'warning', text:'Bild wird freigestellt...'})
-      const cleaned = await removeImageBackground(data.bild_url)
-      setData({...data, bild_url:cleaned})
-      setMsg({type:'success', text:'✓ Hintergrund entfernt. Speichern nicht vergessen.'})
-    }catch(e){
-      setMsg({type:'error', text:'Freistellen nicht möglich. Bitte Foto vor hellem Hintergrund versuchen.'})
-    }
-  }
-
-  function edit(a){
-    setData({ id:a.id, barcode:a.barcode || '', artikelnummer:a.artikelnummer || '', name:a.name || '', kategorie:a.kategorie || 'Sonstiges', bild_url:a.bild_url || '' })
-    window.scrollTo({top:0, behavior:'smooth'})
-  }
-
-  async function save(){
-    await saveMasterArticle(data)
-    setData(empty)
-    setMsg({type:'success', text:'✓ Artikel gespeichert.'})
-  }
-
-  return <section className="formCard">
-    <h2>Artikelliste</h2>
-    <p className="hint">Chef/Stationsleitung pflegt hier feste Artikeldaten. Mitarbeiter müssen beim Erfassen danach nur MHD und Menge eingeben.</p>
-
-    <button className="scannerButton" type="button" onClick={() => setMasterScannerOpen(true)}>📷 EAN scannen</button>
-
-    <label>EAN / Barcode</label>
-    <input placeholder="EAN / Barcode" value={data.barcode} onChange={e => setData({...data, barcode:e.target.value.replace(/\D/g,'')})}/>
-
-    <label>Artikelnummer</label>
-    <input placeholder="Interne Artikelnummer" value={data.artikelnummer} onChange={e => setData({...data, artikelnummer:e.target.value})}/>
-
-    <label>Artikelname</label>
-    <input placeholder="Artikelname" value={data.name} onChange={e => setData({...data, name:e.target.value})}/>
-
-    <label>Kategorie</label>
-    <select value={data.kategorie} onChange={e => setData({...data, kategorie:e.target.value})}>{CATEGORIES.map(c => <option key={c}>{c}</option>)}</select>
-
-    <label>Bild</label>
-    <input placeholder="Bild URL oder Upload nutzen" value={data.bild_url} onChange={e => setData({...data, bild_url:e.target.value})}/>
-    <label className="upload">Bild hochladen<input type="file" accept="image/*" onChange={upload}/></label>
-    {data.bild_url && <button type="button" onClick={removeBg}>✂️ Bild freistellen</button>}
-    {data.bild_url && <img className="preview transparentPreview" src={data.bild_url}/>}    
-    <InlineFeedback msg={msg}/>
-    <button className="primary" onClick={save}>{data.id ? 'Änderung speichern' : 'Artikel anlegen'}</button>
-    {data.id && <button onClick={() => setData(empty)}>Neu anlegen</button>}
-
-    <h3>Gespeicherte Artikel</h3>
-    {masterArticles.length === 0 && <div className="empty">Noch keine Artikel in der Artikelliste.</div>}
-    {masterArticles.map(a => <div className="item" key={a.id || a.barcode}>
-      <div className="thumb">{a.bild_url ? <img src={a.bild_url}/> : '📦'}</div>
-      <div className="grow"><b>{a.name}</b><p>Art.-Nr. {a.artikelnummer || '-'} · EAN {a.barcode} · {a.kategorie || 'Sonstiges'}</p></div>
-      <div className="actions"><button onClick={() => edit(a)}>Bearbeiten</button><button onClick={() => deleteMasterArticle(a)}>Löschen</button></div>
+      {openDay === day && <div className="dayContent">
+        <button className="pdfButton" onClick={() => exportAbschriftenPDF(entries, 'Kontrollen', day)}>PDF-Liste speichern</button>
+        {entries.map(w => <div className="item kontrolleItem" key={w.id}>
+          <div className="artikelnummer small">OK</div>
+          <div className="grow"><b>✅ Kontrolliert – {w.name || w.artikel}</b><p>Bestand war 0 · keine Abschrift · {w.mitarbeiter} · {new Date(w.datum || w.created_at).toLocaleDateString('de-DE')}</p></div>
+          {isAdmin(user) && <div className="actions">
+            <button onClick={() => deleteWriteoff(w)}>Löschen</button>
+          </div>}
+        </div>)}
+      </div>}
     </div>)}
   </section>
 }
