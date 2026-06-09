@@ -138,15 +138,25 @@ function InlineFeedback({msg}){
 
 async function openFoodFacts(barcode){
   try{
-    const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${barcode}.json?fields=product_name,brands,image_front_url,image_url`)
-    const data = await res.json()
-    if(data.status !== 1) return null
-    const p = data.product || {}
-    return {
-      name: [p.brands, p.product_name].filter(Boolean).join(' · ') || p.product_name || barcode,
-      bild_url: p.image_front_url || p.image_url || ''
+    if(!barcode) return null
+    const urls = [
+      `https://world.openfoodfacts.org/api/v2/product/${barcode}.json?fields=product_name,brands,image_front_url,image_url`,
+      `https://de.openfoodfacts.org/api/v2/product/${barcode}.json?fields=product_name,brands,image_front_url,image_url`
+    ]
+
+    for(const url of urls){
+      const res = await fetch(url)
+      const data = await res.json()
+      if(data.status !== 1) continue
+      const p = data.product || {}
+      return {
+        name: [p.brands, p.product_name].filter(Boolean).join(' · ') || p.product_name || barcode,
+        bild_url: p.image_front_url || p.image_url || ''
+      }
     }
-  }catch{
+    return null
+  }catch(e){
+    console.warn('Produktsuche fehlgeschlagen', e)
     return null
   }
 }
@@ -1142,7 +1152,8 @@ function MasterArticles({masterArticles,saveMasterArticle,deleteMasterArticle,se
       const code = String(e.detail || localStorage.getItem('mhd_master_scanned_ean') || '').replace(/\D/g,'')
       if(!code) return
       setData(prev => ({...prev, barcode:code}))
-      setMsg({type:'success', text:'✓ EAN gescannt: ' + code})
+      setMsg({type:'success', text:'✓ EAN gescannt: ' + code + ' – Suche läuft...'})
+      lookupMasterArticle(code)
     }
     window.addEventListener('mhd-master-scan', handler)
     return () => window.removeEventListener('mhd-master-scan', handler)
@@ -1168,6 +1179,33 @@ function MasterArticles({masterArticles,saveMasterArticle,deleteMasterArticle,se
     }catch(e){
       setMsg({type:'error', text:'Freistellen nicht möglich. Bitte Foto vor hellem Hintergrund versuchen.'})
     }
+  }
+
+  async function lookupMasterArticle(code = data.barcode){
+    const ean = String(code || '').replace(/\D/g,'')
+    if(!ean){
+      setMsg({type:'error', text:'Bitte erst EAN scannen oder eingeben.'})
+      return
+    }
+
+    setMsg({type:'warning', text:'Suche Artikelname und Bild im Internet...'})
+    const result = await openFoodFacts(ean)
+
+    if(!result){
+      setData(prev => ({...prev, barcode:ean}))
+      setMsg({type:'warning', text:'Kein Produkt gefunden. Bitte Name und Bild manuell eintragen.'})
+      return
+    }
+
+    setData(prev => ({
+      ...prev,
+      barcode:ean,
+      artikelnummer: prev.artikelnummer || '',
+      name: result.name || prev.name,
+      bild_url: result.bild_url || prev.bild_url
+    }))
+
+    setMsg({type:'success', text: result.bild_url ? '✓ Artikelname und Bild gefunden.' : '✓ Artikelname gefunden, kein Bild vorhanden.'})
   }
 
   function edit(a){
@@ -1196,6 +1234,7 @@ function MasterArticles({masterArticles,saveMasterArticle,deleteMasterArticle,se
 
     <label>EAN / Barcode</label>
     <input placeholder="EAN / Barcode" value={data.barcode} onChange={e => setData({...data, barcode:e.target.value.replace(/\D/g,'')})}/>
+    <button type="button" onClick={() => lookupMasterArticle()}>🔎 Name/Bild suchen</button>
 
     <label>Artikelnummer</label>
     <input placeholder="Interne Artikelnummer" value={data.artikelnummer} onChange={e => setData({...data, artikelnummer:e.target.value})}/>

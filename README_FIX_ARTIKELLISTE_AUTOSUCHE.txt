@@ -1,0 +1,1 @@
+Fix: In der Artikelliste wird nach EAN-Scan automatisch OpenFoodFacts abgefragt. Zusätzlich gibt es den Button 'Name/Bild suchen'. Kategorie bleibt weg.
