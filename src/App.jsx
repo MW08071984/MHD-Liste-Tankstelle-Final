@@ -450,7 +450,7 @@ export default function App(){
     const result = await openFoodFacts(form.barcode)
     if(!result){
       await reportMissingArticle(form.barcode, 'EAN wurde beim Erfassen gescannt, aber nicht in der Artikelliste gefunden.')
-      msgAt('erfassen','warning','Artikel nicht in Artikelliste gefunden. Chef/Stationsleitung sieht ihn unter Fehlende Artikel.')
+      msgAt('erfassen','warning','Artikel nicht gefunden. Die EAN wurde automatisch an die Stationsleitung bzw. den Chef zur Prüfung und Anlage in der Artikelliste weitergeleitet. Chef/Stationsleitung sieht ihn unter Fehlende Artikel.')
       return
     }
 
@@ -890,7 +890,7 @@ export default function App(){
     {tab === 'backwaren' && <Backwaren backwaren={backwaren} saveBackwarenList={saveBackwarenList} writeOff={writeOff} user={user}/>}
     {tab === 'abschriften' && isAdmin(user) && <Abschriften writeoffs={writeoffs.filter(w => w.typ !== 'kontrolle')} user={user} setEditWriteoff={setEditWriteoff} deleteWriteoff={deleteWriteoff} undoWriteoff={undoWriteoff}/>}
     {tab === 'kontrollen' && isAdmin(user) && <Kontrollen controls={writeoffs.filter(w => w.typ === 'kontrolle')} user={user} deleteWriteoff={deleteWriteoff}/>}
-    {tab === 'fehlende' && isAdmin(user) && <MissingArticles missingArticles={missingArticles} markMissingDone={markMissingDone}/>}\n    {tab === 'stammdaten' && isAdmin(user) && <MasterArticles masterArticles={masterArticles} saveMasterArticle={saveMasterArticle} deleteMasterArticle={deleteMasterArticle} setMasterScannerOpen={setMasterScannerOpen}/>}
+    {tab === 'fehlende' && isAdmin(user) && <MissingArticles missingArticles={missingArticles} markMissingDone={markMissingDone}/>}    {tab === 'stammdaten' && isAdmin(user) && <MasterArticles masterArticles={masterArticles} saveMasterArticle={saveMasterArticle} deleteMasterArticle={deleteMasterArticle} setMasterScannerOpen={setMasterScannerOpen}/>}
     {tab === 'dienstplan' && <Dienstplan settings={settings} saveSetting={saveSetting} user={user}/>}
     {tab === 'online' && isAdmin(user) && <Online online={online}/>}
     {tab === 'verwaltung' && isAdmin(user) && <Verwaltung employees={employees} saveEmployee={saveEmployee} deleteEmployee={deleteEmployee} resetPassword={resetPassword}/>}
@@ -1040,7 +1040,7 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
 
     if(found) return übernehmen(found)
 
-    setSearchMsg({type:'warning', text:'Artikel nicht in Artikelliste gefunden.'})
+    setSearchMsg({type:'warning', text:'Artikel nicht gefunden. Die EAN wurde automatisch an die Stationsleitung bzw. den Chef zur Prüfung und Anlage in der Artikelliste weitergeleitet.'})
     return false
   }
 
@@ -1070,7 +1070,7 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
   }, [masterArticles])
 
   return <section className="formCard">
-    <h2>Artikel erfassen</h2>
+    <h2>Artikel erfassen</h2><p className='hint'>Wählen Sie einen Artikel aus der Artikelliste oder scannen Sie den Barcode. Anschließend MHD und Menge eingeben und auf „Speichern“ klicken. Der Eintrag wird automatisch in der Übersicht angezeigt.</p>
 
     <button className="scannerButton" type="button" onClick={() => setScannerOpen(true)}>📷 Barcode scannen</button>
 
