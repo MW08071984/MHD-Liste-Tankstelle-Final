@@ -1,0 +1,1 @@
+Ergänzt: Artikelliste prüft beim EAN-Scan, bei Name/Bild suchen und beim Speichern auf vorhandene EAN/Artikelnummer. Bei Treffer erscheint direkt eine Warnung und der vorhandene Artikel wird geöffnet.

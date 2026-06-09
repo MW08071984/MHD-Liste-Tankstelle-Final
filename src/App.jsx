@@ -587,6 +587,14 @@ export default function App(){
     if(!payload.barcode) return setError('EAN / Barcode fehlt.')
     if(!payload.name) return setError('Artikelname fehlt.')
 
+    const duplicate = masterArticles.find(a => {
+      if(data.id && a.id === data.id) return false
+      const sameEan = payload.barcode && String(a.barcode || '') === payload.barcode
+      const sameArtNr = payload.artikelnummer && String(a.artikelnummer || '').trim() === String(payload.artikelnummer).trim()
+      return sameEan || sameArtNr
+    })
+    if(duplicate) return setError('Artikel existiert bereits: ' + (duplicate.name || duplicate.barcode))
+
     if(db){
       const { error } = await supabase.from('artikel_stammdaten').upsert(payload, { onConflict:'barcode' })
       if(error) return setError(error.message)
@@ -1147,10 +1155,33 @@ function MasterArticles({masterArticles,saveMasterArticle,deleteMasterArticle,se
   const [data,setData] = useState(empty)
   const [msg,setMsg] = useState(null)
 
+  function findExistingMaster(ean = data.barcode, artNr = data.artikelnummer){
+    const cleanEan = String(ean || '').replace(/\D/g,'')
+    const cleanArtNr = String(artNr || '').trim()
+    return masterArticles.find(a => {
+      if(data.id && a.id === data.id) return false
+      const sameEan = cleanEan && String(a.barcode || '') === cleanEan
+      const sameArtNr = cleanArtNr && String(a.artikelnummer || '').trim() === cleanArtNr
+      return sameEan || sameArtNr
+    })
+  }
+
   useEffect(() => {
     function handler(e){
       const code = String(e.detail || localStorage.getItem('mhd_master_scanned_ean') || '').replace(/\D/g,'')
       if(!code) return
+      const existing = findExistingMaster(code, '')
+      if(existing){
+        setData({
+          id:existing.id,
+          barcode:existing.barcode || code,
+          artikelnummer:existing.artikelnummer || '',
+          name:existing.name || '',
+          bild_url:existing.bild_url || ''
+        })
+        setMsg({type:'warning', text:'⚠ Artikel existiert bereits: ' + (existing.name || existing.barcode)})
+        return
+      }
       setData(prev => ({...prev, barcode:code}))
       setMsg({type:'success', text:'✓ EAN gescannt: ' + code + ' – Suche läuft...'})
       lookupMasterArticle(code)
@@ -1188,6 +1219,19 @@ function MasterArticles({masterArticles,saveMasterArticle,deleteMasterArticle,se
       return
     }
 
+    const existing = findExistingMaster(ean, data.artikelnummer)
+    if(existing){
+      setData({
+        id:existing.id,
+        barcode:existing.barcode || ean,
+        artikelnummer:existing.artikelnummer || '',
+        name:existing.name || '',
+        bild_url:existing.bild_url || ''
+      })
+      setMsg({type:'warning', text:'⚠ Artikel existiert bereits: ' + (existing.name || existing.barcode)})
+      return
+    }
+
     setMsg({type:'warning', text:'Suche Artikelname und Bild im Internet...'})
     const result = await openFoodFacts(ean)
 
@@ -1221,6 +1265,18 @@ function MasterArticles({masterArticles,saveMasterArticle,deleteMasterArticle,se
   }
 
   async function save(){
+    const existing = findExistingMaster(data.barcode, data.artikelnummer)
+    if(existing){
+      setMsg({type:'warning', text:'⚠ Artikel existiert bereits: ' + (existing.name || existing.barcode) + '. Zum Ändern wurde er geöffnet.'})
+      setData({
+        id:existing.id,
+        barcode:existing.barcode || '',
+        artikelnummer:existing.artikelnummer || '',
+        name:existing.name || '',
+        bild_url:existing.bild_url || ''
+      })
+      return
+    }
     await saveMasterArticle(data)
     setData(empty)
     setMsg({type:'success', text:'✓ Artikel gespeichert.'})
