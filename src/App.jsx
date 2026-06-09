@@ -208,6 +208,7 @@ export default function App(){
   const [login, setLogin] = useState({ nummer:'', passwort:'', remember:true })
   const [newPassword, setNewPassword] = useState('')
   const [scannerOpen, setScannerOpen] = useState(false)
+  const [masterScannerOpen, setMasterScannerOpen] = useState(false)
   const [editArticle, setEditArticle] = useState(null)
   const [editWriteoff, setEditWriteoff] = useState(null)
   const [inlineMsg, setInlineMsg] = useState({})
@@ -761,13 +762,14 @@ export default function App(){
     {tab === 'erfassen' && <Erfassen form={form} setForm={setForm} setScannerOpen={setScannerOpen} lookupBarcode={lookupBarcode} uploadFormImg={uploadFormImg} addItem={addItem} user={user} inlineMsg={inlineMsg} masterArticles={masterArticles}/>}
     {tab === 'backwaren' && <Backwaren backwaren={backwaren} saveBackwarenList={saveBackwarenList} writeOff={writeOff} user={user}/>}
     {tab === 'abschriften' && <Abschriften writeoffs={writeoffs} user={user} setEditWriteoff={setEditWriteoff} deleteWriteoff={deleteWriteoff} undoWriteoff={undoWriteoff}/>}
-    {tab === 'stammdaten' && isAdmin(user) && <MasterArticles masterArticles={masterArticles} saveMasterArticle={saveMasterArticle} deleteMasterArticle={deleteMasterArticle}/>}
+    {tab === 'stammdaten' && isAdmin(user) && <MasterArticles masterArticles={masterArticles} saveMasterArticle={saveMasterArticle} deleteMasterArticle={deleteMasterArticle} setMasterScannerOpen={setMasterScannerOpen}/>}
     {tab === 'bilder' && isAdmin(user) && <Bilder items={items} reload={loadAll}/>}
     {tab === 'dienstplan' && <Dienstplan settings={settings} saveSetting={saveSetting} user={user}/>}
     {tab === 'online' && isAdmin(user) && <Online online={online}/>}
     {tab === 'verwaltung' && isAdmin(user) && <Verwaltung employees={employees} saveEmployee={saveEmployee} deleteEmployee={deleteEmployee} resetPassword={resetPassword}/>}
     {tab === 'settings' && isAdmin(user) && <Settings enablePush={enablePush}/>}
 
+    {masterScannerOpen && <Scanner onClose={() => setMasterScannerOpen(false)} onDetected={(code) => { localStorage.setItem('mhd_master_scanned_ean', code); window.dispatchEvent(new CustomEvent('mhd-master-scan', {detail:code})); setMasterScannerOpen(false) }}/>} 
     {scannerOpen && <Scanner onClose={() => setScannerOpen(false)} onDetected={(code) => { setForm(f => ({...f, barcode:code, artikelnummer:f.artikelnummer || code})); msgAt('erfassen','success','✓ Barcode gescannt. Jetzt Auto-Suche drücken.'); setScannerOpen(false) }}/>}
     {editArticle && <ArticleModal item={editArticle} close={() => setEditArticle(null)} save={saveArticle}/>}
     {editWriteoff && <WriteoffModal item={editWriteoff} close={() => setEditWriteoff(null)} save={saveWriteoff}/>}
@@ -1006,10 +1008,21 @@ function Abschriften({writeoffs,user,setEditWriteoff,deleteWriteoff,undoWriteoff
   </section>
 }
 
-function MasterArticles({masterArticles,saveMasterArticle,deleteMasterArticle}){
+function MasterArticles({masterArticles,saveMasterArticle,deleteMasterArticle,setMasterScannerOpen}){
   const empty = { barcode:'', artikelnummer:'', name:'', kategorie:'Sonstiges', bild_url:'' }
   const [data,setData] = useState(empty)
   const [msg,setMsg] = useState(null)
+
+  useEffect(() => {
+    function handler(e){
+      const code = String(e.detail || localStorage.getItem('mhd_master_scanned_ean') || '').replace(/\D/g,'')
+      if(!code) return
+      setData(prev => ({...prev, barcode:code}))
+      setMsg({type:'success', text:'✓ EAN gescannt: ' + code})
+    }
+    window.addEventListener('mhd-master-scan', handler)
+    return () => window.removeEventListener('mhd-master-scan', handler)
+  }, [])
 
   async function upload(e){
     const file = e.target.files?.[0]
@@ -1047,6 +1060,8 @@ function MasterArticles({masterArticles,saveMasterArticle,deleteMasterArticle}){
   return <section className="formCard">
     <h2>Artikelliste</h2>
     <p className="hint">Chef/Stationsleitung pflegt hier feste Artikeldaten. Mitarbeiter müssen beim Erfassen danach nur MHD und Menge eingeben.</p>
+
+    <button className="scannerButton" type="button" onClick={() => setMasterScannerOpen(true)}>📷 EAN scannen</button>
 
     <label>EAN / Barcode</label>
     <input placeholder="EAN / Barcode" value={data.barcode} onChange={e => setData({...data, barcode:e.target.value.replace(/\D/g,'')})}/>

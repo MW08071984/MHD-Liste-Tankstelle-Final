@@ -1,0 +1,1 @@
+Ergänzt: In der Artikelliste gibt es jetzt den Button 'EAN scannen' für Chef/Stationsleitung.
