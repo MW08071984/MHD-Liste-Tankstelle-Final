@@ -1,0 +1,1 @@
+Final: Alte App bleibt erhalten, Artikelliste/Stammdaten ergänzt, Mitarbeiter erfassen nur MHD+Menge, Internet-Bilder werden übernommen, eigene Bilder können in der App freigestellt werden. Freistellen funktioniert am besten vor hellem/einfarbigem Hintergrund.

@@ -1,0 +1,1 @@
+Basis: letzte funktionierende Version. Ergänzt: Artikelliste für Chef/Stationsleitung. Mitarbeiter erfassen nur MHD und Menge. PDF Button heißt PDF-Liste speichern. Normale Vercel ENV bleibt erhalten.

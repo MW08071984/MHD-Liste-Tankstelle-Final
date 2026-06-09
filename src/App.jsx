@@ -62,6 +62,75 @@ function fileToDataUrl(file){
   })
 }
 
+function removeImageBackground(src){
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => {
+      try{
+        const maxSize = 900
+        const scale = Math.min(1, maxSize / Math.max(img.width, img.height))
+        const w = Math.max(1, Math.round(img.width * scale))
+        const h = Math.max(1, Math.round(img.height * scale))
+        const canvas = document.createElement('canvas')
+        canvas.width = w
+        canvas.height = h
+        const ctx = canvas.getContext('2d', { willReadFrequently:true })
+        ctx.drawImage(img, 0, 0, w, h)
+        const image = ctx.getImageData(0, 0, w, h)
+        const data = image.data
+
+        function get(x,y){
+          const i = (y*w+x)*4
+          return [data[i], data[i+1], data[i+2]]
+        }
+
+        const samples = [
+          get(0,0), get(w-1,0), get(0,h-1), get(w-1,h-1),
+          get(Math.floor(w/2),0), get(Math.floor(w/2),h-1),
+          get(0,Math.floor(h/2)), get(w-1,Math.floor(h/2))
+        ]
+        const bg = samples.reduce((a,c)=>[a[0]+c[0],a[1]+c[1],a[2]+c[2]],[0,0,0]).map(v=>v/samples.length)
+
+        const visited = new Uint8Array(w*h)
+        const q = []
+        function push(x,y){
+          if(x<0||y<0||x>=w||y>=h) return
+          const idx = y*w+x
+          if(visited[idx]) return
+          visited[idx] = 1
+          q.push([x,y])
+        }
+        for(let x=0;x<w;x++){ push(x,0); push(x,h-1) }
+        for(let y=0;y<h;y++){ push(0,y); push(w-1,y) }
+
+        function isBg(x,y){
+          const i = (y*w+x)*4
+          const dr=data[i]-bg[0], dg=data[i+1]-bg[1], db=data[i+2]-bg[2]
+          const dist = Math.sqrt(dr*dr+dg*dg+db*db)
+          const bright = (data[i]+data[i+1]+data[i+2])/3
+          return dist < 65 || (bright > 225 && dist < 95)
+        }
+
+        let head = 0
+        while(head < q.length){
+          const [x,y] = q[head++]
+          if(!isBg(x,y)) continue
+          const i = (y*w+x)*4
+          data[i+3] = 0
+          push(x+1,y); push(x-1,y); push(x,y+1); push(x,y-1)
+        }
+
+        ctx.putImageData(image, 0, 0)
+        resolve(canvas.toDataURL('image/png'))
+      }catch(err){ reject(err) }
+    }
+    img.onerror = reject
+    img.src = src
+  })
+}
+
+
 function InlineFeedback({msg}){
   if(!msg) return null
   return <div className={'inlineFeedback ' + msg.type}>{msg.text}</div>
@@ -115,7 +184,7 @@ function exportAbschriftenPDF(abschriften = []){
       alternateRowStyles: { fillColor: [255, 248, 210] }
     })
 
-    doc.save('mhd-abschriften.pdf')
+    doc.save('abschriften-liste.pdf')
   }catch(err){
     alert('PDF Fehler: ' + err.message)
     console.error(err)
@@ -127,6 +196,7 @@ export default function App(){
   const [user, setUser] = useState(null)
   const [employees, setEmployees] = useState([])
   const [items, setItems] = useState([])
+  const [masterArticles, setMasterArticles] = useState([])
   const [writeoffs, setWriteoffs] = useState([])
   const [settings, setSettings] = useState({})
   const [online, setOnline] = useState([])
@@ -205,6 +275,9 @@ export default function App(){
       const { data: itemData } = await supabase.from('mhd_artikel').select('*').order('mhd')
       setItems(itemData || [])
 
+      const { data: masterData } = await supabase.from('artikel_stammdaten').select('*').order('name')
+      setMasterArticles(masterData || [])
+
       const { data: absData } = await supabase.from('abschriften').select('*').order('created_at', { ascending:false })
       setWriteoffs(absData || [])
 
@@ -273,6 +346,20 @@ export default function App(){
       return
     }
 
+    const localMaster = masterArticles.find(a => String(a.barcode || '') === String(form.barcode || ''))
+    if(localMaster){
+      setForm(f => ({
+        ...f,
+        barcode: localMaster.barcode || f.barcode,
+        artikelnummer: localMaster.artikelnummer || f.artikelnummer || f.barcode,
+        name: localMaster.name || f.name,
+        kategorie: localMaster.kategorie || f.kategorie,
+        bild_url: localMaster.bild_url || f.bild_url
+      }))
+      msgAt('erfassen','success','✓ Artikel aus Artikelliste übernommen. Nur MHD und Menge eingeben.')
+      return
+    }
+
     if(db){
       const { data: master } = await supabase.from('artikel_stammdaten').select('*').eq('barcode', form.barcode).maybeSingle()
       if(master){
@@ -283,14 +370,15 @@ export default function App(){
           kategorie: master.kategorie || f.kategorie,
           bild_url: master.bild_url || f.bild_url
         }))
-        msgAt('erfassen','success','✓ Artikel aus Stammdaten übernommen.')
+        setMasterArticles(prev => prev.some(x => x.id === master.id) ? prev : [...prev, master])
+        msgAt('erfassen','success','✓ Artikel aus Artikelliste übernommen. Nur MHD und Menge eingeben.')
         return
       }
     }
 
     const result = await openFoodFacts(form.barcode)
     if(!result){
-      msgAt('erfassen','warning','Kein Produkt im Internet gefunden. Bitte manuell eintragen.')
+      msgAt('erfassen','warning','Kein Produkt im Internet gefunden. Chef/Stationsleitung kann es in der Artikelliste anlegen.')
       return
     }
 
@@ -313,9 +401,10 @@ export default function App(){
         bild_url: next.bild_url,
         updated_at: nowISO()
       }, { onConflict:'barcode' })
+      await loadAll()
     }
 
-    msgAt('erfassen','success', next.bild_url ? '✓ Produkt gefunden, Bild übernommen und Stammdaten gespeichert.' : '✓ Produkt gefunden und Stammdaten gespeichert.')
+    msgAt('erfassen','success', next.bild_url ? '✓ Produkt im Internet gefunden, Bild übernommen und Artikelliste gespeichert.' : '✓ Produkt im Internet gefunden und Artikelliste gespeichert.')
   }
 
   async function uploadFormImg(e){
@@ -409,6 +498,45 @@ export default function App(){
       else await supabase.from('mhd_artikel').update({ menge:rest }).eq('id', item.id)
       await loadAll()
     }
+  }
+
+  async function saveMasterArticle(data){
+    if(!isAdmin(user)) return setError('Keine Rechte.')
+    const payload = {
+      barcode:String(data.barcode || '').replace(/\D/g,''),
+      artikelnummer:data.artikelnummer || '',
+      name:data.name || data.artikel || '',
+      kategorie:data.kategorie || 'Sonstiges',
+      bild_url:data.bild_url || '',
+      updated_at:nowISO()
+    }
+    if(!payload.barcode) return setError('EAN / Barcode fehlt.')
+    if(!payload.name) return setError('Artikelname fehlt.')
+
+    if(db){
+      const { error } = await supabase.from('artikel_stammdaten').upsert(payload, { onConflict:'barcode' })
+      if(error) return setError(error.message)
+      await loadAll()
+    }else{
+      setMasterArticles(prev => {
+        const without = prev.filter(x => x.barcode !== payload.barcode)
+        return [...without, {...payload, id:payload.barcode}].sort((a,b) => String(a.name).localeCompare(String(b.name)))
+      })
+    }
+    setSuccess('Artikel in Artikelliste gespeichert.')
+  }
+
+  async function deleteMasterArticle(article){
+    if(!isAdmin(user)) return setError('Keine Rechte.')
+    if(!confirm('Artikel aus Artikelliste löschen? Bestehende MHD-Einträge bleiben erhalten.')) return
+    if(db){
+      const { error } = await supabase.from('artikel_stammdaten').delete().eq('id', article.id)
+      if(error) return setError(error.message)
+      await loadAll()
+    }else{
+      setMasterArticles(prev => prev.filter(x => x.id !== article.id))
+    }
+    setSuccess('Artikel aus Artikelliste gelöscht.')
   }
 
   async function saveArticle(data){
@@ -600,7 +728,7 @@ export default function App(){
     ['erfassen','Erfassen'],
     ['backwaren','Backwaren'],
     ['abschriften','Abschriften'],
-    ...(isAdmin(user) ? [['bilder','Bilder']] : []),
+    ...(isAdmin(user) ? [['stammdaten','Artikelliste'], ['bilder','Bilder']] : []),
     ['dienstplan','Dienstplan'],
     ...(isAdmin(user) ? [['online','Online'], ['verwaltung','Verwaltung'], ['settings','Einstellungen']] : [])
   ]
@@ -630,9 +758,10 @@ export default function App(){
 
     {tab === 'dashboard' && <Dashboard items={items} setTab={setTab} user={user} writeOffArticle={writeOffArticle} setEditArticle={setEditArticle} inlineMsg={inlineMsg}/>}
     {tab === 'artikel' && <ArticleList items={filteredItems} allCount={items.length} articleFilter={articleFilter} setArticleFilter={setArticleFilter} user={user} writeOffArticle={writeOffArticle} setEditArticle={setEditArticle} inlineMsg={inlineMsg}/>}
-    {tab === 'erfassen' && <Erfassen form={form} setForm={setForm} setScannerOpen={setScannerOpen} lookupBarcode={lookupBarcode} uploadFormImg={uploadFormImg} addItem={addItem} user={user} inlineMsg={inlineMsg}/>}
+    {tab === 'erfassen' && <Erfassen form={form} setForm={setForm} setScannerOpen={setScannerOpen} lookupBarcode={lookupBarcode} uploadFormImg={uploadFormImg} addItem={addItem} user={user} inlineMsg={inlineMsg} masterArticles={masterArticles}/>}
     {tab === 'backwaren' && <Backwaren backwaren={backwaren} saveBackwarenList={saveBackwarenList} writeOff={writeOff} user={user}/>}
     {tab === 'abschriften' && <Abschriften writeoffs={writeoffs} user={user} setEditWriteoff={setEditWriteoff} deleteWriteoff={deleteWriteoff} undoWriteoff={undoWriteoff}/>}
+    {tab === 'stammdaten' && isAdmin(user) && <MasterArticles masterArticles={masterArticles} saveMasterArticle={saveMasterArticle} deleteMasterArticle={deleteMasterArticle}/>}
     {tab === 'bilder' && isAdmin(user) && <Bilder items={items} reload={loadAll}/>}
     {tab === 'dienstplan' && <Dienstplan settings={settings} saveSetting={saveSetting} user={user}/>}
     {tab === 'online' && isAdmin(user) && <Online online={online}/>}
@@ -743,24 +872,46 @@ function Article({item,user,writeOffArticle,setEditArticle}){
   </div>
 }
 
-function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addItem,user,inlineMsg}){
+function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addItem,user,inlineMsg,masterArticles=[]}){
+  function applyMaster(barcode){
+    const a = masterArticles.find(x => String(x.barcode || '') === String(barcode || ''))
+    if(!a) return
+    setForm(f => ({
+      ...f,
+      barcode:a.barcode || f.barcode,
+      artikelnummer:a.artikelnummer || '',
+      name:a.name || '',
+      kategorie:a.kategorie || 'Sonstiges',
+      bild_url:a.bild_url || '',
+      mhd:f.mhd || todayISO(),
+      menge:f.menge || 1
+    }))
+  }
+
   return <section className="formCard">
     <h2>Artikel erfassen</h2>
+    <p className="hint">Mitarbeiter wählen/scannen den Artikel. Name, Artikelnummer, Kategorie und Bild kommen aus der Artikelliste. Danach nur MHD und Menge eingeben.</p>
     <button className="scannerButton" onClick={() => setScannerOpen(true)}>📷 Barcode scannen</button>
+
+    <label>Artikel aus Artikelliste</label>
+    <select value={form.barcode || ''} onChange={e => applyMaster(e.target.value)}>
+      <option value="">Artikel auswählen...</option>
+      {masterArticles.map(a => <option key={a.id || a.barcode} value={a.barcode}>{a.name} · {a.artikelnummer || a.barcode}</option>)}
+    </select>
 
     <label>EAN / Barcode</label>
     <input placeholder="EAN / Barcode" value={form.barcode} onChange={e => setForm({...form, barcode:e.target.value.replace(/\D/g,''), artikelnummer:form.artikelnummer || e.target.value.replace(/\D/g,'')})}/>
 
-    <button onClick={lookupBarcode}>Auto-Suche</button>
+    <button onClick={lookupBarcode}>Auto-Suche / aus Artikelliste übernehmen</button>
 
     <label>Artikelnummer</label>
-    <input placeholder="Interne Artikelnummer" value={form.artikelnummer} onChange={e => setForm({...form, artikelnummer:e.target.value})}/>
+    <input placeholder="wird aus Artikelliste übernommen" value={form.artikelnummer} readOnly={!isAdmin(user)} onChange={e => setForm({...form, artikelnummer:e.target.value})}/>
 
     <label>Artikelname</label>
-    <input placeholder="Artikelname" value={form.name} onChange={e => setForm({...form, name:e.target.value})}/>
+    <input placeholder="wird aus Artikelliste übernommen" value={form.name} readOnly={!isAdmin(user)} onChange={e => setForm({...form, name:e.target.value})}/>
 
     <label>Kategorie</label>
-    <select value={form.kategorie} onChange={e => setForm({...form, kategorie:e.target.value})}>{CATEGORIES.map(c => <option key={c}>{c}</option>)}</select>
+    <select value={form.kategorie} disabled={!isAdmin(user)} onChange={e => setForm({...form, kategorie:e.target.value})}>{CATEGORIES.map(c => <option key={c}>{c}</option>)}</select>
 
     <label>MHD</label>
     <input type="date" value={form.mhd} onChange={e => setForm({...form, mhd:e.target.value})}/>
@@ -769,7 +920,7 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
     <input type="number" min="1" value={form.menge} onChange={e => setForm({...form, menge:e.target.value})}/>
 
     {isAdmin(user) && <label className="upload">Bild/Screenshot hochladen<input type="file" accept="image/*" onChange={uploadFormImg}/></label>}
-    {form.bild_url && <img className="preview" src={form.bild_url}/>}
+    {form.bild_url && <img className="preview" src={form.bild_url}/>}    
     <InlineFeedback msg={inlineMsg?.erfassen}/>
     <button className="primary" onClick={addItem}>Speichern</button>
   </section>
@@ -840,7 +991,7 @@ function Abschriften({writeoffs,user,setEditWriteoff,deleteWriteoff,undoWriteoff
   return <section className="list">
     <div className="sectionHeader">
       <h2>Abschriften</h2>
-      <button className="pdfButton" onClick={() => exportAbschriftenPDF(writeoffs)}>PDF drucken</button>
+      <button className="pdfButton" onClick={() => exportAbschriftenPDF(writeoffs)}>PDF-Liste speichern</button>
     </div>
     {writeoffs.length === 0 && <div className="empty">Keine Abschriften vorhanden.</div>}
     {writeoffs.map(w => <div className="item" key={w.id}>
@@ -851,6 +1002,79 @@ function Abschriften({writeoffs,user,setEditWriteoff,deleteWriteoff,undoWriteoff
         <button onClick={() => undoWriteoff(w)}>Rückgängig</button>
         <button onClick={() => deleteWriteoff(w)}>Löschen</button>
       </div>}
+    </div>)}
+  </section>
+}
+
+function MasterArticles({masterArticles,saveMasterArticle,deleteMasterArticle}){
+  const empty = { barcode:'', artikelnummer:'', name:'', kategorie:'Sonstiges', bild_url:'' }
+  const [data,setData] = useState(empty)
+  const [msg,setMsg] = useState(null)
+
+  async function upload(e){
+    const file = e.target.files?.[0]
+    if(!file) return
+    setData({...data, bild_url:await fileToDataUrl(file)})
+    setMsg({type:'success', text:'✓ Bild übernommen. Speichern nicht vergessen.'})
+  }
+
+  async function removeBg(){
+    if(!data.bild_url){
+      setMsg({type:'warning', text:'Bitte erst ein Bild hochladen oder automatisch übernehmen.'})
+      return
+    }
+    try{
+      setMsg({type:'warning', text:'Bild wird freigestellt...'})
+      const cleaned = await removeImageBackground(data.bild_url)
+      setData({...data, bild_url:cleaned})
+      setMsg({type:'success', text:'✓ Hintergrund entfernt. Speichern nicht vergessen.'})
+    }catch(e){
+      setMsg({type:'error', text:'Freistellen nicht möglich. Bitte Foto vor hellem Hintergrund versuchen.'})
+    }
+  }
+
+  function edit(a){
+    setData({ id:a.id, barcode:a.barcode || '', artikelnummer:a.artikelnummer || '', name:a.name || '', kategorie:a.kategorie || 'Sonstiges', bild_url:a.bild_url || '' })
+    window.scrollTo({top:0, behavior:'smooth'})
+  }
+
+  async function save(){
+    await saveMasterArticle(data)
+    setData(empty)
+    setMsg({type:'success', text:'✓ Artikel gespeichert.'})
+  }
+
+  return <section className="formCard">
+    <h2>Artikelliste</h2>
+    <p className="hint">Chef/Stationsleitung pflegt hier feste Artikeldaten. Mitarbeiter müssen beim Erfassen danach nur MHD und Menge eingeben.</p>
+
+    <label>EAN / Barcode</label>
+    <input placeholder="EAN / Barcode" value={data.barcode} onChange={e => setData({...data, barcode:e.target.value.replace(/\D/g,'')})}/>
+
+    <label>Artikelnummer</label>
+    <input placeholder="Interne Artikelnummer" value={data.artikelnummer} onChange={e => setData({...data, artikelnummer:e.target.value})}/>
+
+    <label>Artikelname</label>
+    <input placeholder="Artikelname" value={data.name} onChange={e => setData({...data, name:e.target.value})}/>
+
+    <label>Kategorie</label>
+    <select value={data.kategorie} onChange={e => setData({...data, kategorie:e.target.value})}>{CATEGORIES.map(c => <option key={c}>{c}</option>)}</select>
+
+    <label>Bild</label>
+    <input placeholder="Bild URL oder Upload nutzen" value={data.bild_url} onChange={e => setData({...data, bild_url:e.target.value})}/>
+    <label className="upload">Bild hochladen<input type="file" accept="image/*" onChange={upload}/></label>
+    {data.bild_url && <button type="button" onClick={removeBg}>✂️ Bild freistellen</button>}
+    {data.bild_url && <img className="preview transparentPreview" src={data.bild_url}/>}    
+    <InlineFeedback msg={msg}/>
+    <button className="primary" onClick={save}>{data.id ? 'Änderung speichern' : 'Artikel anlegen'}</button>
+    {data.id && <button onClick={() => setData(empty)}>Neu anlegen</button>}
+
+    <h3>Gespeicherte Artikel</h3>
+    {masterArticles.length === 0 && <div className="empty">Noch keine Artikel in der Artikelliste.</div>}
+    {masterArticles.map(a => <div className="item" key={a.id || a.barcode}>
+      <div className="thumb">{a.bild_url ? <img src={a.bild_url}/> : '📦'}</div>
+      <div className="grow"><b>{a.name}</b><p>Art.-Nr. {a.artikelnummer || '-'} · EAN {a.barcode} · {a.kategorie || 'Sonstiges'}</p></div>
+      <div className="actions"><button onClick={() => edit(a)}>Bearbeiten</button><button onClick={() => deleteMasterArticle(a)}>Löschen</button></div>
     </div>)}
   </section>
 }
@@ -939,6 +1163,21 @@ function ArticleModal({item,close,save}){
     setLocalMsg({type:'success', text:'✓ Bild übernommen. Bitte Speichern drücken.'})
   }
 
+  async function removeArticleBg(){
+    if(!data.bild_url){
+      setLocalMsg({type:'warning', text:'Bitte erst ein Bild hochladen.'})
+      return
+    }
+    try{
+      setLocalMsg({type:'warning', text:'Bild wird freigestellt...'})
+      const cleaned = await removeImageBackground(data.bild_url)
+      setData({...data, bild_url:cleaned})
+      setLocalMsg({type:'success', text:'✓ Hintergrund entfernt. Bitte Speichern drücken.'})
+    }catch(e){
+      setLocalMsg({type:'error', text:'Freistellen nicht möglich. Bitte Foto vor hellem Hintergrund versuchen.'})
+    }
+  }
+
   function saveNow(){
     if(!data.name && !data.artikel){
       setLocalMsg({type:'error', text:'Artikelname fehlt.'})
@@ -973,7 +1212,8 @@ function ArticleModal({item,close,save}){
     <input placeholder="EAN / Barcode" value={data.barcode || ''} onChange={e => setData({...data, barcode:e.target.value.replace(/\D/g,'')})}/>
 
     <label className="upload">Bild hochladen<input type="file" accept="image/*" onChange={upload}/></label>
-    {data.bild_url && <img className="preview" src={data.bild_url}/>}
+    {data.bild_url && <button type="button" onClick={removeBg}>✂️ Bild freistellen</button>}
+    {data.bild_url && <img className="preview transparentPreview" src={data.bild_url}/>}
     <InlineFeedback msg={localMsg}/>
 
     <div className="modalActions"><button onClick={close}>Abbrechen</button><button onClick={saveNow}>Speichern</button></div>

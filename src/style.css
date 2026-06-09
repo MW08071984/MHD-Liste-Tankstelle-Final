@@ -92,3 +92,19 @@
 .urgentArticle b{color:#7a3b00!important}
 .filterInfo{margin:4px 0 0;font-weight:900;color:#7b1018}
 @media(max-width:560px){.stat{min-height:104px}.stat b{font-size:18px}}
+
+
+/* Masterartikel Final */
+.hint{background:#fff7d6;border:2px dashed #c22;border-radius:16px;padding:10px 12px;font-weight:900}
+.formCard input[readonly],.formCard select:disabled{opacity:.75;background:#f4f4f4}
+.formCard h3{margin-top:26px;font-size:28px}
+
+
+/* Freistellen Final */
+.transparentPreview{
+  background:
+    linear-gradient(45deg,#ddd 25%,transparent 25%) 0 0/20px 20px,
+    linear-gradient(45deg,transparent 75%,#ddd 75%) 0 0/20px 20px,
+    linear-gradient(45deg,transparent 75%,#ddd 75%) 10px 10px/20px 20px,
+    linear-gradient(45deg,#ddd 25%,#fff 25%) 10px 10px/20px 20px;
+}
