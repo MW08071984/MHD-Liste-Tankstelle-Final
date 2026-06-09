@@ -137,16 +137,14 @@ function InlineFeedback({msg}){
 }
 
 async function openFoodFacts(barcode){
-  if(!barcode) return null
   try{
-    const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${barcode}.json?fields=product_name,brands,image_front_url,categories`)
+    const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${barcode}.json?fields=product_name,brands,image_front_url,image_url`)
     const data = await res.json()
     if(data.status !== 1) return null
     const p = data.product || {}
     return {
       name: [p.brands, p.product_name].filter(Boolean).join(' · ') || p.product_name || barcode,
-      bild_url: p.image_front_url || '',
-      kategorie: 'Sonstiges'
+      bild_url: p.image_front_url || p.image_url || ''
     }
   }catch{
     return null
@@ -409,7 +407,7 @@ export default function App(){
       barcode: form.barcode,
       artikelnummer: form.artikelnummer || form.barcode,
       name: result.name || form.name,
-      kategorie: result.kategorie || form.kategorie,
+      
       bild_url: result.bild_url || form.bild_url
     }
 
@@ -994,8 +992,8 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
     <label>Artikelname</label>
     <input placeholder="wird aus Artikelliste übernommen" value={form.name} readOnly={!isAdmin(user)} onChange={e => setForm({...form, name:e.target.value})}/>
 
-    <label>Kategorie</label>
-    <select value={form.kategorie} disabled={!isAdmin(user)} onChange={e => setForm({...form, kategorie:e.target.value})}>{CATEGORIES.map(c => <option key={c}>{c}</option>)}</select>
+    
+    
 
     <label>MHD</label>
     <input type="date" value={form.mhd} onChange={e => setForm({...form, mhd:e.target.value})}/>
@@ -1205,8 +1203,8 @@ function MasterArticles({masterArticles,saveMasterArticle,deleteMasterArticle,se
     <label>Artikelname</label>
     <input placeholder="Artikelname" value={data.name} onChange={e => setData({...data, name:e.target.value})}/>
 
-    <label>Kategorie</label>
-    <select value={data.kategorie} onChange={e => setData({...data, kategorie:e.target.value})}>{CATEGORIES.map(c => <option key={c}>{c}</option>)}</select>
+    
+    
 
     <label>Bild</label>
     <input placeholder="Bild URL oder Upload nutzen" value={data.bild_url} onChange={e => setData({...data, bild_url:e.target.value})}/>
@@ -1350,8 +1348,8 @@ function ArticleModal({item,close,save}){
     <label>Artikelname</label>
     <input placeholder="Artikelname" value={data.name || data.artikel || ''} onChange={e => setData({...data, name:e.target.value})}/>
 
-    <label>Kategorie</label>
-    <select value={data.kategorie || 'Sonstiges'} onChange={e => setData({...data, kategorie:e.target.value})}>{CATEGORIES.map(c => <option key={c}>{c}</option>)}</select>
+    
+    
 
     <label>MHD</label>
     <input type="date" value={data.mhd || todayISO()} onChange={e => setData({...data, mhd:e.target.value})}/>
