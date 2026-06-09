@@ -1,0 +1,1 @@
+Geändert: 'Bestand 0 / Kontrolliert' ist erst ab erreichtem MHD-Datum aktiv. Vorher ausgegraut mit Hinweis.

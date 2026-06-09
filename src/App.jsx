@@ -524,6 +524,11 @@ export default function App(){
   }
 
   async function markArticleCheckedZero(item){
+    const d = daysUntil(item.mhd)
+    if(d > 0){
+      setError(`Kontrolle erst ab MHD-Datum möglich. Noch ${d} Tag(e).`)
+      return
+    }
     if(!confirm('Artikel als kontrolliert markieren und aus der Übersicht entfernen?')) return
 
     const payload = {
@@ -938,7 +943,14 @@ function Article({item,user,writeOffArticle,markArticleCheckedZero,setEditArticl
       <div className="actions">
         {isAdmin(user) && <button onClick={() => setEditArticle(item)}>Bearbeiten</button>}
         <button disabled={bestand < 1 || Number(amount || 0) < 1 || Number(amount || 0) > bestand} onClick={() => writeOffArticle(item, Number(amount || 0))}>Abschreiben</button>
-        <button className="checkedZeroBtn" onClick={() => markArticleCheckedZero(item)}>Bestand 0 / Kontrolliert</button>
+        <button
+          className="checkedZeroBtn"
+          disabled={days > 0}
+          title={days > 0 ? `Erst ab MHD-Datum möglich. Noch ${days} Tag(e).` : 'Artikel kontrolliert, Bestand 0'}
+          onClick={() => markArticleCheckedZero(item)}
+        >
+          Bestand 0 / Kontrolliert
+        </button>
       </div>
     </div>
   </div>

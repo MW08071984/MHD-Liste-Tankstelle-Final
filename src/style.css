@@ -167,3 +167,21 @@
 
 /* Masterarticles white fix */
 .hint{background:#fff7d6;border:2px dashed #c22;border-radius:16px;padding:10px 12px;font-weight:900}.formCard input[readonly],.formCard select:disabled{opacity:.75;background:#f4f4f4}.formCard h3{margin-top:26px;font-size:28px}
+
+
+/* Kontrolle erst ab MHD */
+.checkedZeroBtn:disabled{
+  opacity:.45!important;
+  filter:grayscale(1);
+  cursor:not-allowed;
+}
+.controlHint{
+  width:100%;
+  background:#fff3cd;
+  border:2px solid #ff9800;
+  color:#704000;
+  border-radius:14px;
+  padding:9px 11px;
+  font-weight:900;
+  font-size:14px;
+}
