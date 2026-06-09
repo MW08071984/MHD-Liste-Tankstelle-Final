@@ -163,3 +163,7 @@
   .todayStats{grid-template-columns:1fr}
   .dayHeader{flex-direction:column;align-items:flex-start}
 }
+
+
+/* Masterarticles white fix */
+.hint{background:#fff7d6;border:2px dashed #c22;border-radius:16px;padding:10px 12px;font-weight:900}.formCard input[readonly],.formCard select:disabled{opacity:.75;background:#f4f4f4}.formCard h3{margin-top:26px;font-size:28px}

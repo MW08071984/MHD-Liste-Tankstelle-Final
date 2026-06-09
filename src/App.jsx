@@ -829,7 +829,8 @@ export default function App(){
     {tab === 'artikel' && <ArticleList items={filteredItems} allCount={items.length} articleFilter={articleFilter} setArticleFilter={setArticleFilter} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} inlineMsg={inlineMsg}/>}
     {tab === 'erfassen' && <Erfassen form={form} setForm={setForm} setScannerOpen={setScannerOpen} lookupBarcode={lookupBarcode} uploadFormImg={uploadFormImg} addItem={addItem} user={user} inlineMsg={inlineMsg} masterArticles={masterArticles}/>}
     {tab === 'backwaren' && <Backwaren backwaren={backwaren} saveBackwarenList={saveBackwarenList} writeOff={writeOff} user={user}/>}
-    {tab === 'abschriften' && <Abschriften writeoffs={writeoffs.filter(w => w.typ !== 'kontrolle')} user={user} setEditWriteoff={setEditWriteoff} deleteWriteoff={deleteWriteoff} undoWriteoff={undoWriteoff}/>}\n    {tab === 'kontrollen' && <Kontrollen controls={writeoffs.filter(w => w.typ === 'kontrolle')} user={user} deleteWriteoff={deleteWriteoff}/>}
+    {tab === 'abschriften' && <Abschriften writeoffs={writeoffs.filter(w => w.typ !== 'kontrolle')} user={user} setEditWriteoff={setEditWriteoff} deleteWriteoff={deleteWriteoff} undoWriteoff={undoWriteoff}/>}
+    {tab === 'kontrollen' && <Kontrollen controls={writeoffs.filter(w => w.typ === 'kontrolle')} user={user} deleteWriteoff={deleteWriteoff}/>}
     {tab === 'stammdaten' && isAdmin(user) && <MasterArticles masterArticles={masterArticles} saveMasterArticle={saveMasterArticle} deleteMasterArticle={deleteMasterArticle} setMasterScannerOpen={setMasterScannerOpen}/>}
     {tab === 'bilder' && isAdmin(user) && <Bilder items={items} reload={loadAll}/>}
     {tab === 'dienstplan' && <Dienstplan settings={settings} saveSetting={saveSetting} user={user}/>}
@@ -1116,6 +1117,103 @@ function Kontrollen({controls,user,deleteWriteoff}){
           </div>}
         </div>)}
       </div>}
+    </div>)}
+  </section>
+}
+
+
+function MasterArticles({masterArticles,saveMasterArticle,deleteMasterArticle,setMasterScannerOpen}){
+  const empty = { barcode:'', artikelnummer:'', name:'', kategorie:'Sonstiges', bild_url:'' }
+  const [data,setData] = useState(empty)
+  const [msg,setMsg] = useState(null)
+
+  useEffect(() => {
+    function handler(e){
+      const code = String(e.detail || localStorage.getItem('mhd_master_scanned_ean') || '').replace(/\D/g,'')
+      if(!code) return
+      setData(prev => ({...prev, barcode:code}))
+      setMsg({type:'success', text:'✓ EAN gescannt: ' + code})
+    }
+    window.addEventListener('mhd-master-scan', handler)
+    return () => window.removeEventListener('mhd-master-scan', handler)
+  }, [])
+
+  async function upload(e){
+    const file = e.target.files?.[0]
+    if(!file) return
+    setData({...data, bild_url:await fileToDataUrl(file)})
+    setMsg({type:'success', text:'✓ Bild übernommen. Speichern nicht vergessen.'})
+  }
+
+  async function removeBg(){
+    if(!data.bild_url){
+      setMsg({type:'warning', text:'Bitte erst ein Bild hochladen oder automatisch übernehmen.'})
+      return
+    }
+    try{
+      setMsg({type:'warning', text:'Bild wird freigestellt...'})
+      const cleaned = await removeImageBackground(data.bild_url)
+      setData({...data, bild_url:cleaned})
+      setMsg({type:'success', text:'✓ Hintergrund entfernt. Speichern nicht vergessen.'})
+    }catch(e){
+      setMsg({type:'error', text:'Freistellen nicht möglich. Bitte Foto vor hellem Hintergrund versuchen.'})
+    }
+  }
+
+  function edit(a){
+    setData({
+      id:a.id,
+      barcode:a.barcode || '',
+      artikelnummer:a.artikelnummer || '',
+      name:a.name || '',
+      kategorie:a.kategorie || 'Sonstiges',
+      bild_url:a.bild_url || ''
+    })
+    window.scrollTo({top:0, behavior:'smooth'})
+  }
+
+  async function save(){
+    await saveMasterArticle(data)
+    setData(empty)
+    setMsg({type:'success', text:'✓ Artikel gespeichert.'})
+  }
+
+  return <section className="formCard">
+    <h2>Artikelliste</h2>
+    <p className="hint">Chef/Stationsleitung pflegt hier die festen Artikeldaten. Mitarbeiter müssen beim Erfassen danach nur MHD und Menge eingeben.</p>
+
+    <button className="scannerButton" type="button" onClick={() => setMasterScannerOpen(true)}>📷 EAN scannen</button>
+
+    <label>EAN / Barcode</label>
+    <input placeholder="EAN / Barcode" value={data.barcode} onChange={e => setData({...data, barcode:e.target.value.replace(/\D/g,'')})}/>
+
+    <label>Artikelnummer</label>
+    <input placeholder="Interne Artikelnummer" value={data.artikelnummer} onChange={e => setData({...data, artikelnummer:e.target.value})}/>
+
+    <label>Artikelname</label>
+    <input placeholder="Artikelname" value={data.name} onChange={e => setData({...data, name:e.target.value})}/>
+
+    <label>Kategorie</label>
+    <select value={data.kategorie} onChange={e => setData({...data, kategorie:e.target.value})}>{CATEGORIES.map(c => <option key={c}>{c}</option>)}</select>
+
+    <label>Bild</label>
+    <input placeholder="Bild URL oder Upload nutzen" value={data.bild_url} onChange={e => setData({...data, bild_url:e.target.value})}/>
+    <label className="upload">Bild hochladen<input type="file" accept="image/*" onChange={upload}/></label>
+    {data.bild_url && <button type="button" onClick={removeBg}>✂️ Bild freistellen</button>}
+    {data.bild_url && <img className="preview transparentPreview" src={data.bild_url}/>}    
+    <InlineFeedback msg={msg}/>
+    <button className="primary" onClick={save}>{data.id ? 'Änderung speichern' : 'Artikel anlegen'}</button>
+    {data.id && <button onClick={() => setData(empty)}>Neu anlegen</button>}
+
+    <h3>Gespeicherte Artikel</h3>
+    {masterArticles.length === 0 && <div className="empty">Noch keine Artikel in der Artikelliste.</div>}
+    {masterArticles.map(a => <div className="item" key={a.id || a.barcode}>
+      <div className="thumb">{a.bild_url ? <img src={a.bild_url}/> : '📦'}</div>
+      <div className="grow"><b>{a.name}</b><p>Art.-Nr. {a.artikelnummer || '-'} · EAN {a.barcode} · {a.kategorie || 'Sonstiges'}</p></div>
+      <div className="actions">
+        <button onClick={() => edit(a)}>Bearbeiten</button>
+        <button onClick={() => deleteMasterArticle(a)}>Löschen</button>
+      </div>
     </div>)}
   </section>
 }
