@@ -1,0 +1,1 @@
+Geändert: Mitarbeiter sehen Abschriften/Kontrollen nicht mehr. Beim Scannen startet automatisch die Suche. Bei Artikelnummer/EAN-Eingabe wird automatisch gesucht.

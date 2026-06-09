@@ -1,0 +1,1 @@
+Geändert: Mitarbeiter sehen Heute-Abschriften/Kontrollen nicht mehr und keine Menüpunkte Abschriften/Kontrollen. Chef/Stationsleitung sieht alles weiter. Artikelliste/Stammdaten werden nicht verändert.

@@ -200,3 +200,18 @@
 @media(max-width:560px){
   .searchRow{grid-template-columns:1fr}
 }
+
+
+/* Auto Suche Mitarbeiter */
+.searchRow{
+  display:grid;
+  grid-template-columns:1fr auto;
+  gap:8px;
+  align-items:center;
+}
+.searchRow button{
+  min-height:54px;
+}
+@media(max-width:560px){
+  .searchRow{grid-template-columns:1fr}
+}

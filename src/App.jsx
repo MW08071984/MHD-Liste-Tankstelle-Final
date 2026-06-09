@@ -851,8 +851,7 @@ export default function App(){
     ['dashboard','Übersicht'],
     ['erfassen','Erfassen'],
     ['backwaren','Backwaren'],
-    ['abschriften','Abschriften'],
-    ['kontrollen','Kontrollen'],
+    ...(isAdmin(user) ? [...(isAdmin(user) ? [['abschriften','Abschriften']] : []), ['kontrollen','Kontrollen']] : []),
     ...(isAdmin(user) ? [['stammdaten','Artikelliste'], ['fehlende','Fehlende Artikel'],] : []),
     ['dienstplan','Dienstplan'],
     ...(isAdmin(user) ? [['online','Online'], ['verwaltung','Verwaltung'], ['settings','Einstellungen']] : [])
@@ -874,10 +873,10 @@ export default function App(){
       <Stat label="Woche" value={stats.weekText} tone="week" onClick={() => openArticleFilter('week')}/>
     </section>
 
-    <section className="todayStats">
+    {isAdmin(user) && <section className="todayStats">
       <button onClick={() => setTab('abschriften')}>Heute ❌ Abschriften: <b>{stats.todayWriteoffs || 0}</b></button>
       <button onClick={() => setTab('kontrollen')}>Heute ✅ Kontrollen: <b>{stats.todayControls || 0}</b></button>
-    </section>
+    </section>}
 
     <nav className="tabs">
       {tabs.map(([key,label]) => <button key={key} className={tab === key ? 'active' : ''} onClick={() => setTab(key)}>{label}</button>)}
@@ -889,8 +888,8 @@ export default function App(){
     {tab === 'dashboard' && <Dashboard items={items} setTab={setTab} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} inlineMsg={inlineMsg}/>}
     {tab === 'erfassen' && <Erfassen form={form} setForm={setForm} setScannerOpen={setScannerOpen} lookupBarcode={lookupBarcode} uploadFormImg={uploadFormImg} addItem={addItem} user={user} inlineMsg={inlineMsg} masterArticles={masterArticles}/>}
     {tab === 'backwaren' && <Backwaren backwaren={backwaren} saveBackwarenList={saveBackwarenList} writeOff={writeOff} user={user}/>}
-    {tab === 'abschriften' && <Abschriften writeoffs={writeoffs.filter(w => w.typ !== 'kontrolle')} user={user} setEditWriteoff={setEditWriteoff} deleteWriteoff={deleteWriteoff} undoWriteoff={undoWriteoff}/>}
-    {tab === 'kontrollen' && <Kontrollen controls={writeoffs.filter(w => w.typ === 'kontrolle')} user={user} deleteWriteoff={deleteWriteoff}/>}
+    {tab === 'abschriften' && isAdmin(user) && <Abschriften writeoffs={writeoffs.filter(w => w.typ !== 'kontrolle')} user={user} setEditWriteoff={setEditWriteoff} deleteWriteoff={deleteWriteoff} undoWriteoff={undoWriteoff}/>}
+    {tab === 'kontrollen' && isAdmin(user) && <Kontrollen controls={writeoffs.filter(w => w.typ === 'kontrolle')} user={user} deleteWriteoff={deleteWriteoff}/>}
     {tab === 'fehlende' && isAdmin(user) && <MissingArticles missingArticles={missingArticles} markMissingDone={markMissingDone}/>}\n    {tab === 'stammdaten' && isAdmin(user) && <MasterArticles masterArticles={masterArticles} saveMasterArticle={saveMasterArticle} deleteMasterArticle={deleteMasterArticle} setMasterScannerOpen={setMasterScannerOpen}/>}
     {tab === 'dienstplan' && <Dienstplan settings={settings} saveSetting={saveSetting} user={user}/>}
     {tab === 'online' && isAdmin(user) && <Online online={online}/>}
@@ -1014,19 +1013,9 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
   const [searchArticleNumber, setSearchArticleNumber] = useState('')
   const [searchMsg, setSearchMsg] = useState(null)
   function applyMaster(barcode){
-
     const a = masterArticles.find(x => String(x.barcode || '') === String(barcode || ''))
     if(!a) return
-    setForm(f => ({
-      ...f,
-      barcode:a.barcode || f.barcode,
-      artikelnummer:a.artikelnummer || '',
-      name:a.name || '',
-      kategorie:a.kategorie || 'Sonstiges',
-      bild_url:a.bild_url || '',
-      mhd:f.mhd || todayISO(),
-      menge:f.menge || 1
-    }))
+    fillFromMaster(a)
   }
 
   function findByArticleNumber(){
@@ -1051,7 +1040,7 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
 
     <label>Artikelnummer oder EAN suchen</label>
     <div className="searchRow">
-      <input placeholder="Artikelnummer oder EAN" value={searchArticleNumber} onChange={e => setSearchArticleNumber(e.target.value)}/>
+      <input placeholder="Artikelnummer oder EAN" value={searchArticleNumber} onChange={e => handleArticleSearchChange(e.target.value)} onKeyDown={e => { if(e.key === 'Enter'){ e.preventDefault(); findByArticleNumber() } }}/>
       <button type="button" onClick={findByArticleNumber}>Suchen</button>
     </div>
     <InlineFeedback msg={searchMsg}/>
