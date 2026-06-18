@@ -1,13 +1,5 @@
-# MHD Kontrolle - Clean Final
+# MHD Kontrolle
 
-Diese Version ist neu aufgebaut und enthält sicher:
-- Bilder-Tab nur für Chef/Stationsleitung/Michael
-- Backwaren mit + / − Mengensteuerung
-- Backwaren hinzufügen/löschen durch Chef/Stationsleitung/Michael
-- Mitarbeiter hinzufügen/löschen
-- Passwort auf 0000 zurücksetzen
-- Artikel abschreiben mit Menge + / −
-- Barcode Scanner
-- Push Test
-- Dienstplan
-- Smartphone-optimierte Ansicht
+Saubere GitHub Upload-Version mit Bearbeiten-Fix, Bildsparfunktion, E-Mail-Dateien und Löschschutz.
+
+ZIP entpacken und den Inhalt hochladen, nicht die ZIP selbst.

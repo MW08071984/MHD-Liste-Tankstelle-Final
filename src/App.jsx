@@ -486,6 +486,28 @@ export default function App(){
     setForm(f => ({ ...f, bild_url:url }))
   }
 
+
+  function safeEditOverviewItem(item){
+    if(!item) return
+    try{
+      setForm({
+        id:item.id,
+        barcode:item.barcode || '',
+        artikelnummer:item.artikelnummer || '',
+        name:item.name || item.artikel || item.artikelname || '',
+        kategorie:item.kategorie || 'Sonstiges',
+        mhd:String(item.mhd || todayISO()).slice(0,10),
+        menge:item.menge || item.bestand || 1,
+        bild_url:item.bild_url || ''
+      })
+      setTab('erfassen')
+      setSuccess('Eintrag zum Bearbeiten geladen.')
+    }catch(e){
+      console.error(e)
+      setTab('erfassen')
+    }
+  }
+
   async function addItem(){
     setError('')
     if(!form.name || !form.mhd){
@@ -885,13 +907,12 @@ export default function App(){
     {error && <div className="error">{error}</div>}
     {success && <div className="success">{success}</div>}
 
-    {tab === 'dashboard' && <Dashboard items={items} setTab={setTab} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} inlineMsg={inlineMsg}/>}
+    {tab === 'dashboard' && <Dashboard safeEditOverviewItem={safeEditOverviewItem} items={items} setTab={setTab} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} inlineMsg={inlineMsg}/>}
     {tab === 'erfassen' && <Erfassen form={form} setForm={setForm} setScannerOpen={setScannerOpen} lookupBarcode={lookupBarcode} uploadFormImg={uploadFormImg} addItem={addItem} user={user} inlineMsg={inlineMsg} masterArticles={masterArticles}/>}
     {tab === 'backwaren' && <Backwaren backwaren={backwaren} saveBackwarenList={saveBackwarenList} writeOff={writeOff} user={user}/>}
     {tab === 'abschriften' && isAdmin(user) && <Abschriften writeoffs={writeoffs.filter(w => w.typ !== 'kontrolle')} user={user} setEditWriteoff={setEditWriteoff} deleteWriteoff={deleteWriteoff} undoWriteoff={undoWriteoff}/>}
     {tab === 'kontrollen' && isAdmin(user) && <Kontrollen controls={writeoffs.filter(w => w.typ === 'kontrolle')} user={user} deleteWriteoff={deleteWriteoff}/>}
-    {tab === 'fehlende' && isAdmin(user) && <MissingArticles missingArticles={missingArticles} markMissingDone={markMissingDone}/>}
-    {tab === 'stammdaten' && isAdmin(user) && <MasterArticles masterArticles={masterArticles} saveMasterArticle={saveMasterArticle} deleteMasterArticle={deleteMasterArticle} setMasterScannerOpen={setMasterScannerOpen}/>}
+    {tab === 'fehlende' && isAdmin(user) && <MissingArticles missingArticles={missingArticles} markMissingDone={markMissingDone}/>}\n    {tab === 'stammdaten' && isAdmin(user) && <MasterArticles masterArticles={masterArticles} saveMasterArticle={saveMasterArticle} deleteMasterArticle={deleteMasterArticle} deleteMasterArticle={deleteMasterArticle} setMasterScannerOpen={setMasterScannerOpen}/>}
     {tab === 'dienstplan' && <Dienstplan settings={settings} saveSetting={saveSetting} user={user}/>}
     {tab === 'online' && isAdmin(user) && <Online online={online}/>}
     {tab === 'verwaltung' && isAdmin(user) && <Verwaltung employees={employees} saveEmployee={saveEmployee} deleteEmployee={deleteEmployee} resetPassword={resetPassword}/>}
@@ -938,7 +959,7 @@ function LazyArticleImage({src, alt='Artikelbild'}){
   const [show,setShow] = useState(false)
   if(!src) return <div className="lazyImgPlaceholder">📦</div>
   if(!show) return <button type="button" className="lazyImgButton" onClick={() => setShow(true)}>Bild anzeigen</button>
-  return <img className="thumb" src={src} alt={alt} loading="lazy" decoding="async"/>
+  return <LazyArticleImage src={src}/>
 }
 
 function Login({login,setLogin,error,doLogin}){
@@ -962,14 +983,14 @@ function Login({login,setLogin,error,doLogin}){
 
 function Stat({label,value,onClick,tone='normal'}){ return <button className={'stat '+tone} onClick={onClick}><span>{label}</span><b>{value}</b></button> }
 
-function Dashboard({items,setTab,user,writeOffArticle,markArticleCheckedZero,setEditArticle}){
+function Dashboard({items,setTab,user,writeOffArticle,markArticleCheckedZero,setEditArticle,safeEditOverviewItem}){
   return <section className="list">
     <button className="primary" onClick={() => { setTab('erfassen'); window.scrollTo({top:0, behavior:'smooth'}) }}>+ Schnell erfassen</button>
     {items.slice(0,8).map(item => <Article key={item.id} item={item} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle}/>)}
   </section>
 }
 
-function ArticleList({items,allCount,articleFilter,setArticleFilter,user,writeOffArticle,markArticleCheckedZero,setEditArticle,inlineMsg}){
+function ArticleList({items,allCount,articleFilter,setArticleFilter,user,writeOffArticle,markArticleCheckedZero,setEditArticle,inlineMsg,safeEditOverviewItem}){
   const title = articleFilter === 'expired' ? 'Abgelaufene Artikel' : articleFilter === 'urgent' ? 'Bald ablaufende Artikel' : articleFilter === 'week' ? 'Artikel diese Woche' : 'Artikel'
   return <section className="list">
     <div className="sectionHeader">
@@ -1011,7 +1032,7 @@ function Article({item,user,writeOffArticle,markArticleCheckedZero,setEditArticl
 
   const stateClass = days < 0 ? 'expiredArticle' : (days >= 0 && days <= 3 ? 'urgentArticle' : '')
   return <div className={'item articleItem ' + stateClass}>
-    <LazyArticleImage src={item.bild_url}/>
+    <div className="thumb">{item.bild_url ? <img src={item.bild_url}/> : '📦'}</div>
     <div className="grow">
       <b>{item.name || item.artikel}</b>
       <p>{item.artikelnummer ? `Art.-Nr. ${item.artikelnummer} · ` : ''}{item.kategorie || 'Sonstiges'}</p>
@@ -1498,7 +1519,7 @@ function MasterArticles({masterArticles,saveMasterArticle,deleteMasterArticle,de
     <h3>Gespeicherte Artikel</h3>
     {masterArticles.length === 0 && <div className="empty">Noch keine Artikel in der Artikelliste.</div>}
     {masterArticles.map(a => <div className="item" key={a.id || a.barcode}>
-      <LazyArticleImage src={a.bild_url}/>
+      <div className="thumb">{a.bild_url ? <img src={a.bild_url}/> : '📦'}</div>
       <div className="grow"><b>{a.name}</b><p>Art.-Nr. {a.artikelnummer || '-'} · EAN {a.barcode} · {a.kategorie || 'Sonstiges'}</p></div>
       <div className="actions">
         <button onClick={() => edit(a)}>Bearbeiten</button>
@@ -1641,7 +1662,7 @@ function ArticleModal({item,close,save}){
     <input placeholder="EAN / Barcode" value={data.barcode || ''} onChange={e => setData({...data, barcode:e.target.value.replace(/\D/g,'')})}/>
 
     <label className="upload">Bild hochladen<input type="file" accept="image/*" onChange={upload}/></label>
-    {data.bild_url && <button type="button" onClick={removeArticleBg}>✂️ Bild freistellen</button>}
+    {data.bild_url && <button type="button" onClick={removeBg}>✂️ Bild freistellen</button>}
     {data.bild_url && <img className="preview transparentPreview" src={data.bild_url}/>}
     <InlineFeedback msg={localMsg}/>
 
