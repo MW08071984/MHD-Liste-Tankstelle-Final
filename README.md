@@ -1,3 +1,5 @@
 # MHD Kontrolle
 
-Build-Fix: doppeltes async entfernt. ZIP entpacken und Inhalt hochladen.
+Build-Fix 2: doppeltes async und doppelter deleteMasterArticle-Parameter entfernt.
+
+ZIP entpacken und Inhalt hochladen.
