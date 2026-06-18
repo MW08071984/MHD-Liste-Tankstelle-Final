@@ -479,7 +479,7 @@ export default function App(){
     msgAt('erfassen','success', next.bild_url ? '✓ Produkt im Internet gefunden, Bild übernommen und Artikelliste gespeichert.' : '✓ Produkt im Internet gefunden und Artikelliste gespeichert.')
   }
 
-  async async function uploadFormImg(e){
+  async function uploadFormImg(e){
     const file = await compressImageFile(e.target.files?.[0])
     if(!file) return
     const url = await fileToDataUrl(file)
