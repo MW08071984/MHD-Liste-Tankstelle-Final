@@ -1,65 +1,178 @@
-// Supabase Edge Function: daily-mhd-report
-// Sends daily report at 07:00 via Supabase Cron + Resend.
-// Required secret: RESEND_API_KEY
-// Recipient: shell5682@gmx.de
+// daily-mhd-report
+// Supabase Edge Function für MHD Kontrolle
+// Benötigte Secrets:
+// RESEND_API_KEY = re_...
+// REPORT_TO_EMAIL = shell5682@gmx.de
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
-const TO_EMAIL = "shell5682@gmx.de";
-const FROM_EMAIL = Deno.env.get("REPORT_FROM_EMAIL") || "MHD Kontrolle <onboarding@resend.dev>";
+const REPORT_TO_EMAIL = Deno.env.get("REPORT_TO_EMAIL") || "shell5682@gmx.de";
+const REPORT_FROM_EMAIL = Deno.env.get("REPORT_FROM_EMAIL") || "MHD Kontrolle <onboarding@resend.dev>";
 
-function dateKey(offsetDays = -1) {
+function todayKey() {
   const d = new Date();
-  d.setDate(d.getDate() + offsetDays);
-  return d.toISOString().slice(0, 10);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
-function deDate(s) {
-  try { return new Date(s + "T00:00:00").toLocaleDateString("de-DE"); } catch { return s; }
+function addDays(dateKey, days) {
+  const d = new Date(dateKey + "T00:00:00");
+  d.setDate(d.getDate() + days);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
-Deno.serve(async () => {
+function deDate(dateKey) {
   try {
-    if (!RESEND_API_KEY) return new Response("RESEND_API_KEY fehlt", { status: 500 });
+    return new Date(dateKey + "T00:00:00").toLocaleDateString("de-DE");
+  } catch {
+    return dateKey;
+  }
+}
 
-    const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
-    const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    if (!SUPABASE_URL || !SERVICE_ROLE) return new Response("Supabase Secrets fehlen", { status: 500 });
+async function supabaseFetch(path) {
+  const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+  const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
-    const day = dateKey(-1);
-    const url = `${SUPABASE_URL}/rest/v1/abschriften?datum=eq.${day}&select=*`;
-    const rowsRes = await fetch(url, {
-      headers: { apikey: SERVICE_ROLE, Authorization: `Bearer ${SERVICE_ROLE}` },
-    });
-    if (!rowsRes.ok) return new Response("Datenbankfehler: " + await rowsRes.text(), { status: 500 });
+  if (!SUPABASE_URL || !SERVICE_ROLE) {
+    throw new Error("SUPABASE_URL oder SUPABASE_SERVICE_ROLE_KEY fehlt.");
+  }
 
-    const rows = await rowsRes.json();
-    const abschriften = rows.filter((r) => r.typ !== "kontrolle");
-    const kontrollen = rows.filter((r) => r.typ === "kontrolle");
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    headers: {
+      apikey: SERVICE_ROLE,
+      Authorization: `Bearer ${SERVICE_ROLE}`,
+      "Content-Type": "application/json",
+    },
+  });
 
-    const li = (r, control=false) => `<li><b>${r.name || r.artikel || "Artikel"}</b> – ${control ? "Bestand 0" : ((r.menge || 0) + " Stück")} ${r.mitarbeiter ? "· " + r.mitarbeiter : ""}</li>`;
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Supabase Fehler ${res.status}: ${text}`);
+  }
+
+  return await res.json();
+}
+
+function itemName(row) {
+  return row.name || row.artikel || row.artikelname || row.produkt || row.bezeichnung || row.barcode || "Artikel";
+}
+
+function itemMenge(row) {
+  return row.menge ?? row.bestand ?? row.anzahl ?? "";
+}
+
+function liMhd(row) {
+  const menge = itemMenge(row);
+  const nr = row.artikelnummer ? ` · Art.-Nr. ${row.artikelnummer}` : "";
+  const ean = row.barcode || row.ean ? ` · EAN ${row.barcode || row.ean}` : "";
+  return `<li><b>${itemName(row)}</b>${nr}${ean}${menge !== "" ? ` · Bestand ${menge}` : ""}${row.mhd ? ` · MHD ${deDate(String(row.mhd).slice(0,10))}` : ""}</li>`;
+}
+
+function liAction(row, isControl = false) {
+  const menge = itemMenge(row);
+  const mitarbeiter = row.mitarbeiter || row.mitarbeiter_name || row.user || "";
+  return `<li><b>${itemName(row)}</b>${isControl ? " · Bestand 0 / Kontrolliert" : (menge !== "" ? ` · ${menge} Stück` : "")}${mitarbeiter ? ` · ${mitarbeiter}` : ""}</li>`;
+}
+
+Deno.serve(async (req) => {
+  try {
+    if (!RESEND_API_KEY) {
+      return new Response("RESEND_API_KEY fehlt.", { status: 500 });
+    }
+
+    const today = todayKey();
+    const tomorrow = addDays(today, 1);
+    const yesterday = addDays(today, -1);
+
+    // MHD Einträge: nutzt die in der App verwendete Tabelle mhd_artikel.
+    let allMhd = [];
+    try {
+      allMhd = await supabaseFetch("mhd_artikel?select=*&order=mhd.asc");
+    } catch (_e) {
+      // Fallback falls die Tabelle anders heißt
+      allMhd = [];
+    }
+
+    const abgelaufen = allMhd.filter((r) => String(r.mhd || "").slice(0, 10) < today);
+    const heute = allMhd.filter((r) => String(r.mhd || "").slice(0, 10) === today);
+    const morgen = allMhd.filter((r) => String(r.mhd || "").slice(0, 10) === tomorrow);
+
+    // Abschriften/Kontrollen vom Vortag
+    let abschriftenRows = [];
+    try {
+      abschriftenRows = await supabaseFetch(`abschriften?select=*&datum=eq.${yesterday}&order=created_at.desc`);
+    } catch (_e) {
+      try {
+        abschriftenRows = await supabaseFetch(`abschriften?select=*&created_at=gte.${yesterday}T00:00:00&created_at=lt.${today}T00:00:00&order=created_at.desc`);
+      } catch (_e2) {
+        abschriftenRows = [];
+      }
+    }
+
+    const abschriften = abschriftenRows.filter((r) => r.typ !== "kontrolle");
+    const kontrollen = abschriftenRows.filter((r) => r.typ === "kontrolle");
 
     const html = `
-      <h2>MHD Kontrolle Tankstelle Ludweiler</h2>
-      <p><b>Bericht für:</b> ${deDate(day)}</p>
-      <h3>❌ Abschriften (${abschriften.length})</h3>
-      <ul>${abschriften.length ? abschriften.map(r => li(r)).join("") : "<li>Keine Abschriften</li>"}</ul>
-      <h3>✅ Kontrollen (${kontrollen.length})</h3>
-      <ul>${kontrollen.length ? kontrollen.map(r => li(r, true)).join("") : "<li>Keine Kontrollen</li>"}</ul>
+      <div style="font-family:Arial,sans-serif;line-height:1.45;color:#111">
+        <h2 style="color:#b00000">MHD Kontrolle – Tagesbericht</h2>
+        <p><b>Datum:</b> ${deDate(today)}</p>
+
+        <h3>⚠️ Läuft morgen ab (${morgen.length})</h3>
+        <ul>${morgen.length ? morgen.map(liMhd).join("") : "<li>Keine Artikel</li>"}</ul>
+
+        <h3>📅 Läuft heute ab (${heute.length})</h3>
+        <ul>${heute.length ? heute.map(liMhd).join("") : "<li>Keine Artikel</li>"}</ul>
+
+        <h3>❌ Bereits abgelaufen (${abgelaufen.length})</h3>
+        <ul>${abgelaufen.length ? abgelaufen.map(liMhd).join("") : "<li>Keine Artikel</li>"}</ul>
+
+        <hr/>
+
+        <h3>Abschriften vom Vortag ${deDate(yesterday)} (${abschriften.length})</h3>
+        <ul>${abschriften.length ? abschriften.map((r) => liAction(r, false)).join("") : "<li>Keine Abschriften</li>"}</ul>
+
+        <h3>Kontrollen vom Vortag ${deDate(yesterday)} (${kontrollen.length})</h3>
+        <ul>${kontrollen.length ? kontrollen.map((r) => liAction(r, true)).join("") : "<li>Keine Kontrollen</li>"}</ul>
+      </div>
     `;
 
     const mailRes = await fetch("https://api.resend.com/emails", {
       method: "POST",
-      headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({
-        from: FROM_EMAIL,
-        to: [TO_EMAIL],
-        subject: `MHD Kontrolle – Tagesbericht ${deDate(day)}`,
+        from: REPORT_FROM_EMAIL,
+        to: [REPORT_TO_EMAIL],
+        subject: `MHD Kontrolle – Tagesbericht ${deDate(today)}`,
         html,
       }),
     });
 
-    if (!mailRes.ok) return new Response("Mailfehler: " + await mailRes.text(), { status: 500 });
-    return new Response(JSON.stringify({ ok: true, day, abschriften: abschriften.length, kontrollen: kontrollen.length }), { headers: { "Content-Type": "application/json" } });
+    if (!mailRes.ok) {
+      const text = await mailRes.text();
+      return new Response("Resend Fehler: " + text, { status: 500 });
+    }
+
+    const mailJson = await mailRes.json();
+    return new Response(JSON.stringify({
+      ok: true,
+      to: REPORT_TO_EMAIL,
+      today,
+      morgen: morgen.length,
+      heute: heute.length,
+      abgelaufen: abgelaufen.length,
+      abschriften: abschriften.length,
+      kontrollen: kontrollen.length,
+      resend: mailJson,
+    }), {
+      headers: { "Content-Type": "application/json" },
+    });
   } catch (e) {
     return new Response(String(e?.message || e), { status: 500 });
   }

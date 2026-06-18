@@ -450,7 +450,7 @@ export default function App(){
     const result = await openFoodFacts(form.barcode)
     if(!result){
       await reportMissingArticle(form.barcode, 'EAN wurde beim Erfassen gescannt, aber nicht in der Artikelliste gefunden.')
-      msgAt('erfassen','warning','Artikel nicht gefunden. Die EAN wurde automatisch an die Stationsleitung bzw. den Chef zur Prüfung und Anlage in der Artikelliste weitergeleitet. Chef/Stationsleitung sieht ihn unter Fehlende Artikel.')
+      msgAt('erfassen','warning','Artikel nicht in Artikelliste gefunden. Chef/Stationsleitung sieht ihn unter Fehlende Artikel.')
       return
     }
 
@@ -479,8 +479,8 @@ export default function App(){
     msgAt('erfassen','success', next.bild_url ? '✓ Produkt im Internet gefunden, Bild übernommen und Artikelliste gespeichert.' : '✓ Produkt im Internet gefunden und Artikelliste gespeichert.')
   }
 
-  async function uploadFormImg(e){
-    const file = e.target.files?.[0]
+  async async function uploadFormImg(e){
+    const file = await compressImageFile(e.target.files?.[0])
     if(!file) return
     const url = await fileToDataUrl(file)
     setForm(f => ({ ...f, bild_url:url }))
@@ -890,7 +890,8 @@ export default function App(){
     {tab === 'backwaren' && <Backwaren backwaren={backwaren} saveBackwarenList={saveBackwarenList} writeOff={writeOff} user={user}/>}
     {tab === 'abschriften' && isAdmin(user) && <Abschriften writeoffs={writeoffs.filter(w => w.typ !== 'kontrolle')} user={user} setEditWriteoff={setEditWriteoff} deleteWriteoff={deleteWriteoff} undoWriteoff={undoWriteoff}/>}
     {tab === 'kontrollen' && isAdmin(user) && <Kontrollen controls={writeoffs.filter(w => w.typ === 'kontrolle')} user={user} deleteWriteoff={deleteWriteoff}/>}
-    {tab === 'fehlende' && isAdmin(user) && <MissingArticles missingArticles={missingArticles} markMissingDone={markMissingDone}/>}    {tab === 'stammdaten' && isAdmin(user) && <MasterArticles masterArticles={masterArticles} saveMasterArticle={saveMasterArticle} deleteMasterArticle={deleteMasterArticle} setMasterScannerOpen={setMasterScannerOpen}/>}
+    {tab === 'fehlende' && isAdmin(user) && <MissingArticles missingArticles={missingArticles} markMissingDone={markMissingDone}/>}
+    {tab === 'stammdaten' && isAdmin(user) && <MasterArticles masterArticles={masterArticles} saveMasterArticle={saveMasterArticle} deleteMasterArticle={deleteMasterArticle} setMasterScannerOpen={setMasterScannerOpen}/>}
     {tab === 'dienstplan' && <Dienstplan settings={settings} saveSetting={saveSetting} user={user}/>}
     {tab === 'online' && isAdmin(user) && <Online online={online}/>}
     {tab === 'verwaltung' && isAdmin(user) && <Verwaltung employees={employees} saveEmployee={saveEmployee} deleteEmployee={deleteEmployee} resetPassword={resetPassword}/>}
@@ -901,6 +902,43 @@ export default function App(){
     {editArticle && <ArticleModal item={editArticle} close={() => setEditArticle(null)} save={saveArticle}/>}
     {editWriteoff && <WriteoffModal item={editWriteoff} close={() => setEditWriteoff(null)} save={saveWriteoff}/>}
   </main>
+}
+
+
+async function compressImageFile(file, maxSize = 600, quality = 0.72){
+  if(!file || !file.type || !file.type.startsWith('image/')) return file
+  try{
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+    await new Promise((resolve, reject) => {
+      img.onload = resolve
+      img.onerror = reject
+      img.src = url
+    })
+    let w = img.width
+    let h = img.height
+    const scale = Math.min(1, maxSize / Math.max(w, h))
+    w = Math.round(w * scale)
+    h = Math.round(h * scale)
+    const canvas = document.createElement('canvas')
+    canvas.width = w
+    canvas.height = h
+    const ctx = canvas.getContext('2d')
+    ctx.drawImage(img, 0, 0, w, h)
+    URL.revokeObjectURL(url)
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', quality))
+    if(!blob) return file
+    return new File([blob], (file.name || 'bild') + '.jpg', { type:'image/jpeg' })
+  }catch{
+    return file
+  }
+}
+
+function LazyArticleImage({src, alt='Artikelbild'}){
+  const [show,setShow] = useState(false)
+  if(!src) return <div className="lazyImgPlaceholder">📦</div>
+  if(!show) return <button type="button" className="lazyImgButton" onClick={() => setShow(true)}>Bild anzeigen</button>
+  return <img className="thumb" src={src} alt={alt} loading="lazy" decoding="async"/>
 }
 
 function Login({login,setLogin,error,doLogin}){
@@ -973,7 +1011,7 @@ function Article({item,user,writeOffArticle,markArticleCheckedZero,setEditArticl
 
   const stateClass = days < 0 ? 'expiredArticle' : (days >= 0 && days <= 3 ? 'urgentArticle' : '')
   return <div className={'item articleItem ' + stateClass}>
-    <div className="thumb">{item.bild_url ? <img src={item.bild_url}/> : '📦'}</div>
+    <LazyArticleImage src={item.bild_url}/>
     <div className="grow">
       <b>{item.name || item.artikel}</b>
       <p>{item.artikelnummer ? `Art.-Nr. ${item.artikelnummer} · ` : ''}{item.kategorie || 'Sonstiges'}</p>
@@ -1040,7 +1078,7 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
 
     if(found) return übernehmen(found)
 
-    setSearchMsg({type:'warning', text:'Artikel nicht gefunden. Die EAN wurde automatisch an die Stationsleitung bzw. den Chef zur Prüfung und Anlage in der Artikelliste weitergeleitet.'})
+    setSearchMsg({type:'warning', text:'Artikel nicht in Artikelliste gefunden.'})
     return false
   }
 
@@ -1070,7 +1108,7 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
   }, [masterArticles])
 
   return <section className="formCard">
-    <h2>Artikel erfassen</h2><p className='hint'>Wählen Sie einen Artikel aus der Artikelliste oder scannen Sie den Barcode. Anschließend MHD und Menge eingeben und auf „Speichern“ klicken. Der Eintrag wird automatisch in der Übersicht angezeigt.</p>
+    <h2>Artikel erfassen</h2>
 
     <button className="scannerButton" type="button" onClick={() => setScannerOpen(true)}>📷 Barcode scannen</button>
 
@@ -1141,13 +1179,18 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
     <input className="realInput" type="number" min="1" value={form.menge || 1} onChange={e => setForm({...form, menge:e.target.value})}/>
 
     {isAdmin(user) && <label className="upload">Bild/Screenshot hochladen<input type="file" accept="image/*" onChange={uploadFormImg}/></label>}
-    {form.bild_url && <img className="preview" src={form.bild_url}/>}
+    {form.bild_url && <img className="preview" src={form.bild_url} loading="lazy" decoding="async"/>}
     <InlineFeedback msg={inlineMsg?.erfassen}/>
     <button className="primary" onClick={addItem}>Speichern</button>
   </section>
 }
 
 function Backwaren({backwaren,saveBackwarenList,writeOff,user}){
+  function confirmDeleteBackware(row){
+    const name = row?.name || row?.artikel || row?.bezeichnung || 'Backwaren-Eintrag'
+    return window.confirm('Backwaren-Eintrag wirklich löschen?\n\n' + name + '\n\nDiese Aktion kann nicht rückgängig gemacht werden.')
+  }
+
   const [qty, setQty] = useState({})
   const [newItem, setNewItem] = useState({ artikelnummer:'', name:'' })
   const [sending, setSending] = useState(false)
@@ -1177,6 +1220,7 @@ function Backwaren({backwaren,saveBackwarenList,writeOff,user}){
   }
 
   function deleteBackware(num){
+    if(!window.confirm('Backwaren-Eintrag wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.')) return;
     if(confirm('Backware löschen?')) saveBackwarenList(backwaren.filter(b => b.artikelnummer !== num))
   }
 
@@ -1196,7 +1240,7 @@ function Backwaren({backwaren,saveBackwarenList,writeOff,user}){
 
     {backwaren.map(b => <div className={'item bakery ' + (Number(qty[b.artikelnummer] || 0) > 0 ? 'selectedBakery' : '')} key={b.artikelnummer}>
       <div className="artikelnummer">{b.artikelnummer}</div>
-      <div className="grow"><b>{b.name}</b><p>Artikelnummer {b.artikelnummer}</p>{isAdmin(user) && <button className="ghostSmall" onClick={() => deleteBackware(b.artikelnummer)}>Löschen</button>}</div>
+      <div className="grow"><b>{b.name}</b><p>Artikelnummer {b.artikelnummer}</p>{isAdmin(user) && <button className="ghostSmall" onClick={() => { if(confirmDeleteBackware(b.artikelnummer)) deleteBackware(b.artikelnummer) }}>Löschen</button>}</div>
       <div className="stepper">
         <button onClick={() => step(b.artikelnummer, -1)}>−</button>
         <input className="qty" inputMode="numeric" value={qty[b.artikelnummer] || ''} onChange={e => setQty({...qty, [b.artikelnummer]:e.target.value.replace(/\D/g,'')})} placeholder="0"/>
@@ -1291,7 +1335,7 @@ function MissingArticles({missingArticles,markMissingDone}){
   </section>
 }
 
-function MasterArticles({masterArticles,saveMasterArticle,deleteMasterArticle,setMasterScannerOpen}){
+function MasterArticles({masterArticles,saveMasterArticle,deleteMasterArticle,deleteMasterArticle,setMasterScannerOpen}){
   const empty = { barcode:'', artikelnummer:'', name:'', kategorie:'Sonstiges', bild_url:'' }
   const [data,setData] = useState(empty)
   const [msg,setMsg] = useState(null)
@@ -1332,7 +1376,7 @@ function MasterArticles({masterArticles,saveMasterArticle,deleteMasterArticle,se
   }, [])
 
   async function upload(e){
-    const file = e.target.files?.[0]
+    const file = await compressImageFile(e.target.files?.[0])
     if(!file) return
     setData({...data, bild_url:await fileToDataUrl(file)})
     setMsg({type:'success', text:'✓ Bild übernommen. Speichern nicht vergessen.'})
@@ -1454,7 +1498,7 @@ function MasterArticles({masterArticles,saveMasterArticle,deleteMasterArticle,se
     <h3>Gespeicherte Artikel</h3>
     {masterArticles.length === 0 && <div className="empty">Noch keine Artikel in der Artikelliste.</div>}
     {masterArticles.map(a => <div className="item" key={a.id || a.barcode}>
-      <div className="thumb">{a.bild_url ? <img src={a.bild_url}/> : '📦'}</div>
+      <LazyArticleImage src={a.bild_url}/>
       <div className="grow"><b>{a.name}</b><p>Art.-Nr. {a.artikelnummer || '-'} · EAN {a.barcode} · {a.kategorie || 'Sonstiges'}</p></div>
       <div className="actions">
         <button onClick={() => edit(a)}>Bearbeiten</button>
@@ -1466,7 +1510,7 @@ function MasterArticles({masterArticles,saveMasterArticle,deleteMasterArticle,se
 
 function Bilder({items,reload}){
   async function upload(item,e){
-    const file = e.target.files?.[0]
+    const file = await compressImageFile(e.target.files?.[0])
     if(!file) return
     const url = await fileToDataUrl(file)
     const { error } = await supabase.from('mhd_artikel').update({ bild_url:url }).eq('id', item.id)
@@ -1487,7 +1531,7 @@ function Dienstplan({settings,saveSetting,user}){
   const [month, setMonth] = useState('juni')
   const src = settings['dienstplan_' + month] || ''
   async function upload(e){
-    const file = e.target.files?.[0]
+    const file = await compressImageFile(e.target.files?.[0])
     if(file) saveSetting('dienstplan_' + month, await fileToDataUrl(file))
   }
   return <section className="formCard">
@@ -1542,7 +1586,7 @@ function ArticleModal({item,close,save}){
   const [localMsg,setLocalMsg] = useState(null)
 
   async function upload(e){
-    const file = e.target.files?.[0]
+    const file = await compressImageFile(e.target.files?.[0])
     if(!file) return
     setData({...data, bild_url:await fileToDataUrl(file)})
     setLocalMsg({type:'success', text:'✓ Bild übernommen. Bitte Speichern drücken.'})
@@ -1597,7 +1641,7 @@ function ArticleModal({item,close,save}){
     <input placeholder="EAN / Barcode" value={data.barcode || ''} onChange={e => setData({...data, barcode:e.target.value.replace(/\D/g,'')})}/>
 
     <label className="upload">Bild hochladen<input type="file" accept="image/*" onChange={upload}/></label>
-    {data.bild_url && <button type="button" onClick={removeBg}>✂️ Bild freistellen</button>}
+    {data.bild_url && <button type="button" onClick={removeArticleBg}>✂️ Bild freistellen</button>}
     {data.bild_url && <img className="preview transparentPreview" src={data.bild_url}/>}
     <InlineFeedback msg={localMsg}/>
 

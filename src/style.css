@@ -289,3 +289,36 @@
 .reminderItem span{
   display:block;
 }
+
+
+/* Lazy Image Data Saver */
+.lazyImgButton,
+.lazyImgPlaceholder{
+  width:72px;
+  height:72px;
+  min-width:72px;
+  border-radius:16px;
+  border:3px solid #d71920;
+  background:#fff7c2;
+  color:#8b1016;
+  font-weight:900;
+  display:grid;
+  place-items:center;
+  text-align:center;
+  font-size:13px;
+  padding:4px;
+}
+.lazyImgButton{ cursor:pointer; }
+.thumb{
+  width:72px;
+  height:72px;
+  object-fit:contain;
+  border-radius:16px;
+  background:#fff;
+}
+
+button.danger{
+  background:#8b1016!important;
+  color:#fff!important;
+  border-color:#8b1016!important;
+}
