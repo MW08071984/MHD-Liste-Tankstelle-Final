@@ -545,7 +545,9 @@ export default function App(){
       await loadAll()
     }
     setForm({ barcode:'', artikelnummer:'', name:'', kategorie:'Sonstiges', mhd:todayISO(), menge:1, bild_url:'' })
-    msgAt('erfassen','success','✓ Artikel gespeichert und Stammdaten aktualisiert.')
+    msgAt('erfassen','success','✓ MHD-Eintrag gespeichert. Der Artikel wurde in die Übersicht übernommen.')
+    setSuccess('✓ MHD-Eintrag gespeichert.')
+    navigator.vibrate?.(80)
   }
 
   async function writeOff(payload){
@@ -682,6 +684,22 @@ export default function App(){
       setMasterArticles(prev => prev.filter(x => x.id !== article.id))
     }
     setSuccess('Artikel aus Artikelliste gelöscht.')
+  }
+
+
+  async function deleteMhdEntry(item){
+    if(!isAdmin(user)) return setError('Keine Rechte.')
+    const name = item?.name || item?.artikel || 'Artikel'
+    if(!confirm('Diesen MHD-Eintrag wirklich aus der Übersicht löschen?\n\n' + name + '\n\nNur diesen erfassten MHD-Eintrag löschen, die Artikelliste bleibt unverändert.')) return
+
+    if(db){
+      const { error } = await supabase.from('mhd_artikel').delete().eq('id', item.id)
+      if(error) return setError(error.message)
+      await loadAll()
+    }else{
+      localItems(items.filter(x => x.id !== item.id))
+    }
+    setSuccess('MHD-Eintrag aus der Übersicht gelöscht.')
   }
 
   async function saveArticle(data){
@@ -907,7 +925,7 @@ export default function App(){
     {error && <div className="error">{error}</div>}
     {success && <div className="success">{success}</div>}
 
-    {tab === 'dashboard' && <Dashboard safeEditOverviewItem={safeEditOverviewItem} items={items} setTab={setTab} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} inlineMsg={inlineMsg}/>}
+    {tab === 'dashboard' && <Dashboard safeEditOverviewItem={safeEditOverviewItem} items={items} setTab={setTab} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} deleteMhdEntry={deleteMhdEntry} inlineMsg={inlineMsg}/>}
     {tab === 'erfassen' && <Erfassen form={form} setForm={setForm} setScannerOpen={setScannerOpen} lookupBarcode={lookupBarcode} uploadFormImg={uploadFormImg} addItem={addItem} user={user} inlineMsg={inlineMsg} masterArticles={masterArticles}/>}
     {tab === 'backwaren' && <Backwaren backwaren={backwaren} saveBackwarenList={saveBackwarenList} writeOff={writeOff} user={user}/>}
     {tab === 'abschriften' && isAdmin(user) && <Abschriften writeoffs={writeoffs.filter(w => w.typ !== 'kontrolle')} user={user} setEditWriteoff={setEditWriteoff} deleteWriteoff={deleteWriteoff} undoWriteoff={undoWriteoff}/>}
@@ -983,14 +1001,14 @@ function Login({login,setLogin,error,doLogin}){
 
 function Stat({label,value,onClick,tone='normal'}){ return <button className={'stat '+tone} onClick={onClick}><span>{label}</span><b>{value}</b></button> }
 
-function Dashboard({items,setTab,user,writeOffArticle,markArticleCheckedZero,setEditArticle,safeEditOverviewItem}){
+function Dashboard({items,setTab,user,writeOffArticle,markArticleCheckedZero,setEditArticle,deleteMhdEntry,safeEditOverviewItem}){
   return <section className="list">
     <button className="primary" onClick={() => { setTab('erfassen'); window.scrollTo({top:0, behavior:'smooth'}) }}>+ Schnell erfassen</button>
-    {items.slice(0,8).map(item => <Article key={item.id} item={item} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle}/>)}
+    {items.slice(0,8).map(item => <Article key={item.id} item={item} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} deleteMhdEntry={deleteMhdEntry}/>)}
   </section>
 }
 
-function ArticleList({items,allCount,articleFilter,setArticleFilter,user,writeOffArticle,markArticleCheckedZero,setEditArticle,inlineMsg,safeEditOverviewItem}){
+function ArticleList({items,allCount,articleFilter,setArticleFilter,user,writeOffArticle,markArticleCheckedZero,setEditArticle,deleteMhdEntry,inlineMsg,safeEditOverviewItem}){
   const title = articleFilter === 'expired' ? 'Abgelaufene Artikel' : articleFilter === 'urgent' ? 'Bald ablaufende Artikel' : articleFilter === 'week' ? 'Artikel diese Woche' : 'Artikel'
   return <section className="list">
     <div className="sectionHeader">
@@ -1001,11 +1019,11 @@ function ArticleList({items,allCount,articleFilter,setArticleFilter,user,writeOf
       {articleFilter !== 'all' && <button className="ghostSmall" onClick={() => setArticleFilter('all')}>Alle anzeigen</button>}
     </div>
     {items.length === 0 && <div className="empty">Keine passenden Artikel vorhanden.</div>}
-    {items.map(item => <Article key={item.id} item={item} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} inlineMsg={inlineMsg}/>)}
+    {items.map(item => <Article key={item.id} item={item} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} deleteMhdEntry={deleteMhdEntry} inlineMsg={inlineMsg}/>)}
   </section>
 }
 
-function Article({item,user,writeOffArticle,markArticleCheckedZero,setEditArticle}){
+function Article({item,user,writeOffArticle,markArticleCheckedZero,setEditArticle,deleteMhdEntry}){
   const bestand = Math.max(0, Number(item.menge || 0))
   const [amount, setAmount] = useState(String(bestand > 0 ? 1 : 0))
   const days = daysUntil(item.mhd)
@@ -1054,7 +1072,8 @@ function Article({item,user,writeOffArticle,markArticleCheckedZero,setEditArticl
       </div>
       <div className="actions">
         {isAdmin(user) && <button onClick={() => setEditArticle(item)}>Bearbeiten</button>}
-        <button disabled={days > 0 || bestand < 1 || Number(amount || 0) < 1 || Number(amount || 0) > bestand} onClick={() => writeOffArticle(item, Number(amount || 0))}>Abschreiben</button>
+        {isAdmin(user) && <button className="danger" onClick={() => deleteMhdEntry(item)}>Löschen</button>}
+        <button disabled={days > 1 || bestand < 1 || Number(amount || 0) < 1 || Number(amount || 0) > bestand} onClick={() => writeOffArticle(item, Number(amount || 0))} title={days > 1 ? `Abschreiben erst 1 Tag vor MHD möglich. Noch ${days} Tage.` : 'Abschreiben'}>Abschreiben</button>
         <button
           className="checkedZeroBtn"
           disabled={days > 0}
