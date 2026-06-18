@@ -1,0 +1,1 @@
+Ergänzt: Artikelliste hat Löschen-Button mit Sicherheitsabfrage. Backwaren-Löschen fragt vor dem Löschen nach Bestätigung.

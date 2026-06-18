@@ -1,0 +1,1 @@
+Bildoptimierung: Bilder in Listen laden erst nach Klick auf 'Bild anzeigen'. Neue Upload-Bilder werden vor dem Speichern auf max. 600px komprimiert. Bestehende Artikeldaten/Scanner/Speicherlogik wurden nicht verändert.
