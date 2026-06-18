@@ -6,7 +6,7 @@
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 const REPORT_TO_EMAIL = Deno.env.get("REPORT_TO_EMAIL") || "shell5682@gmx.de";
-const REPORT_FROM_EMAIL = Deno.env.get("REPORT_FROM_EMAIL") || "MHD Kontrolle <onboarding@resend.dev>";
+const REPORT_FROM_EMAIL = "onboarding@resend.dev";
 
 function todayKey() {
   const d = new Date();

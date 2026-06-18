@@ -1,0 +1,1 @@
+E-Mail-Fix: daily-mhd-report nutzt jetzt fest onboarding@resend.dev als Absender. REPORT_FROM_EMAIL wird nicht mehr benötigt. In Supabase den Function-Code komplett ersetzen und daily-mhd-report neu deployen.
