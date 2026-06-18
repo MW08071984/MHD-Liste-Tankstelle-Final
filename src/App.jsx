@@ -912,7 +912,7 @@ export default function App(){
     {tab === 'backwaren' && <Backwaren backwaren={backwaren} saveBackwarenList={saveBackwarenList} writeOff={writeOff} user={user}/>}
     {tab === 'abschriften' && isAdmin(user) && <Abschriften writeoffs={writeoffs.filter(w => w.typ !== 'kontrolle')} user={user} setEditWriteoff={setEditWriteoff} deleteWriteoff={deleteWriteoff} undoWriteoff={undoWriteoff}/>}
     {tab === 'kontrollen' && isAdmin(user) && <Kontrollen controls={writeoffs.filter(w => w.typ === 'kontrolle')} user={user} deleteWriteoff={deleteWriteoff}/>}
-    {tab === 'fehlende' && isAdmin(user) && <MissingArticles missingArticles={missingArticles} markMissingDone={markMissingDone}/>}\n    {tab === 'stammdaten' && isAdmin(user) && <MasterArticles masterArticles={masterArticles} saveMasterArticle={saveMasterArticle} deleteMasterArticle={deleteMasterArticle} setMasterScannerOpen={setMasterScannerOpen}/>}
+    {tab === 'fehlende' && isAdmin(user) && <MissingArticles missingArticles={missingArticles} markMissingDone={markMissingDone}/>}    {tab === 'stammdaten' && isAdmin(user) && <MasterArticles masterArticles={masterArticles} saveMasterArticle={saveMasterArticle} deleteMasterArticle={deleteMasterArticle} setMasterScannerOpen={setMasterScannerOpen}/>}
     {tab === 'dienstplan' && <Dienstplan settings={settings} saveSetting={saveSetting} user={user}/>}
     {tab === 'online' && isAdmin(user) && <Online online={online}/>}
     {tab === 'verwaltung' && isAdmin(user) && <Verwaltung employees={employees} saveEmployee={saveEmployee} deleteEmployee={deleteEmployee} resetPassword={resetPassword}/>}
@@ -959,7 +959,7 @@ function LazyArticleImage({src,alt='Artikelbild'}){
   const [show,setShow] = useState(false)
   if(!src) return <div className="lazyImgPlaceholder">📦</div>
   if(!show) return <button type="button" className="lazyImgButton" onClick={() => setShow(true)}>Bild anzeigen</button>
-  return <LazyArticleImage src={src}/>
+  return <img className="thumb" src={src} alt={alt} loading="lazy" decoding="async"/>
 }
 
 function Login({login,setLogin,error,doLogin}){
@@ -1209,7 +1209,7 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
 function Backwaren({backwaren,saveBackwarenList,writeOff,user}){
   function confirmDeleteBackware(row){
     const name = row?.name || row?.artikel || row?.bezeichnung || 'Backwaren-Eintrag'
-    return window.confirm('Backwaren-Eintrag wirklich löschen?\n\n' + name + '\n\nDiese Aktion kann nicht rückgängig gemacht werden.')
+    return window.confirm('Backwaren-Eintrag wirklich löschen?' + name + 'Diese Aktion kann nicht rückgängig gemacht werden.')
   }
 
   const [qty, setQty] = useState({})
@@ -1510,7 +1510,7 @@ function MasterArticles({masterArticles,saveMasterArticle,deleteMasterArticle,se
     <label>Bild</label>
     <input placeholder="Bild URL oder Upload nutzen" value={data.bild_url} onChange={e => setData({...data, bild_url:e.target.value})}/>
     <label className="upload">Bild hochladen<input type="file" accept="image/*" onChange={upload}/></label>
-    {data.bild_url && <button type="button" onClick={removeBg}>✂️ Bild freistellen</button>}
+    {data.bild_url && <button type="button" onClick={removeArticleBg}>✂️ Bild freistellen</button>}
     {data.bild_url && <img className="preview transparentPreview" src={data.bild_url}/>}    
     <InlineFeedback msg={msg}/>
     <button className="primary" onClick={save}>{data.id ? 'Änderung speichern' : 'Artikel anlegen'}</button>
@@ -1662,7 +1662,7 @@ function ArticleModal({item,close,save}){
     <input placeholder="EAN / Barcode" value={data.barcode || ''} onChange={e => setData({...data, barcode:e.target.value.replace(/\D/g,'')})}/>
 
     <label className="upload">Bild hochladen<input type="file" accept="image/*" onChange={upload}/></label>
-    {data.bild_url && <button type="button" onClick={removeBg}>✂️ Bild freistellen</button>}
+    {data.bild_url && <button type="button" onClick={removeArticleBg}>✂️ Bild freistellen</button>}
     {data.bild_url && <img className="preview transparentPreview" src={data.bild_url}/>}
     <InlineFeedback msg={localMsg}/>
 

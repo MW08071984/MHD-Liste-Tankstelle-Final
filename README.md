@@ -1,5 +1,5 @@
 # MHD Kontrolle
 
-Build-Fix 2: doppeltes async und doppelter deleteMasterArticle-Parameter entfernt.
+Runtime-Fix: Bearbeiten in der Übersicht zeigt keine weiße Seite mehr. Fehler removeBg -> removeArticleBg korrigiert.
 
 ZIP entpacken und Inhalt hochladen.
