@@ -133,6 +133,11 @@ function removeImageBackground(src){
 
 function InlineFeedback({msg}){
   if(!msg) return null
+
+  useEffect(() => {
+    if(items && items.length) checkDueNotifications()
+  }, [items?.length])
+
   return <div className={'inlineFeedback ' + msg.type}>{msg.text}</div>
 }
 
@@ -293,6 +298,39 @@ export default function App(){
     const timer = setInterval(heartbeat, 30000)
     return () => { stop = true; clearInterval(timer) }
   }, [user])
+
+
+  function checkDueNotifications(){
+    try{
+      const today = todayISO()
+      const tomorrow = new Date()
+      tomorrow.setDate(tomorrow.getDate()+1)
+      const tKey = tomorrow.toISOString().slice(0,10)
+      const dueTomorrow = (items || []).filter(x => String(x.mhd || '').slice(0,10) === tKey)
+      const expired = (items || []).filter(x => String(x.mhd || '').slice(0,10) < today)
+      const count = dueTomorrow.length + expired.length
+      if(!count) return
+
+      const key = `mhd-note-${today}-${count}`
+      if(localStorage.getItem(key)) return
+      localStorage.setItem(key,'1')
+
+      const text = `MHD Kontrolle: ${dueTomorrow.length} laufen morgen ab, ${expired.length} sind abgelaufen.`
+      setSuccess(text)
+
+      if('Notification' in window){
+        if(Notification.permission === 'granted'){
+          new Notification('MHD Kontrolle', { body:text })
+        }else if(Notification.permission !== 'denied'){
+          Notification.requestPermission().then(p => {
+            if(p === 'granted') new Notification('MHD Kontrolle', { body:text })
+          })
+        }
+      }
+    }catch(e){
+      console.warn('Benachrichtigung konnte nicht geprüft werden', e)
+    }
+  }
 
   async function loadAll(){
     if(!db){
@@ -639,6 +677,63 @@ export default function App(){
     setSuccess('Artikel kontrolliert: Bestand 0. Er wurde aus der Übersicht entfernt.')
   }
 
+
+  async function quickMhdFromMaster(masterArticle){
+    if(!isAdmin(user)) return setError('Keine Rechte.')
+    if(!masterArticle) return setError('Kein Artikel ausgewählt.')
+
+    const articleName = masterArticle.name || masterArticle.artikel || masterArticle.artikelname || masterArticle.bezeichnung || masterArticle.barcode || 'Artikel'
+
+    const rows = []
+    let round = 1
+
+    while(true){
+      const mhd = prompt('MHD ' + round + ' für "' + articleName + '" eingeben (Format: JJJJ-MM-TT)')
+      if(!mhd || !/^\d{4}-\d{2}-\d{2}$/.test(mhd)){
+        if(rows.length === 0) return setError('Kein gültiges MHD eingetragen. Es wurde kein Eintrag erstellt.')
+        break
+      }
+
+      const mengeText = prompt('Menge ' + round + ' für "' + articleName + '" eingeben')
+      const menge = Number(mengeText)
+      if(!mengeText || !Number.isFinite(menge) || menge < 1){
+        if(rows.length === 0) return setError('Keine gültige Menge eingetragen. Es wurde kein Eintrag erstellt.')
+        setError('Letzte Zeile ohne gültige Menge wurde nicht übernommen.')
+        break
+      }
+
+      rows.push({ mhd, menge })
+
+      const more = confirm('Weitere Menge / MHD für "' + articleName + '" hinzufügen?')
+      if(!more) break
+      round++
+    }
+
+    if(rows.length === 0) return setError('Ohne MHD und Menge wurde kein Eintrag erstellt.')
+
+    const entries = rows.map(r => ({
+      barcode: masterArticle.barcode || masterArticle.ean || '',
+      artikelnummer: masterArticle.artikelnummer || masterArticle.nr || '',
+      name: articleName,
+      kategorie: masterArticle.kategorie || 'Sonstiges',
+      mhd: r.mhd,
+      menge: r.menge,
+      bild_url: masterArticle.bild_url || masterArticle.image || masterArticle.bild || ''
+    }))
+
+    if(db){
+      const { error } = await supabase.from('mhd_artikel').insert(entries)
+      if(error) return setError(error.message || 'MHD-Einträge konnten nicht gespeichert werden.')
+      await loadAll()
+    }else{
+      localItems([...entries.map(e => ({...e, id:crypto.randomUUID?.() || String(Date.now()+Math.random())})), ...items])
+    }
+
+    const gesamt = entries.reduce((sum,e)=>sum+Number(e.menge || 0),0)
+    setSuccess('✓ ' + entries.length + ' MHD-Eintrag/Einträge aus Artikelliste erstellt. Gesamtmenge: ' + gesamt + '.')
+    try{ msgAt?.('stammdaten','success','✓ ' + entries.length + ' MHD-Eintrag/Einträge erstellt und in der Übersicht gespeichert. Gesamtmenge: ' + gesamt + '.') }catch{}
+  }
+
   async function saveMasterArticle(data){
     if(!isAdmin(user)) return setError('Keine Rechte.')
     const payload = {
@@ -700,6 +795,44 @@ export default function App(){
       localItems(items.filter(x => x.id !== item.id))
     }
     setSuccess('MHD-Eintrag aus der Übersicht gelöscht.')
+  }
+
+
+  function normalizeBarcodeValue(v){
+    return String(v || '').replace(/\D/g,'').trim()
+  }
+
+  function findMasterByBarcodeOrNumber(code){
+    const c = normalizeBarcodeValue(code)
+    if(!c) return null
+    return (masterArticles || []).find(a =>
+      normalizeBarcodeValue(a.barcode || a.ean) === c ||
+      normalizeBarcodeValue(a.artikelnummer) === c ||
+      normalizeBarcodeValue(a.nr) === c
+    ) || null
+  }
+
+  function applyScannedArticle(code){
+    const c = normalizeBarcodeValue(code)
+    if(!c) return false
+    const found = findMasterByBarcodeOrNumber(c)
+    if(found){
+      setForm(f => ({
+        ...f,
+        barcode: found.barcode || found.ean || c,
+        artikelnummer: found.artikelnummer || found.nr || f.artikelnummer || '',
+        name: found.name || found.artikel || found.artikelname || found.bezeichnung || f.name || '',
+        kategorie: found.kategorie || f.kategorie || 'Sonstiges',
+        bild_url: found.bild_url || found.image || found.bild || f.bild_url || ''
+      }))
+      setSuccess('✓ Artikel aus Artikelliste übernommen. Jetzt nur noch MHD und Menge eingeben.')
+      try{ msgAt?.('erfassen','success','✓ Artikel aus Artikelliste übernommen. Jetzt nur noch MHD und Menge eingeben.') }catch{}
+      return true
+    }
+
+    setForm(f => ({...f, barcode:c}))
+    try{ msgAt?.('erfassen','warn','Artikel nicht gefunden. EAN wurde übernommen und kann weitergeleitet werden.') }catch{}
+    return false
   }
 
   async function saveArticle(data){
@@ -930,7 +1063,7 @@ export default function App(){
     {tab === 'backwaren' && <Backwaren backwaren={backwaren} saveBackwarenList={saveBackwarenList} writeOff={writeOff} user={user}/>}
     {tab === 'abschriften' && isAdmin(user) && <Abschriften writeoffs={writeoffs.filter(w => w.typ !== 'kontrolle')} user={user} setEditWriteoff={setEditWriteoff} deleteWriteoff={deleteWriteoff} undoWriteoff={undoWriteoff}/>}
     {tab === 'kontrollen' && isAdmin(user) && <Kontrollen controls={writeoffs.filter(w => w.typ === 'kontrolle')} user={user} deleteWriteoff={deleteWriteoff}/>}
-    {tab === 'fehlende' && isAdmin(user) && <MissingArticles missingArticles={missingArticles} markMissingDone={markMissingDone}/>}    {tab === 'stammdaten' && isAdmin(user) && <MasterArticles masterArticles={masterArticles} saveMasterArticle={saveMasterArticle} deleteMasterArticle={deleteMasterArticle} setMasterScannerOpen={setMasterScannerOpen}/>}
+    {tab === 'fehlende' && isAdmin(user) && <MissingArticles missingArticles={missingArticles} markMissingDone={markMissingDone}/>}    {tab === 'stammdaten' && isAdmin(user) && <MasterArticles quickMhdFromMaster={quickMhdFromMaster} masterArticles={masterArticles} saveMasterArticle={saveMasterArticle} deleteMasterArticle={deleteMasterArticle} setMasterScannerOpen={setMasterScannerOpen}/>}
     {tab === 'dienstplan' && <Dienstplan settings={settings} saveSetting={saveSetting} user={user}/>}
     {tab === 'online' && isAdmin(user) && <Online online={online}/>}
     {tab === 'verwaltung' && isAdmin(user) && <Verwaltung employees={employees} saveEmployee={saveEmployee} deleteEmployee={deleteEmployee} resetPassword={resetPassword}/>}
@@ -1158,7 +1291,7 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
       type="text"
       inputMode="numeric"
       autoComplete="off"
-      placeholder="Artikelnummer oder EAN"
+      placeholder="Artikelnummer oder EAN" onBlur={(e)=>applyScannedArticle(e.target.value)} onKeyDown={(e)=>{if(e.key==="Enter") applyScannedArticle(e.currentTarget.value)}}
       value={searchTerm}
       onChange={e => handleSearch(e.target.value)}
       onKeyDown={e => { if(e.key === 'Enter'){ e.preventDefault(); suche(searchTerm) } }}
@@ -1184,7 +1317,7 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
       type="text"
       inputMode="numeric"
       autoComplete="off"
-      placeholder="EAN / Barcode"
+      placeholder="EAN / Barcode" onBlur={(e)=>applyScannedArticle(e.target.value)} onKeyDown={(e)=>{if(e.key==="Enter") applyScannedArticle(e.currentTarget.value)}}
       value={form.barcode || ''}
       onChange={e => handleBarcode(e.target.value)}
     />
@@ -1375,7 +1508,7 @@ function MissingArticles({missingArticles,markMissingDone}){
   </section>
 }
 
-function MasterArticles({masterArticles,saveMasterArticle,deleteMasterArticle,setMasterScannerOpen}){
+function MasterArticles({masterArticles,saveMasterArticle,deleteMasterArticle,setMasterScannerOpen,quickMhdFromMaster}){
   const empty = { barcode:'', artikelnummer:'', name:'', kategorie:'Sonstiges', bild_url:'' }
   const [data,setData] = useState(empty)
   const [msg,setMsg] = useState(null)
@@ -1508,13 +1641,13 @@ function MasterArticles({masterArticles,saveMasterArticle,deleteMasterArticle,se
   }
 
   return <section className="formCard">
-    <h2>Artikelliste</h2>
+    <h2>Artikelliste</h2><div className="hint"><b>MHD direkt aus der Artikelliste:</b> Artikel scannen oder auswählen, dann bei Chef/Stationsleitung über „MHD / Menge erfassen“ MHD und Menge eintragen. Über „Weitere Menge / MHD hinzufügen“ können mehrere MHD-Datensätze für denselben Artikel erstellt werden. Ohne MHD und Menge wird kein Eintrag erstellt.</div>
     <p className="hint">Chef/Stationsleitung pflegt hier die festen Artikeldaten. Mitarbeiter müssen beim Erfassen danach nur MHD und Menge eingeben.</p>
 
     <button className="scannerButton" type="button" onClick={() => setMasterScannerOpen(true)}>📷 EAN scannen</button>
 
     <label>EAN / Barcode</label>
-    <input placeholder="EAN / Barcode" value={data.barcode} onChange={e => setData({...data, barcode:e.target.value.replace(/\D/g,'')})}/>
+    <input placeholder="EAN / Barcode" onBlur={(e)=>applyScannedArticle(e.target.value)} onKeyDown={(e)=>{if(e.key==="Enter") applyScannedArticle(e.currentTarget.value)}} value={data.barcode} onChange={e => setData({...data, barcode:e.target.value.replace(/\D/g,'')})}/>
     <button type="button" onClick={() => lookupMasterArticle()}>🔎 Name/Bild suchen</button>
 
     <label>Artikelnummer</label>
@@ -1541,7 +1674,7 @@ function MasterArticles({masterArticles,saveMasterArticle,deleteMasterArticle,se
       <div className="thumb">{a.bild_url ? <img src={a.bild_url}/> : '📦'}</div>
       <div className="grow"><b>{a.name}</b><p>Art.-Nr. {a.artikelnummer || '-'} · EAN {a.barcode} · {a.kategorie || 'Sonstiges'}</p></div>
       <div className="actions">
-        <button onClick={() => edit(a)}>Bearbeiten</button>
+        <button onClick={() => edit(a)}>Bearbeiten</button><button type="button" onClick={() => quickMhdFromMaster?.(a)}>MHD / Menge erfassen</button>
         <button onClick={() => deleteMasterArticle(a)}>Löschen</button>
       </div>
     </div>)}
@@ -1678,7 +1811,7 @@ function ArticleModal({item,close,save}){
     <input type="number" min="1" value={data.menge || 1} onChange={e => setData({...data, menge:e.target.value})}/>
 
     <label>EAN / Barcode</label>
-    <input placeholder="EAN / Barcode" value={data.barcode || ''} onChange={e => setData({...data, barcode:e.target.value.replace(/\D/g,'')})}/>
+    <input placeholder="EAN / Barcode" onBlur={(e)=>applyScannedArticle(e.target.value)} onKeyDown={(e)=>{if(e.key==="Enter") applyScannedArticle(e.currentTarget.value)}} value={data.barcode || ''} onChange={e => setData({...data, barcode:e.target.value.replace(/\D/g,'')})}/>
 
     <label className="upload">Bild hochladen<input type="file" accept="image/*" onChange={upload}/></label>
     {data.bild_url && <button type="button" onClick={removeArticleBg}>✂️ Bild freistellen</button>}
@@ -1821,7 +1954,7 @@ function Scanner({onClose,onDetected}){
     <InlineFeedback msg={scanMsg}/>
     <video ref={videoRef} className="scannerVideo" autoPlay muted playsInline></video>
     <label>Barcode manuell eingeben</label>
-    <input inputMode="numeric" placeholder="EAN / Barcode" value={manual} onChange={e => setManual(e.target.value.replace(/\D/g,''))}/>
+    <input inputMode="numeric" placeholder="EAN / Barcode" onBlur={(e)=>applyScannedArticle(e.target.value)} onKeyDown={(e)=>{if(e.key==="Enter") applyScannedArticle(e.currentTarget.value)}} value={manual} onChange={e => setManual(e.target.value.replace(/\D/g,''))}/>
     <button disabled={!manual} onClick={() => onDetected(manual)}>Übernehmen</button>
     <button onClick={() => { stopCamera(); onClose() }}>Schließen</button>
   </div></div>

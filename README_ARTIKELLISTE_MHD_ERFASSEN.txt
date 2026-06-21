@@ -1,0 +1,1 @@
+Ergänzt: Chef/Stationsleitung können in der Artikelliste direkt über 'MHD erfassen' aus einem Stammdaten-Artikel einen MHD-Eintrag erstellen. MHD und Menge sind Pflicht; ohne diese Angaben wird nichts gespeichert.

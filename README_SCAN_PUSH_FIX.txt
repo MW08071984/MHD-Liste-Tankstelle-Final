@@ -1,0 +1,1 @@
+Fix: Barcode-Scan übernimmt Artikel automatisch aus der Artikelliste. Eingabe von EAN/Artikelnummer löst ebenfalls Auto-Übernahme aus. Zusätzlich In-App/Browser-Benachrichtigung als Fallback beim App-Start, solange die App geöffnet ist.

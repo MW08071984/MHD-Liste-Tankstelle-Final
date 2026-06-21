@@ -1,0 +1,1 @@
+Ergänzt: Chef/Stationsleitung können in der Artikelliste nach einem Artikel-Scan mehrere Menge/MHD-Kombinationen für denselben Artikel erfassen. Mitarbeiter erfassen weiterhin einzeln. Ohne gültiges MHD und gültige Menge wird kein Eintrag erstellt.
