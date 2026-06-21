@@ -133,11 +133,6 @@ function removeImageBackground(src){
 
 function InlineFeedback({msg}){
   if(!msg) return null
-
-  useEffect(() => {
-    if(items && items.length) checkDueNotifications()
-  }, [items?.length])
-
   return <div className={'inlineFeedback ' + msg.type}>{msg.text}</div>
 }
 
@@ -1070,7 +1065,15 @@ export default function App(){
     {tab === 'settings' && isAdmin(user) && <Settings enablePush={enablePush}/>}
 
     {masterScannerOpen && <Scanner onClose={() => setMasterScannerOpen(false)} onDetected={(code) => { localStorage.setItem('mhd_master_scanned_ean', code); window.dispatchEvent(new CustomEvent('mhd-master-scan', {detail:code})); setMasterScannerOpen(false) }}/>} 
-    {scannerOpen && <Scanner onClose={() => setScannerOpen(false)} onDetected={(code) => { setForm(f => ({...f, barcode:code, artikelnummer:f.artikelnummer || code})); msgAt('erfassen','success','✓ Barcode gescannt. Suche läuft...'); setScannerOpen(false); setTimeout(() => document.getElementById('autoSearchButton')?.click(), 250) }}/>}
+    {scannerOpen && <Scanner onClose={() => setScannerOpen(false)} onDetected={(code) => {
+      const clean = String(code || '').replace(/\D/g,'')
+      if(clean){
+        setForm(f => ({...f, barcode:clean, artikelnummer:f.artikelnummer || clean}))
+        window.dispatchEvent(new CustomEvent('mhd-scan-code', {detail:clean}))
+        msgAt('erfassen','success','✓ Barcode übernommen. Artikelliste wird durchsucht...')
+      }
+      setScannerOpen(false)
+    }}/>}
     {editArticle && <ArticleModal item={editArticle} close={() => setEditArticle(null)} save={saveArticle}/>}
     {editWriteoff && <WriteoffModal item={editWriteoff} close={() => setEditWriteoff(null)} save={saveWriteoff}/>}
   </main>
@@ -1291,7 +1294,7 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
       type="text"
       inputMode="numeric"
       autoComplete="off"
-      placeholder="Artikelnummer oder EAN" onBlur={(e)=>applyScannedArticle(e.target.value)} onKeyDown={(e)=>{if(e.key==="Enter") applyScannedArticle(e.currentTarget.value)}}
+      placeholder="Artikelnummer oder EAN"
       value={searchTerm}
       onChange={e => handleSearch(e.target.value)}
       onKeyDown={e => { if(e.key === 'Enter'){ e.preventDefault(); suche(searchTerm) } }}
@@ -1317,7 +1320,7 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
       type="text"
       inputMode="numeric"
       autoComplete="off"
-      placeholder="EAN / Barcode" onBlur={(e)=>applyScannedArticle(e.target.value)} onKeyDown={(e)=>{if(e.key==="Enter") applyScannedArticle(e.currentTarget.value)}}
+      placeholder="EAN / Barcode"
       value={form.barcode || ''}
       onChange={e => handleBarcode(e.target.value)}
     />
@@ -1647,7 +1650,7 @@ function MasterArticles({masterArticles,saveMasterArticle,deleteMasterArticle,se
     <button className="scannerButton" type="button" onClick={() => setMasterScannerOpen(true)}>📷 EAN scannen</button>
 
     <label>EAN / Barcode</label>
-    <input placeholder="EAN / Barcode" onBlur={(e)=>applyScannedArticle(e.target.value)} onKeyDown={(e)=>{if(e.key==="Enter") applyScannedArticle(e.currentTarget.value)}} value={data.barcode} onChange={e => setData({...data, barcode:e.target.value.replace(/\D/g,'')})}/>
+    <input placeholder="EAN / Barcode" value={data.barcode} onChange={e => setData({...data, barcode:e.target.value.replace(/\D/g,'')})}/>
     <button type="button" onClick={() => lookupMasterArticle()}>🔎 Name/Bild suchen</button>
 
     <label>Artikelnummer</label>
@@ -1811,7 +1814,7 @@ function ArticleModal({item,close,save}){
     <input type="number" min="1" value={data.menge || 1} onChange={e => setData({...data, menge:e.target.value})}/>
 
     <label>EAN / Barcode</label>
-    <input placeholder="EAN / Barcode" onBlur={(e)=>applyScannedArticle(e.target.value)} onKeyDown={(e)=>{if(e.key==="Enter") applyScannedArticle(e.currentTarget.value)}} value={data.barcode || ''} onChange={e => setData({...data, barcode:e.target.value.replace(/\D/g,'')})}/>
+    <input placeholder="EAN / Barcode" value={data.barcode || ''} onChange={e => setData({...data, barcode:e.target.value.replace(/\D/g,'')})}/>
 
     <label className="upload">Bild hochladen<input type="file" accept="image/*" onChange={upload}/></label>
     {data.bild_url && <button type="button" onClick={removeArticleBg}>✂️ Bild freistellen</button>}
@@ -1954,7 +1957,7 @@ function Scanner({onClose,onDetected}){
     <InlineFeedback msg={scanMsg}/>
     <video ref={videoRef} className="scannerVideo" autoPlay muted playsInline></video>
     <label>Barcode manuell eingeben</label>
-    <input inputMode="numeric" placeholder="EAN / Barcode" onBlur={(e)=>applyScannedArticle(e.target.value)} onKeyDown={(e)=>{if(e.key==="Enter") applyScannedArticle(e.currentTarget.value)}} value={manual} onChange={e => setManual(e.target.value.replace(/\D/g,''))}/>
+    <input inputMode="numeric" placeholder="EAN / Barcode" value={manual} onChange={e => setManual(e.target.value.replace(/\D/g,''))} onKeyDown={e => { if(e.key === 'Enter' && manual){ e.preventDefault(); onDetected(manual) } }}/>
     <button disabled={!manual} onClick={() => onDetected(manual)}>Übernehmen</button>
     <button onClick={() => { stopCamera(); onClose() }}>Schließen</button>
   </div></div>
