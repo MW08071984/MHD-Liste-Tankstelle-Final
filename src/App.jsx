@@ -68,6 +68,10 @@ function toGermanDate(value){
 }
 const isAdmin = u => ['chef','chef_temp','stationsleitung'].includes(u?.rolle)
 const roleLabel = r => r === 'chef' ? 'Chef' : r === 'chef_temp' ? 'Chef-Rechte' : r === 'stationsleitung' ? 'Stationsleitung' : 'Mitarbeiter'
+const isMissingArticlesTableError = error => {
+  const msg = String(error?.message || '').toLowerCase()
+  return msg.includes('fehlende_artikel') || (error?.code === 'PGRST205' && msg.includes('fehlende'))
+}
 function daysUntil(dateStr){
   if(!dateStr) return 999
   const today = new Date(); today.setHours(0,0,0,0)
@@ -498,8 +502,14 @@ export default function App(){
 
   async function loadMasterArticles(){
     if(!db) return
+    setError('')
     const { data, error } = await supabase.from('artikel_stammdaten').select('*').order('name')
-    if(error) return setError(error.message)
+    if(error){
+      console.warn('Artikelliste konnte nicht geladen werden:', error)
+      setMasterArticles([])
+      setLoadedTabs(prev => ({...prev, master:true}))
+      return setError('Artikelliste konnte nicht geladen werden: ' + error.message)
+    }
     setMasterArticles(data || [])
     setLoadedTabs(prev => ({...prev, master:true}))
   }
@@ -507,7 +517,17 @@ export default function App(){
   async function loadMissingArticles(){
     if(!db) return
     const { data, error } = await supabase.from('fehlende_artikel').select('*').order('created_at', { ascending:false })
-    if(error) return setError(error.message)
+    if(error){
+      console.warn('Fehlende Artikel konnten nicht geladen werden:', error)
+      if(isMissingArticlesTableError(error)){
+        // Tabelle ist in Supabase noch nicht angelegt. Nicht als Dauerfehler auf jeder Seite anzeigen.
+        setMissingArticles([])
+        setLoadedTabs(prev => ({...prev, missing:true}))
+        setError('')
+        return
+      }
+      return setError(error.message)
+    }
     setMissingArticles(data || [])
     setLoadedTabs(prev => ({...prev, missing:true}))
   }
@@ -616,13 +636,24 @@ export default function App(){
     }
 
     if(db){
-      const { data: existing } = await supabase.from('fehlende_artikel').select('*').eq('barcode', clean).eq('status','offen').maybeSingle()
+      const { data: existing, error: findError } = await supabase.from('fehlende_artikel').select('*').eq('barcode', clean).eq('status','offen').maybeSingle()
+      if(findError && isMissingArticlesTableError(findError)){
+        console.warn('Tabelle fehlende_artikel fehlt noch:', findError)
+        return
+      }
       if(existing){
         setMissingArticles(prev => prev.some(x => x.id === existing.id) ? prev : [existing, ...prev])
         return
       }
       const { data, error } = await supabase.from('fehlende_artikel').insert(payload).select().single()
-      if(!error && data) setMissingArticles(prev => [data, ...prev])
+      if(error){
+        if(isMissingArticlesTableError(error)){
+          console.warn('Tabelle fehlende_artikel fehlt noch:', error)
+          return
+        }
+        return setError(error.message)
+      }
+      if(data) setMissingArticles(prev => [data, ...prev])
     }else{
       setMissingArticles(prev => prev.some(x => x.barcode === clean && x.status === 'offen') ? prev : [{...payload, id:clean, created_at:nowISO()}, ...prev])
     }
@@ -631,12 +662,19 @@ export default function App(){
   async function markMissingDone(row){
     if(!isAdmin(user)) return setError('Keine Rechte.')
     if(db){
-      await supabase.from('fehlende_artikel').update({status:'erledigt', erledigt_am:nowISO(), erledigt_von:user.name}).eq('id', row.id)
+      const { error } = await supabase.from('fehlende_artikel').delete().eq('id', row.id)
+      if(error){
+        if(isMissingArticlesTableError(error)){
+          setMissingArticles(prev => prev.filter(x => x.id !== row.id && x.barcode !== row.barcode))
+          return setSuccess('Vorschlag gelöscht.')
+        }
+        return setError(error.message)
+      }
       setMissingArticles(prev => prev.filter(x => x.id !== row.id))
     }else{
-      setMissingArticles(prev => prev.filter(x => x.id !== row.id))
+      setMissingArticles(prev => prev.filter(x => x.id !== row.id && x.barcode !== row.barcode))
     }
-    setSuccess('Fehlender Artikel erledigt.')
+    setSuccess('Vorschlag gelöscht.')
   }
 
   async function lookupBarcode(){
@@ -1265,7 +1303,7 @@ export default function App(){
     </section>}
 
     <nav className="tabs">
-      {tabs.map(([key,label]) => <button key={key} className={tab === key ? 'active' : ''} onClick={() => setTab(key)}>{label}</button>)}
+      {tabs.map(([key,label]) => <button key={key} className={tab === key ? 'active' : ''} onClick={() => { setError(''); setTab(key) }}>{label}</button>)}
     </nav>
 
     {error && <div className="error">{error}</div>}
@@ -1763,7 +1801,7 @@ function MissingArticles({missingArticles,markMissingDone}){
   const open = missingArticles.filter(x => x.status !== 'erledigt')
   return <section className="formCard">
     <h2>Fehlende Artikel</h2>
-    <p className="hint">Hier landen EANs, die Mitarbeiter gescannt haben, aber nicht in der Artikelliste vorhanden sind. Chef/Stationsleitung kann sie danach in der Artikelliste einpflegen.</p>
+    <p className="hint">Hier landen EANs, die Mitarbeiter gescannt haben, aber nicht in der Artikelliste vorhanden sind. Chef/Stationsleitung kann sie danach in der Artikelliste einpflegen oder den Vorschlag löschen.</p>
     {open.length === 0 && <div className="empty">Keine fehlenden Artikel vorhanden.</div>}
     {open.map(row => <div className="item" key={row.id || row.barcode}>
       <div className="artikelnummer small">EAN</div>
@@ -1773,7 +1811,7 @@ function MissingArticles({missingArticles,markMissingDone}){
       </div>
       <div className="actions">
         <button onClick={() => navigator.clipboard?.writeText(row.barcode)}>EAN kopieren</button>
-        <button onClick={() => markMissingDone(row)}>Erledigt</button>
+        <button onClick={() => markMissingDone(row)}>Vorschlag löschen</button>
       </div>
     </div>)}
   </section>
