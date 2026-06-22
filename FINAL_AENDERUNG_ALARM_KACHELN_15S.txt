@@ -1,0 +1,10 @@
+Finale Änderung:
+- Kopf-Kacheln Artikel / Abgelaufen / Bald / Woche öffnen jetzt für alle Benutzer die passende Artikelliste.
+- Mitarbeiter dürfen die gefilterte MHD-Liste sehen und Kontrollen/Abschriften speichern; Bearbeiten/Löschen bleibt nur Chef/Stationsleitung.
+- Heute fällige MHD zählen als abgelaufen.
+- Wochen-Kachel zeigt heute fällige Artikel korrekt mit an.
+- Grammatik verbessert: nächster heute / nächster in 1 Tag / nächster in X Tagen.
+- Alarm beim App-Öffnen für alle Benutzer, wenn heute fällige oder abgelaufene Artikel vorhanden sind.
+- Alarmdauer: 15 Sekunden mit intensiverem Ton und Vibration.
+- Alarm kann durch Antippen der grünen Warnmeldung gestoppt werden.
+- Build geprüft: npm run build erfolgreich.
