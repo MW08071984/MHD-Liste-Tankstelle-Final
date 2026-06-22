@@ -478,7 +478,8 @@ export default function App(){
       return
     }
 
-    let query = supabase.from('mhd_artikel').select('*').order('mhd')
+    // FINAL SPEED: Übersicht ohne Bilddaten laden. Bilder/Base64 sind die größte Bremse.
+    let query = supabase.from('mhd_artikel').select('id,barcode,artikelnummer,name,artikel,kategorie,mhd,created_at,mitarbeiter').order('mhd')
     if(!all) query = query.lte('mhd', next30ISO())
     const { data, error } = await query
     if(error){
@@ -503,7 +504,12 @@ export default function App(){
   async function loadMasterArticles(){
     if(!db) return
     setError('')
-    const { data, error } = await supabase.from('artikel_stammdaten').select('*').order('name')
+    // SPEED-FIX: Artikelliste ohne große Bilddaten laden.
+    // Bilder/Base64 machen die Liste auf Handys langsam. Für Suche/Erfassung reichen diese Felder.
+    const { data, error } = await supabase
+      .from('artikel_stammdaten')
+      .select('id,barcode,artikelnummer,name,kategorie,updated_at')
+      .order('name')
     if(error){
       console.warn('Artikelliste konnte nicht geladen werden:', error)
       setMasterArticles([])
@@ -967,6 +973,13 @@ export default function App(){
       bild_url:data.bild_url || '',
       updated_at:nowISO()
     }
+    // Wenn die Artikelliste im Schnellmodus ohne Bilddaten geladen wurde, beim Bearbeiten vorhandenes Bild nicht löschen.
+    if(db && data.id && !payload.bild_url){
+      try{
+        const { data:oldArticle } = await supabase.from('artikel_stammdaten').select('bild_url').eq('id', data.id).maybeSingle()
+        if(oldArticle?.bild_url) payload.bild_url = oldArticle.bild_url
+      }catch(e){ console.warn('Bild-Erhalt konnte nicht geprüft werden:', e) }
+    }
     if(!payload.barcode) return setError('EAN / Barcode fehlt.')
     if(!payload.name) return setError('Artikelname fehlt.')
 
@@ -1224,9 +1237,9 @@ export default function App(){
   }
 
   const stats = useMemo(() => {
-    const expiredItems = items.filter(i => daysUntil(i.mhd) < 0)
-    const urgentItems = items.filter(i => daysUntil(i.mhd) >= 0 && daysUntil(i.mhd) <= 3)
-    const weekItems = items.filter(i => daysUntil(i.mhd) >= 0 && daysUntil(i.mhd) <= 7)
+    const expiredItems = items.filter(i => daysUntil(i.mhd) <= 0)
+    const urgentItems = items.filter(i => daysUntil(i.mhd) >= 1 && daysUntil(i.mhd) <= 3)
+    const weekItems = items.filter(i => daysUntil(i.mhd) >= 1 && daysUntil(i.mhd) <= 7)
     const nextDue = [...weekItems].sort((a,b) => daysUntil(a.mhd) - daysUntil(b.mhd))[0]
     return {
       total:items.length,
@@ -1249,9 +1262,9 @@ export default function App(){
   }
 
   const filteredItems = useMemo(() => {
-    if(articleFilter === 'expired') return items.filter(i => daysUntil(i.mhd) < 0)
-    if(articleFilter === 'urgent') return items.filter(i => daysUntil(i.mhd) >= 0 && daysUntil(i.mhd) <= 3)
-    if(articleFilter === 'week') return items.filter(i => daysUntil(i.mhd) >= 0 && daysUntil(i.mhd) <= 7)
+    if(articleFilter === 'expired') return items.filter(i => daysUntil(i.mhd) <= 0)
+    if(articleFilter === 'urgent') return items.filter(i => daysUntil(i.mhd) >= 1 && daysUntil(i.mhd) <= 3)
+    if(articleFilter === 'week') return items.filter(i => daysUntil(i.mhd) >= 1 && daysUntil(i.mhd) <= 7)
     return items
   }, [items, articleFilter])
 
@@ -1337,7 +1350,7 @@ export default function App(){
 }
 
 
-async function compressImageFile(file, maxSize = 600, quality = 0.72){
+async function compressImageFile(file, maxSize = 360, quality = 0.55){
   if(!file || !file.type || !file.type.startsWith('image/')) return file
   try{
     const img = new Image()
@@ -1441,13 +1454,13 @@ function Article({item,user,writeOffArticle,markArticleCheckedZero,setEditArticl
   }
 
   const qty = Number(amount || 0)
-  const stateClass = days < 0 ? 'expiredArticle' : (days >= 0 && days <= 3 ? 'urgentArticle' : '')
+  const stateClass = days <= 0 ? 'expiredArticle' : (days >= 1 && days <= 3 ? 'urgentArticle' : '')
   return <div className={'item articleItem ' + stateClass}>
     <div className="thumb"><LazyArticleImage src={item.bild_url} alt={item.name || item.artikel || 'Artikelbild'}/></div>
     <div className="grow">
       <b>{item.name || item.artikel}</b>
       <p>{item.artikelnummer ? `Art.-Nr. ${item.artikelnummer} · ` : ''}{item.kategorie || 'Sonstiges'}</p>
-      <p>MHD {item.mhd ? new Date(item.mhd).toLocaleDateString('de-DE') : '-'} · {days < 0 ? `${Math.abs(days)} Tage drüber` : `${days} Tage`}</p>
+      <p>MHD {item.mhd ? new Date(item.mhd).toLocaleDateString('de-DE') : '-'} · {days <= 0 ? (days === 0 ? 'heute fällig' : `${Math.abs(days)} Tage drüber`) : `${days} Tage`}</p>
     </div>
     <div className="writeBox">
       <label className="smallLabel">Menge für Abschrift</label>
