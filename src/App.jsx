@@ -260,6 +260,9 @@ export default function App(){
   const [backwaren, setBackwaren] = useState(DEFAULT_BACKWAREN)
   const [tab, setTab] = useState('dashboard')
   const [articleFilter, setArticleFilter] = useState('all')
+  const [itemsLimited, setItemsLimited] = useState(true)
+  const [allMhdLoaded, setAllMhdLoaded] = useState(false)
+  const [loadedTabs, setLoadedTabs] = useState({})
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [login, setLogin] = useState({ nummer:'', passwort:'', remember:true })
@@ -353,6 +356,84 @@ export default function App(){
     }
   }
 
+  function next30ISO(){
+    const limitDate = new Date()
+    limitDate.setDate(limitDate.getDate()+30)
+    return limitDate.toISOString().slice(0,10)
+  }
+
+  function isVisibleInFastOverview(item){
+    const mhd = String(item?.mhd || '').slice(0,10)
+    return !mhd || mhd <= next30ISO()
+  }
+
+  async function loadItems({ all = false, force = false } = {}){
+    if(!db) return
+
+    // Wichtig für Chef/Stationsleitung:
+    // Wenn die komplette MHD-Liste einmal geladen wurde, bleibt sie im Speicher.
+    // Dadurch lädt sie beim Zurückwechseln in die Übersicht nicht jedes Mal neu.
+    if(all && allMhdLoaded && !force){
+      setItemsLimited(false)
+      return
+    }
+
+    let query = supabase.from('mhd_artikel').select('*').order('mhd')
+    if(!all) query = query.lte('mhd', next30ISO())
+    const { data, error } = await query
+    if(error){
+      console.warn(error)
+      setError('MHD-Übersicht konnte nicht geladen werden: ' + error.message)
+      return
+    }
+    setItems(data || [])
+    setItemsLimited(!all)
+    setAllMhdLoaded(!!all)
+  }
+
+  async function loadEmployees(){
+    if(!db){
+      setEmployees(DEFAULT_EMPLOYEES)
+      return
+    }
+    const { data: empData } = await supabase.from('mitarbeiter').select('*').order('nummer')
+    setEmployees(empData?.length ? empData : DEFAULT_EMPLOYEES)
+  }
+
+  async function loadMasterArticles(){
+    if(!db) return
+    const { data, error } = await supabase.from('artikel_stammdaten').select('*').order('name')
+    if(error) return setError(error.message)
+    setMasterArticles(data || [])
+    setLoadedTabs(prev => ({...prev, master:true}))
+  }
+
+  async function loadMissingArticles(){
+    if(!db) return
+    const { data, error } = await supabase.from('fehlende_artikel').select('*').order('created_at', { ascending:false })
+    if(error) return setError(error.message)
+    setMissingArticles(data || [])
+    setLoadedTabs(prev => ({...prev, missing:true}))
+  }
+
+  async function loadWriteoffs(){
+    if(!db) return
+    const { data, error } = await supabase.from('abschriften').select('*').order('created_at', { ascending:false })
+    if(error) return setError(error.message)
+    setWriteoffs(data || [])
+    setLoadedTabs(prev => ({...prev, writeoffs:true}))
+  }
+
+  async function loadSettings(){
+    if(!db) return
+    const { data: settingsData } = await supabase.from('app_settings').select('*')
+    const obj = Object.fromEntries((settingsData || []).map(s => [s.key, s.value]))
+    setSettings(obj)
+    if(obj.backwaren_liste){
+      try{ setBackwaren(JSON.parse(obj.backwaren_liste)) }catch{}
+    }
+  }
+
   async function loadAll(){
     if(!db){
       setEmployees(DEFAULT_EMPLOYEES)
@@ -360,33 +441,20 @@ export default function App(){
       return
     }
     try{
-      const { data: empData } = await supabase.from('mitarbeiter').select('*').order('nummer')
-      setEmployees(empData?.length ? empData : DEFAULT_EMPLOYEES)
-
-      const { data: itemData } = await supabase.from('mhd_artikel').select('*').order('mhd')
-      setItems(itemData || [])
-
-      const { data: masterData } = await supabase.from('artikel_stammdaten').select('*').order('name')
-      setMasterArticles(masterData || [])
-
-      const { data: missingData } = await supabase.from('fehlende_artikel').select('*').order('created_at', { ascending:false })
-      setMissingArticles(missingData || [])
-
-      const { data: absData } = await supabase.from('abschriften').select('*').order('created_at', { ascending:false })
-      setWriteoffs(absData || [])
-
-      const { data: settingsData } = await supabase.from('app_settings').select('*')
-      const obj = Object.fromEntries((settingsData || []).map(s => [s.key, s.value]))
-      setSettings(obj)
-      if(obj.backwaren_liste){
-        try{ setBackwaren(JSON.parse(obj.backwaren_liste)) }catch{}
-      }
+      await Promise.all([loadEmployees(), loadSettings(), loadItems({ all:false })])
     }catch(e){
       console.warn(e)
       setEmployees(DEFAULT_EMPLOYEES)
     }
     setReady(true)
   }
+
+  useEffect(() => {
+    if(!db || !user) return
+    if((tab === 'erfassen' || tab === 'stammdaten') && !loadedTabs.master) loadMasterArticles()
+    if(tab === 'fehlende' && isAdmin(user) && !loadedTabs.missing) loadMissingArticles()
+    if((tab === 'abschriften' || tab === 'kontrollen') && isAdmin(user) && !loadedTabs.writeoffs) loadWriteoffs()
+  }, [tab, user, db, loadedTabs.master, loadedTabs.missing, loadedTabs.writeoffs])
 
   async function saveSetting(key, value){
     if(!isAdmin(user)) return setError('Keine Rechte.')
@@ -462,7 +530,7 @@ export default function App(){
     if(!isAdmin(user)) return setError('Keine Rechte.')
     if(db){
       await supabase.from('fehlende_artikel').update({status:'erledigt', erledigt_am:nowISO(), erledigt_von:user.name}).eq('id', row.id)
-      await loadAll()
+      setMissingArticles(prev => prev.filter(x => x.id !== row.id))
     }else{
       setMissingArticles(prev => prev.filter(x => x.id !== row.id))
     }
@@ -528,11 +596,11 @@ export default function App(){
         barcode: next.barcode,
         artikelnummer: next.artikelnummer,
         name: next.name,
-        kategorie: next.kategorie,
+        kategorie: form.kategorie || 'Sonstiges',
         bild_url: next.bild_url,
         updated_at: nowISO()
       }, { onConflict:'barcode' })
-      await loadAll()
+      setMasterArticles(prev => prev.some(x => String(x.barcode || '') === String(next.barcode || '')) ? prev : [...prev, {...next, kategorie:form.kategorie || 'Sonstiges'}])
     }
 
     msgAt('erfassen','success', next.bild_url ? '✓ Produkt im Internet gefunden, Bild übernommen und Artikelliste gespeichert.' : '✓ Produkt im Internet gefunden und Artikelliste gespeichert.')
@@ -603,13 +671,15 @@ export default function App(){
           updated_at: nowISO()
         }, { onConflict:'barcode' })
       }
-      const { error } = await supabase.from('mhd_artikel').insert(payload)
+      const { data:newRow, error } = await supabase.from('mhd_artikel').insert(payload).select().single()
       if(error){
         appFeedback('error')
         msgAt('erfassen','error', error.message)
         return setError(error.message)
       }
-      await loadAll()
+      if(newRow && (!itemsLimited || isVisibleInFastOverview(newRow))){
+        setItems(prev => [...prev, newRow].sort((a,b) => String(a.mhd || '').localeCompare(String(b.mhd || ''))))
+      }
     }
     setForm({ barcode:'', artikelnummer:'', name:'', kategorie:'Sonstiges', mhd:'', menge:'', bild_url:'' })
     msgAt('erfassen','success','✓ MHD-Eintrag gespeichert. Der Artikel wurde in die Übersicht übernommen.')
@@ -640,7 +710,7 @@ export default function App(){
         setError('Abschrift fehlgeschlagen: ' + error.message)
         return false
       }
-      await loadAll()
+      if(finalPayload.typ === 'kontrolle' || loadedTabs.writeoffs) setWriteoffs(prev => [{...finalPayload, id:crypto.randomUUID?.() || String(Date.now()), created_at:nowISO()}, ...prev])
     }
     setSuccess(`Abschrift gespeichert: ${finalPayload.name} · Menge ${finalPayload.menge}`)
     appFeedback('success')
@@ -657,9 +727,13 @@ export default function App(){
     const ok = await writeOff({ ...item, artikel_id:item.id, menge:qty, grund: daysUntil(item.mhd) < 0 ? 'Abgelaufen' : 'MHD Abschrift' })
     if(ok && db){
       const rest = Math.max(0, bestand - qty)
-      if(rest <= 0) await supabase.from('mhd_artikel').delete().eq('id', item.id)
-      else await supabase.from('mhd_artikel').update({ menge:rest }).eq('id', item.id)
-      await loadAll()
+      if(rest <= 0){
+        await supabase.from('mhd_artikel').delete().eq('id', item.id)
+        setItems(prev => prev.filter(x => x.id !== item.id))
+      }else{
+        await supabase.from('mhd_artikel').update({ menge:rest }).eq('id', item.id)
+        setItems(prev => prev.map(x => x.id === item.id ? {...x, menge:rest} : x))
+      }
     }
   }
 
@@ -698,9 +772,9 @@ export default function App(){
         if(deleteError) return setError(deleteError.message)
       }
 
-      await loadAll()
+      setItems(prev => prev.filter(x => x.id !== item.id))
     }else{
-      localItems(items.filter(x => x.id !== item.id))
+      setItems(prev => prev.filter(x => x.id !== item.id))
     }
 
     setSuccess('Artikel kontrolliert: Bestand 0. Er wurde aus der Übersicht entfernt.')
@@ -752,11 +826,12 @@ export default function App(){
     }))
 
     if(db){
-      const { error } = await supabase.from('mhd_artikel').insert(entries)
+      const { data:newRows, error } = await supabase.from('mhd_artikel').insert(entries).select()
       if(error) return setError(error.message || 'MHD-Einträge konnten nicht gespeichert werden.')
-      await loadAll()
+      const rowsToShow = (newRows || []).filter(r => !itemsLimited || isVisibleInFastOverview(r))
+      if(rowsToShow.length) setItems(prev => [...prev, ...rowsToShow].sort((a,b) => String(a.mhd || '').localeCompare(String(b.mhd || ''))))
     }else{
-      localItems([...entries.map(e => ({...e, id:crypto.randomUUID?.() || String(Date.now()+Math.random())})), ...items])
+      setItems(prev => [...entries.map(e => ({...e, id:crypto.randomUUID?.() || String(Date.now()+Math.random())})), ...prev])
     }
 
     const gesamt = entries.reduce((sum,e)=>sum+Number(e.menge || 0),0)
@@ -786,9 +861,12 @@ export default function App(){
     if(duplicate) return setError('Artikel existiert bereits: ' + (duplicate.name || duplicate.barcode))
 
     if(db){
-      const { error } = await supabase.from('artikel_stammdaten').upsert(payload, { onConflict:'barcode' })
+      const { data:saved, error } = await supabase.from('artikel_stammdaten').upsert(payload, { onConflict:'barcode' }).select().single()
       if(error) return setError(error.message)
-      await loadAll()
+      setMasterArticles(prev => {
+        const without = prev.filter(x => String(x.barcode || '') !== String(payload.barcode || ''))
+        return [...without, saved || payload].sort((a,b) => String(a.name).localeCompare(String(b.name)))
+      })
     }else{
       setMasterArticles(prev => {
         const without = prev.filter(x => x.barcode !== payload.barcode)
@@ -805,7 +883,7 @@ export default function App(){
     if(db){
       const { error } = await supabase.from('artikel_stammdaten').delete().eq('id', article.id)
       if(error) return setError(error.message)
-      await loadAll()
+      setMasterArticles(prev => prev.filter(x => x.id !== article.id))
     }else{
       setMasterArticles(prev => prev.filter(x => x.id !== article.id))
     }
@@ -822,9 +900,9 @@ export default function App(){
     if(db){
       const { error } = await supabase.from('mhd_artikel').delete().eq('id', item.id)
       if(error) return setError(error.message)
-      await loadAll()
+      setItems(prev => prev.filter(x => x.id !== item.id))
     }else{
-      localItems(items.filter(x => x.id !== item.id))
+      setItems(prev => prev.filter(x => x.id !== item.id))
     }
     setSuccess('MHD-Eintrag aus der Übersicht gelöscht.')
     appFeedback('success')
@@ -864,7 +942,7 @@ export default function App(){
     }
 
     setForm(f => ({...f, barcode:c}))
-    try{ msgAt?.('erfassen','warn','Artikel nicht gefunden. EAN wurde übernommen und kann weitergeleitet werden.') }catch{}
+    try{ msgAt?.('erfassen','warning','Artikel nicht gefunden. EAN wurde übernommen und kann weitergeleitet werden.') }catch{}
     return false
   }
 
@@ -883,7 +961,7 @@ export default function App(){
     const { error } = await supabase.from('mhd_artikel').update(payload).eq('id', data.id)
     if(error) return setError(error.message)
     setEditArticle(null)
-    await loadAll()
+    setItems(prev => prev.map(x => x.id === data.id ? {...x, ...payload, id:data.id} : x).filter(x => !itemsLimited || isVisibleInFastOverview(x)))
     setSuccess('Artikel gespeichert.')
     appFeedback('success')
   }
@@ -902,7 +980,7 @@ export default function App(){
     const { error } = await supabase.from('abschriften').update(payload).eq('id', data.id)
     if(error) return setError(error.message)
     setEditWriteoff(null)
-    await loadAll()
+    setWriteoffs(prev => prev.map(x => x.id === data.id ? {...x, ...payload, id:data.id} : x))
     setSuccess('Abschrift gespeichert.')
     appFeedback('success')
   }
@@ -912,7 +990,7 @@ export default function App(){
     if(!confirm('Abschrift löschen?')) return
     const { error } = await supabase.from('abschriften').delete().eq('id', item.id)
     if(error) return setError(error.message)
-    await loadAll()
+    setWriteoffs(prev => prev.filter(x => x.id !== item.id))
     setSuccess('Abschrift gelöscht.')
     appFeedback('success')
   }
@@ -927,6 +1005,8 @@ export default function App(){
     const artikelNummer = item.artikelnummer || ''
     const barcode = item.barcode || ''
     let existing = null
+    let restoredRow = null
+    let updatedQty = null
 
     if(artikelNummer){
       const { data } = await supabase.from('mhd_artikel').select('*').eq('artikelnummer', artikelNummer).eq('mhd', item.mhd).maybeSingle()
@@ -939,8 +1019,8 @@ export default function App(){
     }
 
     if(existing){
-      const newQty = Number(existing.menge || 0) + qty
-      const { error:updateError } = await supabase.from('mhd_artikel').update({ menge:newQty }).eq('id', existing.id)
+      updatedQty = Number(existing.menge || 0) + qty
+      const { error:updateError } = await supabase.from('mhd_artikel').update({ menge:updatedQty }).eq('id', existing.id)
       if(updateError) return setError(updateError.message)
     } else {
       const payload = {
@@ -955,14 +1035,24 @@ export default function App(){
         mitarbeiter: user.name,
         erstellt_von: Number(user.nummer)
       }
-      const { error:insertError } = await supabase.from('mhd_artikel').insert(payload)
+      const { data:inserted, error:insertError } = await supabase.from('mhd_artikel').insert(payload).select().single()
       if(insertError) return setError(insertError.message)
+      restoredRow = inserted || payload
     }
 
     const { error:deleteError } = await supabase.from('abschriften').delete().eq('id', item.id)
     if(deleteError) return setError(deleteError.message)
 
-    await loadAll()
+    setItems(prev => {
+      let next = prev
+      if(existing){
+        next = prev.map(x => x.id === existing.id ? {...x, menge:updatedQty} : x)
+      }else if(restoredRow){
+        next = (!itemsLimited || isVisibleInFastOverview(restoredRow)) ? [...prev, restoredRow] : prev
+      }
+      return next.sort((a,b) => String(a.mhd || '').localeCompare(String(b.mhd || '')))
+    })
+    setWriteoffs(prev => prev.filter(x => x.id !== item.id))
     setSuccess('Abschrift rückgängig gemacht. Artikel ist wieder im Bestand.')
     appFeedback('success')
   }
@@ -978,7 +1068,10 @@ export default function App(){
     }
     const { error } = await supabase.from('mitarbeiter').upsert(payload, { onConflict:'nummer' })
     if(error) return setError(error.message)
-    await loadAll()
+    setEmployees(prev => {
+      const without = prev.filter(x => Number(x.nummer) !== Number(payload.nummer))
+      return [...without, payload].sort((a,b) => Number(a.nummer)-Number(b.nummer))
+    })
     setSuccess('Mitarbeiter gespeichert.')
     appFeedback('success')
   }
@@ -988,7 +1081,7 @@ export default function App(){
     if(!confirm(`${emp.name} löschen?`)) return
     const { error } = await supabase.from('mitarbeiter').delete().eq('nummer', emp.nummer)
     if(error) return setError(error.message)
-    await loadAll()
+    setEmployees(prev => prev.filter(x => Number(x.nummer) !== Number(emp.nummer)))
     setSuccess('Mitarbeiter gelöscht.')
     appFeedback('success')
   }
@@ -997,6 +1090,7 @@ export default function App(){
     if(!isAdmin(user)) return setError('Keine Rechte.')
     const { error } = await supabase.from('mitarbeiter').update({ passwort:'0000', muss_passwort_aendern:true }).eq('nummer', emp.nummer)
     if(error) return setError(error.message)
+    setEmployees(prev => prev.map(x => Number(x.nummer) === Number(emp.nummer) ? {...x, passwort:'0000', muss_passwort_aendern:true} : x))
     setSuccess(`Passwort für ${emp.name} auf 0000 zurückgesetzt.`)
     appFeedback('success')
   }
@@ -1098,7 +1192,7 @@ export default function App(){
     {error && <div className="error">{error}</div>}
     {success && <div className="success">{success}</div>}
 
-    {tab === 'artikel' && isAdmin(user) && <ArticleList items={filteredItems} allCount={items.length} articleFilter={articleFilter} setArticleFilter={setArticleFilter} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} deleteMhdEntry={deleteMhdEntry} inlineMsg={inlineMsg} safeEditOverviewItem={safeEditOverviewItem}/>}
+    {tab === 'artikel' && isAdmin(user) && <ArticleList items={filteredItems} allCount={items.length} articleFilter={articleFilter} setArticleFilter={setArticleFilter} itemsLimited={itemsLimited} allMhdLoaded={allMhdLoaded} loadAllItems={() => loadItems({all:true})} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} deleteMhdEntry={deleteMhdEntry} inlineMsg={inlineMsg} safeEditOverviewItem={safeEditOverviewItem}/>}
     {tab === 'dashboard' && <Dashboard safeEditOverviewItem={safeEditOverviewItem} items={items} setTab={setTab} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} deleteMhdEntry={deleteMhdEntry} inlineMsg={inlineMsg}/>}
     {tab === 'erfassen' && <Erfassen form={form} setForm={setForm} setScannerOpen={setScannerOpen} lookupBarcode={lookupBarcode} uploadFormImg={uploadFormImg} addItem={addItem} user={user} inlineMsg={inlineMsg} masterArticles={masterArticles}/>}
     {tab === 'backwaren' && <Backwaren backwaren={backwaren} saveBackwarenList={saveBackwarenList} writeOff={writeOff} user={user}/>}
@@ -1190,7 +1284,7 @@ function Dashboard({items,setTab,user,writeOffArticle,markArticleCheckedZero,set
   </section>
 }
 
-function ArticleList({items,allCount,articleFilter,setArticleFilter,user,writeOffArticle,markArticleCheckedZero,setEditArticle,deleteMhdEntry,inlineMsg,safeEditOverviewItem}){
+function ArticleList({items,allCount,articleFilter,setArticleFilter,itemsLimited,allMhdLoaded,loadAllItems,user,writeOffArticle,markArticleCheckedZero,setEditArticle,deleteMhdEntry,inlineMsg,safeEditOverviewItem}){
   const title = articleFilter === 'expired' ? 'Abgelaufene Artikel' : articleFilter === 'urgent' ? 'Bald ablaufende Artikel' : articleFilter === 'week' ? 'Artikel diese Woche' : 'Artikel'
   return <section className="list">
     <div className="sectionHeader">
@@ -1198,7 +1292,8 @@ function ArticleList({items,allCount,articleFilter,setArticleFilter,user,writeOf
         <h2>{title}</h2>
         <p className="filterInfo">{items.length} von {allCount} Artikeln · Chef/Stationsleitung kann hier Einträge bearbeiten oder löschen.</p>
       </div>
-      {articleFilter !== 'all' && <button className="ghostSmall" onClick={() => setArticleFilter('all')}>Alle anzeigen</button>}
+      {itemsLimited && <button className="ghostSmall" onClick={loadAllItems}>Alle MHD laden</button>}
+      {articleFilter !== 'all' && <button className="ghostSmall" onClick={() => setArticleFilter('all')}>Filter zurücksetzen</button>}
     </div>
     {items.length === 0 && <div className="empty">Keine passenden Artikel vorhanden.</div>}
     {items.map(item => <Article key={item.id} item={item} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} deleteMhdEntry={deleteMhdEntry} inlineMsg={inlineMsg}/>)}
