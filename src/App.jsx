@@ -1517,7 +1517,7 @@ function Article({item,user,writeOffArticle,markArticleCheckedZero,setEditArticl
     <div className="thumb"><LazyArticleImage src={item.bild_url} alt={item.name || item.artikel || 'Artikelbild'}/></div>
     <div className="grow">
       <b>{item.name || item.artikel}</b>
-      <p>{item.artikelnummer ? `Art.-Nr. ${item.artikelnummer} · ` : ''}{item.kategorie || 'Sonstiges'}</p>
+      <p>{item.artikelnummer ? `Art.-Nr. ${item.artikelnummer}` : ''}</p>
       <p>MHD {item.mhd ? new Date(item.mhd).toLocaleDateString('de-DE') : '-'} · {days <= 0 ? (days === 0 ? 'heute fällig' : `${Math.abs(days)} Tage drüber`) : `${days} Tage`}</p>
     </div>
     <div className="writeBox">
@@ -1555,6 +1555,7 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
   const [searchTerm, setSearchTerm] = useState('')
   const [searchMsg, setSearchMsg] = useState(null)
   const [missingMode, setMissingMode] = useState(false)
+  const [missingDialog, setMissingDialog] = useState({ open:false, ean:'', name:'' })
 
   function übernehmen(article){
     if(!article) return false
@@ -1588,7 +1589,10 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
     appFeedback('warning')
     setMissingMode(true)
     const clean = term.replace(/\D/g,'')
-    if(clean) setForm(f => ({...f, barcode:f.barcode || clean, artikelnummer:f.artikelnummer || clean}))
+    if(clean){
+      setForm(f => ({...f, barcode:f.barcode || clean, artikelnummer:f.artikelnummer || clean}))
+      setMissingDialog({ open:true, ean:clean, name:'' })
+    }
     setSearchMsg({type:'warning', text:'Artikel nicht in Artikelliste gefunden. Bitte Namen eingeben und als fehlenden Artikel melden.'})
     return false
   }
@@ -1618,9 +1622,9 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
     return () => window.removeEventListener('mhd-scan-code', onScan)
   }, [masterArticles])
 
-  async function meldenFehlendenArtikel(){
-    const clean = String(form.barcode || searchTerm || '').replace(/\D/g,'')
-    const name = String(form.name || '').trim()
+  async function meldenFehlendenArtikel(eanOverride, nameOverride){
+    const clean = String(eanOverride || form.barcode || searchTerm || '').replace(/\D/g,'')
+    const name = String(nameOverride || form.name || '').trim()
     if(!clean){ appFeedback('error'); setSearchMsg({type:'error', text:'Bitte erst EAN scannen oder eingeben.'}); return }
     if(!name){ appFeedback('error'); setSearchMsg({type:'error', text:'Bitte Artikelnamen eingeben.'}); return }
     await reportMissingArticle?.(clean, 'EAN wurde beim Erfassen gescannt, aber nicht in der Artikelliste gefunden.', name)
@@ -1628,13 +1632,40 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
     setForm(f => ({...f, barcode:'', artikelnummer:'', name:''}))
     setSearchTerm('')
     setMissingMode(false)
+    setMissingDialog({ open:false, ean:'', name:'' })
     appFeedback('success')
+  }
+
+  function closeMissingDialog(){
+    setMissingDialog({ open:false, ean:'', name:'' })
   }
 
   const nameReadOnly = !isAdmin(user) && !missingMode
 
   return <section className="formCard">
     <h2>Artikel erfassen</h2>
+
+    {missingDialog.open && <div className="modalOverlay">
+      <div className="modalCard missingArticleDialog">
+        <h2>Artikel nicht gefunden</h2>
+        <div className="submitHint">Diese EAN ist nicht in der Artikelliste. Bitte Artikelnamen eingeben und an Chef/Stationsleitung melden.</div>
+        <label>EAN / Barcode</label>
+        <input className="realInput" value={missingDialog.ean} readOnly />
+        <label>Artikelname</label>
+        <input
+          className="realInput"
+          autoFocus
+          placeholder="Name des Artikels eingeben"
+          value={missingDialog.name}
+          onChange={e => setMissingDialog(d => ({...d, name:e.target.value}))}
+          onKeyDown={e => { if(e.key === 'Enter'){ e.preventDefault(); meldenFehlendenArtikel(missingDialog.ean, missingDialog.name) } }}
+        />
+        <div className="modalActions">
+          <button className="ghostSmall" type="button" onClick={closeMissingDialog}>Abbrechen</button>
+          <button type="button" onClick={() => meldenFehlendenArtikel(missingDialog.ean, missingDialog.name)}>An fehlende Artikel senden</button>
+        </div>
+      </div>
+    </div>}
 
     <button className="scannerButton" type="button" onClick={() => setScannerOpen(true)}>📷 Barcode scannen</button>
 
@@ -1693,13 +1724,7 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
       onChange={e => setForm({...form, name:e.target.value})}
     />
 
-    {missingMode && !isAdmin(user) && <div className="submitHint">Artikel ist nicht in der Artikelliste. Bitte Namen eingeben und an Chef/Stationsleitung melden.</div>}
-    {missingMode && !isAdmin(user) && <button className="ghostSmall" type="button" onClick={meldenFehlendenArtikel}>Fehlenden Artikel melden</button>}
 
-    {isAdmin(user) && <>
-      <label>Kategorie</label>
-      <select className="realInput" value={form.kategorie || 'Sonstiges'} onChange={e => setForm({...form, kategorie:e.target.value})}>{CATEGORIES.map(c => <option key={c}>{c}</option>)}</select>
-    </>}
 
     <label>MHD</label>
     <div className="mhdInputRow">
@@ -2101,7 +2126,7 @@ function MasterArticles({masterArticles,saveMasterArticle,deleteMasterArticle,se
     <input className="realInput" placeholder="Artikel suchen: Name, Artikelnummer oder EAN" value={articleSearch} onChange={e => setArticleSearch(e.target.value)} />
     {filteredMasterArticles.map(a => <div className="item" key={a.id || a.barcode}>
       <div className="thumb">{a.bild_url ? <img src={a.bild_url}/> : '📦'}</div>
-      <div className="grow"><b>{a.name}</b><p>Art.-Nr. {a.artikelnummer || '-'} · EAN {a.barcode} · {a.kategorie || 'Sonstiges'}</p></div>
+      <div className="grow"><b>{a.name}</b><p>Art.-Nr. {a.artikelnummer || '-'} · EAN {a.barcode}</p></div>
       <div className="actions">
         <button onClick={() => edit(a)}>Bearbeiten</button><button type="button" onClick={() => quickMhdFromMaster?.(a)}>MHD erfassen</button>
         <button onClick={() => deleteMasterArticle(a)}>Löschen</button>
