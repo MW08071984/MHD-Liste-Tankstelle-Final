@@ -653,13 +653,16 @@ export default function App(){
     setUser(null)
   }
 
-  async function reportMissingArticle(barcode, hinweis='Artikel nicht in Artikelliste gefunden'){
+  async function reportMissingArticle(barcode, hinweis='Artikel nicht in Artikelliste gefunden', artikelname=''){
     const clean = String(barcode || '').replace(/\D/g,'')
     if(!clean) return
 
+    const cleanName = String(artikelname || '').trim()
+    const finalHinweis = cleanName ? ('Artikelname: ' + cleanName + ' · ' + hinweis) : hinweis
+
     const payload = {
       barcode: clean,
-      hinweis,
+      hinweis: finalHinweis,
       gemeldet_von: user?.name || '',
       gemeldet_von_nummer: Number(user?.nummer || 0),
       status: 'offen'
@@ -672,7 +675,12 @@ export default function App(){
         return
       }
       if(existing){
-        setMissingArticles(prev => prev.some(x => x.id === existing.id) ? prev : [existing, ...prev])
+        if(cleanName && !String(existing.hinweis || '').includes(cleanName)){
+          const updatedHinweis = finalHinweis
+          await supabase.from('fehlende_artikel').update({ hinweis: updatedHinweis }).eq('id', existing.id)
+          existing.hinweis = updatedHinweis
+        }
+        setMissingArticles(prev => prev.some(x => x.id === existing.id) ? prev.map(x => x.id === existing.id ? existing : x) : [existing, ...prev])
         return
       }
       const { data, error } = await supabase.from('fehlende_artikel').insert(payload).select().single()
@@ -1374,7 +1382,7 @@ export default function App(){
 
     {tab === 'artikel' && isAdmin(user) && <ArticleList items={filteredItems} allCount={items.length} articleFilter={articleFilter} setArticleFilter={setArticleFilter} itemsLimited={itemsLimited} allMhdLoaded={allMhdLoaded} loadAllItems={() => loadItems({all:true})} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} deleteMhdEntry={deleteMhdEntry} inlineMsg={inlineMsg} safeEditOverviewItem={safeEditOverviewItem}/>}
     {tab === 'dashboard' && <Dashboard safeEditOverviewItem={safeEditOverviewItem} items={items} setTab={setTab} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} deleteMhdEntry={deleteMhdEntry} inlineMsg={inlineMsg}/>}
-    {tab === 'erfassen' && <Erfassen form={form} setForm={setForm} setScannerOpen={setScannerOpen} lookupBarcode={lookupBarcode} uploadFormImg={uploadFormImg} addItem={addItem} user={user} inlineMsg={inlineMsg} masterArticles={masterArticles}/>}
+    {tab === 'erfassen' && <Erfassen form={form} setForm={setForm} setScannerOpen={setScannerOpen} lookupBarcode={lookupBarcode} uploadFormImg={uploadFormImg} addItem={addItem} user={user} inlineMsg={inlineMsg} masterArticles={masterArticles} reportMissingArticle={reportMissingArticle}/>}
     {tab === 'backwaren' && <Backwaren backwaren={backwaren} saveBackwarenList={saveBackwarenList} writeOff={writeOff} user={user}/>}
     {tab === 'abschriften' && isAdmin(user) && <Abschriften writeoffs={writeoffs.filter(w => w.typ !== 'kontrolle')} user={user} setEditWriteoff={setEditWriteoff} deleteWriteoff={deleteWriteoff} undoWriteoff={undoWriteoff}/>}
     {tab === 'kontrollen' && isAdmin(user) && <Kontrollen controls={writeoffs.filter(w => w.typ === 'kontrolle')} user={user} deleteWriteoff={deleteWriteoff}/>}
@@ -1543,9 +1551,10 @@ function Article({item,user,writeOffArticle,markArticleCheckedZero,setEditArticl
 }
 
 
-function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addItem,user,inlineMsg,masterArticles=[]}){
+function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addItem,user,inlineMsg,masterArticles=[],reportMissingArticle}){
   const [searchTerm, setSearchTerm] = useState('')
   const [searchMsg, setSearchMsg] = useState(null)
+  const [missingMode, setMissingMode] = useState(false)
 
   function übernehmen(article){
     if(!article) return false
@@ -1559,6 +1568,7 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
       mhd: f.mhd || '',
       menge: ''
     }))
+    setMissingMode(false)
     appFeedback('click')
     setSearchMsg({type:'success', text:'✓ Artikel gefunden: ' + (article.name || article.barcode)})
     return true
@@ -1576,7 +1586,10 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
     if(found) return übernehmen(found)
 
     appFeedback('warning')
-    setSearchMsg({type:'warning', text:'Artikel nicht in Artikelliste gefunden.'})
+    setMissingMode(true)
+    const clean = term.replace(/\D/g,'')
+    if(clean) setForm(f => ({...f, barcode:f.barcode || clean, artikelnummer:f.artikelnummer || clean}))
+    setSearchMsg({type:'warning', text:'Artikel nicht in Artikelliste gefunden. Bitte Namen eingeben und als fehlenden Artikel melden.'})
     return false
   }
 
@@ -1604,6 +1617,21 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
     window.addEventListener('mhd-scan-code', onScan)
     return () => window.removeEventListener('mhd-scan-code', onScan)
   }, [masterArticles])
+
+  async function meldenFehlendenArtikel(){
+    const clean = String(form.barcode || searchTerm || '').replace(/\D/g,'')
+    const name = String(form.name || '').trim()
+    if(!clean){ appFeedback('error'); setSearchMsg({type:'error', text:'Bitte erst EAN scannen oder eingeben.'}); return }
+    if(!name){ appFeedback('error'); setSearchMsg({type:'error', text:'Bitte Artikelnamen eingeben.'}); return }
+    await reportMissingArticle?.(clean, 'EAN wurde beim Erfassen gescannt, aber nicht in der Artikelliste gefunden.', name)
+    setSearchMsg({type:'success', text:'✓ Fehlender Artikel wurde an Chef/Stationsleitung gemeldet.'})
+    setForm(f => ({...f, barcode:'', artikelnummer:'', name:''}))
+    setSearchTerm('')
+    setMissingMode(false)
+    appFeedback('success')
+  }
+
+  const nameReadOnly = !isAdmin(user) && !missingMode
 
   return <section className="formCard">
     <h2>Artikel erfassen</h2>
@@ -1659,11 +1687,14 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
     <label>Artikelname</label>
     <input
       className="realInput"
-      placeholder="wird aus Artikelliste übernommen"
+      placeholder={missingMode ? 'Name für fehlenden Artikel eingeben' : 'wird aus Artikelliste übernommen'}
       value={form.name || ''}
-      readOnly={!isAdmin(user)}
+      readOnly={nameReadOnly}
       onChange={e => setForm({...form, name:e.target.value})}
     />
+
+    {missingMode && !isAdmin(user) && <div className="submitHint">Artikel ist nicht in der Artikelliste. Bitte Namen eingeben und an Chef/Stationsleitung melden.</div>}
+    {missingMode && !isAdmin(user) && <button className="ghostSmall" type="button" onClick={meldenFehlendenArtikel}>Fehlenden Artikel melden</button>}
 
     {isAdmin(user) && <>
       <label>Kategorie</label>
@@ -1750,6 +1781,25 @@ function Backwaren({backwaren,saveBackwarenList,writeOff,user}){
     saveBackwarenList(backwaren.filter(b => b.artikelnummer !== num))
   }
 
+  function editBackware(item){
+    const oldNum = String(item.artikelnummer || '')
+    const nextNum = prompt('Artikelnummer bearbeiten', oldNum)
+    if(nextNum === null) return
+    const cleanNum = String(nextNum || '').trim()
+    const nextName = prompt('Name bearbeiten', item.name || '')
+    if(nextName === null) return
+    const cleanName = String(nextName || '').trim()
+    if(!cleanNum || !cleanName){ appFeedback('error'); return alert('Artikelnummer und Name dürfen nicht leer sein.') }
+    if(cleanNum !== oldNum && backwaren.some(b => String(b.artikelnummer) === cleanNum)){ appFeedback('error'); return alert('Diese Artikelnummer ist schon in der Backwarenliste.') }
+    saveBackwarenList(backwaren.map(b => String(b.artikelnummer) === oldNum ? { ...b, artikelnummer:cleanNum, name:cleanName } : b))
+    setQty(q => {
+      if(cleanNum === oldNum) return q
+      const next = {...q}
+      if(next[oldNum] !== undefined){ next[cleanNum] = next[oldNum]; delete next[oldNum] }
+      return next
+    })
+  }
+
   return <section className="list backwarenPage">
     <div className="stickySubmit">
       <div><h2>Backwaren Tagesende</h2><p>{entries.length} Positionen · {total} Stück</p></div>
@@ -1785,7 +1835,7 @@ function Backwaren({backwaren,saveBackwarenList,writeOff,user}){
 
     {backwaren.map(b => <div className={'item bakery ' + (Number(qty[b.artikelnummer] || 0) > 0 ? 'selectedBakery' : '')} key={b.artikelnummer}>
       <div className="artikelnummer">{b.artikelnummer}</div>
-      <div className="grow"><b>{b.name}</b><p>Artikelnummer {b.artikelnummer}</p>{isAdmin(user) && <button className="ghostSmall" onClick={() => deleteBackware(b.artikelnummer)}>Löschen</button>}</div>
+      <div className="grow"><b>{b.name}</b><p>Artikelnummer {b.artikelnummer}</p>{isAdmin(user) && <button className="ghostSmall" onClick={() => editBackware(b)}>Bearbeiten</button>} {isAdmin(user) && <button className="ghostSmall" onClick={() => deleteBackware(b.artikelnummer)}>Löschen</button>}</div>
       <div className="stepper">
         <button onClick={() => step(b.artikelnummer, -1)}>−</button>
         <input className="qty" inputMode="numeric" value={qty[b.artikelnummer] || ''} onChange={e => setQty({...qty, [b.artikelnummer]:e.target.value.replace(/\D/g,'')})} placeholder="0"/>
