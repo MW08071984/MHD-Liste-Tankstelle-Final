@@ -209,8 +209,17 @@ function groupByDay(entries = []){
 
 function appFeedback(type = 'success'){
   try{
-    const patterns = { success:[120], warning:[80,60,80], error:[70,50,70,50,70], click:[50], alarm:[700,250,700,250,700] }
-    navigator.vibrate?.(patterns[type] || patterns.success)
+    const patterns = {
+      success:[220,90,220],
+      warning:[160,80,160,80,160],
+      error:[120,70,120,70,120,70,120],
+      click:[90],
+      alarm:[700,250,700,250,700]
+    }
+    if(navigator.vibrate){
+      navigator.vibrate(0)
+      navigator.vibrate(patterns[type] || patterns.success)
+    }
   }catch{}
   if(type === 'success'){
     try{
@@ -324,6 +333,7 @@ export default function App(){
   const [items, setItems] = useState([])
   const [masterArticles, setMasterArticles] = useState([])
   const [missingArticles, setMissingArticles] = useState([])
+  const [prefillMasterArticle, setPrefillMasterArticle] = useState(null)
 
   const missingStorageKey = 'mhd_fehlende_artikel_lokal'
   function readMissingLocal(){
@@ -394,11 +404,32 @@ export default function App(){
   }, [error])
 
   function handleGlobalActionFeedback(e){
-    const el = e.target?.closest?.('button, input, select, textarea, label')
+    const el = e.target?.closest?.('button, input, select, textarea, label, .statCard, .navBtn')
     if(!el) return
     if(el.disabled) return
     appFeedback('click')
   }
+
+  useEffect(() => {
+    function directTouchFeedback(e){
+      const el = e.target?.closest?.('button, input, select, textarea, label, .statCard, .navBtn')
+      if(!el || el.disabled) return
+      try{
+        if(navigator.vibrate){
+          navigator.vibrate(0)
+          navigator.vibrate([110])
+        }
+      }catch{}
+    }
+    window.addEventListener('pointerdown', directTouchFeedback, {capture:true, passive:true})
+    window.addEventListener('touchstart', directTouchFeedback, {capture:true, passive:true})
+    window.addEventListener('keydown', directTouchFeedback, {capture:true})
+    return () => {
+      window.removeEventListener('pointerdown', directTouchFeedback, {capture:true})
+      window.removeEventListener('touchstart', directTouchFeedback, {capture:true})
+      window.removeEventListener('keydown', directTouchFeedback, {capture:true})
+    }
+  }, [])
 
   useEffect(() => {
     navigator.serviceWorker?.register('/sw.js').catch(()=>{})
@@ -739,6 +770,33 @@ export default function App(){
     return true
   }
 
+  function extractMissingArticleName(row){
+    const direct = String(row?.artikelname || row?.name || '').trim()
+    if(direct) return direct
+    const hint = String(row?.hinweis || '')
+    const m = hint.match(/Artikelname:\s*(.*?)\s*(?:·|$)/i)
+    return (m?.[1] || '').trim()
+  }
+
+  function takeOverMissingArticle(row){
+    if(!isAdmin(user)) return setError('Keine Rechte.')
+    const barcode = String(row?.barcode || '').replace(/\D/g,'')
+    const name = extractMissingArticleName(row)
+    setPrefillMasterArticle({
+      sourceRow: row,
+      barcode,
+      artikelnummer: String(row?.artikelnummer || barcode || ''),
+      name,
+      bild_url: row?.bild_url || '',
+      kategorie: 'Sonstiges'
+    })
+    setError('')
+    setSuccess('Fehlender Artikel wurde in die Artikelliste-Maske übernommen. Bitte prüfen und speichern.')
+    setTab('stammdaten')
+    window.setTimeout(() => window.scrollTo({top:0, behavior:'smooth'}), 80)
+  }
+
+
   async function markMissingDone(row){
     if(!isAdmin(user)) return setError('Keine Rechte.')
     if(db){
@@ -1039,7 +1097,7 @@ export default function App(){
   }
 
   async function saveMasterArticle(data){
-    if(!isAdmin(user)) return setError('Keine Rechte.')
+    if(!isAdmin(user)){ setError('Keine Rechte.'); return false }
     const payload = {
       barcode:String(data.barcode || '').replace(/\D/g,''),
       artikelnummer:data.artikelnummer || '',
@@ -1055,8 +1113,8 @@ export default function App(){
         if(oldArticle?.bild_url) payload.bild_url = oldArticle.bild_url
       }catch(e){ console.warn('Bild-Erhalt konnte nicht geprüft werden:', e) }
     }
-    if(!payload.barcode) return setError('EAN / Barcode fehlt.')
-    if(!payload.name) return setError('Artikelname fehlt.')
+    if(!payload.barcode){ setError('EAN / Barcode fehlt.'); return false }
+    if(!payload.name){ setError('Artikelname fehlt.'); return false }
 
     const duplicate = masterArticles.find(a => {
       if(data.id && a.id === data.id) return false
@@ -1064,11 +1122,11 @@ export default function App(){
       const sameArtNr = payload.artikelnummer && String(a.artikelnummer || '').trim() === String(payload.artikelnummer).trim()
       return sameEan || sameArtNr
     })
-    if(duplicate) return setError('Artikel existiert bereits: ' + (duplicate.name || duplicate.barcode))
+    if(duplicate){ setError('Artikel existiert bereits: ' + (duplicate.name || duplicate.barcode)); return false }
 
     if(db){
       const { data:saved, error } = await supabase.from('artikel_stammdaten').upsert(payload, { onConflict:'barcode' }).select().single()
-      if(error) return setError(error.message)
+      if(error){ setError(error.message); return false }
       setMasterArticles(prev => {
         const without = prev.filter(x => String(x.barcode || '') !== String(payload.barcode || ''))
         return [...without, saved || payload].sort((a,b) => String(a.name).localeCompare(String(b.name)))
@@ -1081,6 +1139,7 @@ export default function App(){
     }
     setSuccess('Artikel in Artikelliste gespeichert.')
     appFeedback('success')
+    return true
   }
 
   async function deleteMasterArticle(article){
@@ -1392,7 +1451,7 @@ export default function App(){
     ...(isAdmin(user) ? [['online','Online'], ['verwaltung','Verwaltung'], ['settings','Einstellungen']] : [])
   ]
 
-  return <main className="app" onClickCapture={handleGlobalActionFeedback} onChangeCapture={handleGlobalActionFeedback}>
+  return <main className="app" onPointerDownCapture={handleGlobalActionFeedback} onTouchStartCapture={handleGlobalActionFeedback} onClickCapture={handleGlobalActionFeedback} onChangeCapture={handleGlobalActionFeedback}>
     <header className="topbar">
       <div>
         <p>MHD Kontrolle · {roleLabel(user.rolle)}</p>
@@ -1429,7 +1488,7 @@ export default function App(){
     {tab === 'backwaren' && <Backwaren backwaren={backwaren} saveBackwarenList={saveBackwarenList} writeOff={writeOff} user={user}/>}
     {tab === 'abschriften' && isAdmin(user) && <Abschriften writeoffs={writeoffs.filter(w => w.typ !== 'kontrolle')} user={user} setEditWriteoff={setEditWriteoff} deleteWriteoff={deleteWriteoff} undoWriteoff={undoWriteoff}/>}
     {tab === 'kontrollen' && isAdmin(user) && <Kontrollen controls={writeoffs.filter(w => w.typ === 'kontrolle')} user={user} deleteWriteoff={deleteWriteoff}/>}
-    {tab === 'fehlende' && isAdmin(user) && <MissingArticles missingArticles={missingArticles} markMissingDone={markMissingDone}/>}    {tab === 'stammdaten' && isAdmin(user) && <MasterArticles quickMhdFromMaster={quickMhdFromMaster} masterArticles={masterArticles} saveMasterArticle={saveMasterArticle} deleteMasterArticle={deleteMasterArticle} setMasterScannerOpen={setMasterScannerOpen}/>}
+    {tab === 'fehlende' && isAdmin(user) && <MissingArticles missingArticles={missingArticles} markMissingDone={markMissingDone} takeOverMissingArticle={takeOverMissingArticle}/>}    {tab === 'stammdaten' && isAdmin(user) && <MasterArticles prefillArticle={prefillMasterArticle} onPrefillUsed={() => setPrefillMasterArticle(null)} onMissingSaved={markMissingDone} quickMhdFromMaster={quickMhdFromMaster} masterArticles={masterArticles} saveMasterArticle={saveMasterArticle} deleteMasterArticle={deleteMasterArticle} setMasterScannerOpen={setMasterScannerOpen}/>}
     {tab === 'dienstplan' && <Dienstplan settings={settings} saveSetting={saveSetting} user={user}/>}
     {tab === 'online' && isAdmin(user) && <Online online={online}/>}
     {tab === 'verwaltung' && isAdmin(user) && <Verwaltung employees={employees} saveEmployee={saveEmployee} deleteEmployee={deleteEmployee} resetPassword={resetPassword}/>}
@@ -1980,7 +2039,7 @@ function Kontrollen({controls,user,deleteWriteoff}){
 }
 
 
-function MissingArticles({missingArticles,markMissingDone}){
+function MissingArticles({missingArticles,markMissingDone,takeOverMissingArticle}){
   const open = missingArticles.filter(x => x.status !== 'erledigt')
   return <section className="formCard">
     <h2>Fehlende Artikel</h2>
@@ -1993,6 +2052,7 @@ function MissingArticles({missingArticles,markMissingDone}){
         <p>{row.hinweis || 'Nicht in Artikelliste gefunden'} · {row.gemeldet_von || '-'} · {row.created_at ? new Date(row.created_at).toLocaleDateString('de-DE') : ''}</p>
       </div>
       <div className="actions">
+        <button onClick={() => takeOverMissingArticle?.(row)}>In Artikelliste übernehmen</button>
         <button onClick={() => navigator.clipboard?.writeText(row.barcode)}>EAN kopieren</button>
         <button onClick={() => markMissingDone(row)}>Vorschlag löschen</button>
       </div>
@@ -2000,11 +2060,24 @@ function MissingArticles({missingArticles,markMissingDone}){
   </section>
 }
 
-function MasterArticles({masterArticles,saveMasterArticle,deleteMasterArticle,setMasterScannerOpen,quickMhdFromMaster}){
+function MasterArticles({masterArticles,saveMasterArticle,deleteMasterArticle,setMasterScannerOpen,quickMhdFromMaster,prefillArticle,onPrefillUsed,onMissingSaved}){
   const empty = { barcode:'', artikelnummer:'', name:'', kategorie:'Sonstiges', bild_url:'' }
   const [data,setData] = useState(empty)
   const [msg,setMsg] = useState(null)
   const [articleSearch, setArticleSearch] = useState('')
+  useEffect(() => {
+    if(!prefillArticle) return
+    setData({
+      id:prefillArticle.id || undefined,
+      barcode:prefillArticle.barcode || '',
+      artikelnummer:prefillArticle.artikelnummer || prefillArticle.barcode || '',
+      name:prefillArticle.name || '',
+      kategorie:'Sonstiges',
+      bild_url:prefillArticle.bild_url || ''
+    })
+    setMsg({type:'warning', text:'Fehlender Artikel übernommen. Bitte Artikelnummer, Name und Bild prüfen und speichern.'})
+  }, [prefillArticle])
+
   const filteredMasterArticles = useMemo(() => {
     const term = articleSearch.trim().toLowerCase()
     if(!term) return masterArticles
@@ -2133,9 +2206,14 @@ function MasterArticles({masterArticles,saveMasterArticle,deleteMasterArticle,se
       })
       return
     }
-    await saveMasterArticle(data)
+    const ok = await saveMasterArticle(data)
+    if(ok === false) return
+    if(prefillArticle?.sourceRow){
+      await onMissingSaved?.(prefillArticle.sourceRow)
+      onPrefillUsed?.()
+    }
     setData(empty)
-    setMsg({type:'success', text:'✓ Artikel gespeichert.'})
+    setMsg({type:'success', text:'✓ Artikel gespeichert und in Artikelliste übernommen.'})
   }
 
   return <section className="formCard">
