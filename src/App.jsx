@@ -182,6 +182,32 @@ function groupByDay(entries = []){
   return Object.entries(grouped).sort((a,b) => b[0].localeCompare(a[0]))
 }
 
+function appFeedback(type = 'success'){
+  try{
+    const patterns = { success:[120], warning:[80,60,80], error:[70,50,70,50,70], click:[50] }
+    navigator.vibrate?.(patterns[type] || patterns.success)
+  }catch{}
+  if(type === 'success'){
+    try{
+      const AudioCtx = window.AudioContext || window.webkitAudioContext
+      if(!AudioCtx) return
+      const ctx = new AudioCtx()
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = 'sine'
+      osc.frequency.value = 880
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime)
+      gain.gain.exponentialRampToValueAtTime(0.08, ctx.currentTime + 0.01)
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.12)
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start()
+      osc.stop(ctx.currentTime + 0.14)
+      setTimeout(() => ctx.close?.(), 250)
+    }catch{}
+  }
+}
+
 function exportAbschriftenPDF(abschriften = [], title = 'MHD Liste', dateKey = ''){
   try{
     const doc = new jsPDF()
@@ -248,8 +274,8 @@ export default function App(){
     artikelnummer:'',
     name:'',
     kategorie:'Sonstiges',
-    mhd:todayISO(),
-    menge:1,
+    mhd:'',
+    menge:'',
     bild_url:''
   })
 
@@ -544,7 +570,14 @@ export default function App(){
   async function addItem(){
     setError('')
     if(!form.name || !form.mhd){
+      appFeedback('error')
       msgAt('erfassen','error','Name und MHD fehlen.')
+      return
+    }
+    const mengeValue = Number(form.menge)
+    if(!mengeValue || mengeValue < 1){
+      appFeedback('error')
+      msgAt('erfassen','error','Bitte Menge / Bestand eingeben.')
       return
     }
     const payload = {
@@ -554,7 +587,7 @@ export default function App(){
       name:form.name,
       kategorie:form.kategorie,
       mhd:form.mhd,
-      menge:Number(form.menge || 1),
+      menge:mengeValue,
       bild_url:form.bild_url || '',
       mitarbeiter:user.name,
       erstellt_von:Number(user.nummer)
@@ -572,15 +605,16 @@ export default function App(){
       }
       const { error } = await supabase.from('mhd_artikel').insert(payload)
       if(error){
+        appFeedback('error')
         msgAt('erfassen','error', error.message)
         return setError(error.message)
       }
       await loadAll()
     }
-    setForm({ barcode:'', artikelnummer:'', name:'', kategorie:'Sonstiges', mhd:todayISO(), menge:1, bild_url:'' })
+    setForm({ barcode:'', artikelnummer:'', name:'', kategorie:'Sonstiges', mhd:'', menge:'', bild_url:'' })
     msgAt('erfassen','success','✓ MHD-Eintrag gespeichert. Der Artikel wurde in die Übersicht übernommen.')
     setSuccess('✓ MHD-Eintrag gespeichert.')
-    navigator.vibrate?.(80)
+    appFeedback('success')
   }
 
   async function writeOff(payload){
@@ -609,7 +643,7 @@ export default function App(){
       await loadAll()
     }
     setSuccess(`Abschrift gespeichert: ${finalPayload.name} · Menge ${finalPayload.menge}`)
-    navigator.vibrate?.(80)
+    appFeedback('success')
     return true
   }
 
@@ -670,6 +704,7 @@ export default function App(){
     }
 
     setSuccess('Artikel kontrolliert: Bestand 0. Er wurde aus der Übersicht entfernt.')
+    appFeedback('success')
   }
 
 
@@ -761,6 +796,7 @@ export default function App(){
       })
     }
     setSuccess('Artikel in Artikelliste gespeichert.')
+    appFeedback('success')
   }
 
   async function deleteMasterArticle(article){
@@ -774,6 +810,7 @@ export default function App(){
       setMasterArticles(prev => prev.filter(x => x.id !== article.id))
     }
     setSuccess('Artikel aus Artikelliste gelöscht.')
+    appFeedback('success')
   }
 
 
@@ -790,6 +827,7 @@ export default function App(){
       localItems(items.filter(x => x.id !== item.id))
     }
     setSuccess('MHD-Eintrag aus der Übersicht gelöscht.')
+    appFeedback('success')
   }
 
 
@@ -847,6 +885,7 @@ export default function App(){
     setEditArticle(null)
     await loadAll()
     setSuccess('Artikel gespeichert.')
+    appFeedback('success')
   }
 
   async function saveWriteoff(data){
@@ -865,6 +904,7 @@ export default function App(){
     setEditWriteoff(null)
     await loadAll()
     setSuccess('Abschrift gespeichert.')
+    appFeedback('success')
   }
 
   async function deleteWriteoff(item){
@@ -874,6 +914,7 @@ export default function App(){
     if(error) return setError(error.message)
     await loadAll()
     setSuccess('Abschrift gelöscht.')
+    appFeedback('success')
   }
 
   async function undoWriteoff(item){
@@ -923,6 +964,7 @@ export default function App(){
 
     await loadAll()
     setSuccess('Abschrift rückgängig gemacht. Artikel ist wieder im Bestand.')
+    appFeedback('success')
   }
 
   async function saveEmployee(emp){
@@ -938,6 +980,7 @@ export default function App(){
     if(error) return setError(error.message)
     await loadAll()
     setSuccess('Mitarbeiter gespeichert.')
+    appFeedback('success')
   }
 
   async function deleteEmployee(emp){
@@ -947,6 +990,7 @@ export default function App(){
     if(error) return setError(error.message)
     await loadAll()
     setSuccess('Mitarbeiter gelöscht.')
+    appFeedback('success')
   }
 
   async function resetPassword(emp){
@@ -954,6 +998,7 @@ export default function App(){
     const { error } = await supabase.from('mitarbeiter').update({ passwort:'0000', muss_passwort_aendern:true }).eq('nummer', emp.nummer)
     if(error) return setError(error.message)
     setSuccess(`Passwort für ${emp.name} auf 0000 zurückgesetzt.`)
+    appFeedback('success')
   }
 
   async function enablePush(){
@@ -1020,7 +1065,7 @@ export default function App(){
     ['erfassen','Erfassen'],
     ['backwaren','Backwaren'],
     ...(isAdmin(user) ? [...(isAdmin(user) ? [['abschriften','Abschriften']] : []), ['kontrollen','Kontrollen']] : []),
-    ...(isAdmin(user) ? [['stammdaten','Artikelliste'], ['fehlende','Fehlende Artikel'],] : []),
+    ...(isAdmin(user) ? [['artikel','Alle MHD'], ['stammdaten','Artikelliste'], ['fehlende','Fehlende Artikel'],] : []),
     ['dienstplan','Dienstplan'],
     ...(isAdmin(user) ? [['online','Online'], ['verwaltung','Verwaltung'], ['settings','Einstellungen']] : [])
   ]
@@ -1053,6 +1098,7 @@ export default function App(){
     {error && <div className="error">{error}</div>}
     {success && <div className="success">{success}</div>}
 
+    {tab === 'artikel' && isAdmin(user) && <ArticleList items={filteredItems} allCount={items.length} articleFilter={articleFilter} setArticleFilter={setArticleFilter} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} deleteMhdEntry={deleteMhdEntry} inlineMsg={inlineMsg} safeEditOverviewItem={safeEditOverviewItem}/>}
     {tab === 'dashboard' && <Dashboard safeEditOverviewItem={safeEditOverviewItem} items={items} setTab={setTab} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} deleteMhdEntry={deleteMhdEntry} inlineMsg={inlineMsg}/>}
     {tab === 'erfassen' && <Erfassen form={form} setForm={setForm} setScannerOpen={setScannerOpen} lookupBarcode={lookupBarcode} uploadFormImg={uploadFormImg} addItem={addItem} user={user} inlineMsg={inlineMsg} masterArticles={masterArticles}/>}
     {tab === 'backwaren' && <Backwaren backwaren={backwaren} saveBackwarenList={saveBackwarenList} writeOff={writeOff} user={user}/>}
@@ -1150,7 +1196,7 @@ function ArticleList({items,allCount,articleFilter,setArticleFilter,user,writeOf
     <div className="sectionHeader">
       <div>
         <h2>{title}</h2>
-        <p className="filterInfo">{items.length} von {allCount} Artikeln</p>
+        <p className="filterInfo">{items.length} von {allCount} Artikeln · Chef/Stationsleitung kann hier Einträge bearbeiten oder löschen.</p>
       </div>
       {articleFilter !== 'all' && <button className="ghostSmall" onClick={() => setArticleFilter('all')}>Alle anzeigen</button>}
     </div>
@@ -1186,7 +1232,7 @@ function Article({item,user,writeOffArticle,markArticleCheckedZero,setEditArticl
 
   const stateClass = days < 0 ? 'expiredArticle' : (days >= 0 && days <= 3 ? 'urgentArticle' : '')
   return <div className={'item articleItem ' + stateClass}>
-    <div className="thumb">{item.bild_url ? <img src={item.bild_url}/> : '📦'}</div>
+    <div className="thumb"><LazyArticleImage src={item.bild_url} alt={item.name || item.artikel || 'Artikelbild'}/></div>
     <div className="grow">
       <b>{item.name || item.artikel}</b>
       <p>{item.artikelnummer ? `Art.-Nr. ${item.artikelnummer} · ` : ''}{item.kategorie || 'Sonstiges'}</p>
@@ -1236,9 +1282,10 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
       name: article.name || '',
       kategorie: article.kategorie || 'Sonstiges',
       bild_url: article.bild_url || '',
-      mhd: f.mhd || todayISO(),
-      menge: f.menge || 1
+      mhd: f.mhd || '',
+      menge: f.menge || ''
     }))
+    appFeedback('click')
     setSearchMsg({type:'success', text:'✓ Artikel gefunden: ' + (article.name || article.barcode)})
     return true
   }
@@ -1254,6 +1301,7 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
 
     if(found) return übernehmen(found)
 
+    appFeedback('warning')
     setSearchMsg({type:'warning', text:'Artikel nicht in Artikelliste gefunden.'})
     return false
   }
@@ -1349,10 +1397,10 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
     </>}
 
     <label>MHD</label>
-    <input className="realInput" type="date" value={form.mhd || todayISO()} onChange={e => setForm({...form, mhd:e.target.value})}/>
+    <input className="realInput" type="date" value={form.mhd || ''} onChange={e => setForm({...form, mhd:e.target.value})}/>
 
     <label>Menge / Bestand</label>
-    <input className="realInput" type="number" min="1" value={form.menge || 1} onChange={e => setForm({...form, menge:e.target.value})}/>
+    <input className="realInput" type="number" min="1" value={form.menge ?? ''} onChange={e => setForm({...form, menge:e.target.value})}/>
 
     {isAdmin(user) && <label className="upload">Bild/Screenshot hochladen<input type="file" accept="image/*" onChange={uploadFormImg}/></label>}
     {form.bild_url && <img className="preview" src={form.bild_url} loading="lazy" decoding="async"/>}
