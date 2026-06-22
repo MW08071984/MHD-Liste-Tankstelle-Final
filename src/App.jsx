@@ -367,6 +367,41 @@ export default function App(){
     return !mhd || mhd <= next30ISO()
   }
 
+  function sameMhdArticle(a, b){
+    const sameDate = String(a?.mhd || '').slice(0,10) === String(b?.mhd || '').slice(0,10)
+    if(!sameDate) return false
+    const aBarcode = String(a?.barcode || '').trim()
+    const bBarcode = String(b?.barcode || '').trim()
+    if(aBarcode && bBarcode) return aBarcode === bBarcode
+    const aNum = String(a?.artikelnummer || '').trim()
+    const bNum = String(b?.artikelnummer || '').trim()
+    if(aNum && bNum) return aNum === bNum
+    const aName = String(a?.name || a?.artikel || '').trim().toLowerCase()
+    const bName = String(b?.name || b?.artikel || '').trim().toLowerCase()
+    return !!aName && !!bName && aName === bName
+  }
+
+  async function findDuplicateMhdEntry(payload){
+    const localDuplicate = (items || []).find(x => sameMhdArticle(x, payload))
+    if(localDuplicate) return localDuplicate
+    if(!db) return null
+
+    let query = supabase.from('mhd_artikel').select('id,barcode,artikelnummer,name,artikel,mhd').eq('mhd', payload.mhd).limit(1)
+    if(payload.barcode){
+      query = query.eq('barcode', payload.barcode)
+    }else if(payload.artikelnummer){
+      query = query.eq('artikelnummer', payload.artikelnummer)
+    }else{
+      query = query.eq('name', payload.name)
+    }
+    const { data, error } = await query
+    if(error){
+      console.warn('Duplikat-Prüfung fehlgeschlagen', error)
+      return null
+    }
+    return data?.[0] || null
+  }
+
   async function loadItems({ all = false, force = false } = {}){
     if(!db) return
 
@@ -554,7 +589,7 @@ export default function App(){
         kategorie: localMaster.kategorie || f.kategorie,
         bild_url: localMaster.bild_url || f.bild_url
       }))
-      msgAt('erfassen','success','✓ Artikel aus Artikelliste übernommen. Nur MHD und Menge eingeben.')
+      msgAt('erfassen','success','✓ Artikel aus Artikelliste übernommen. Nur MHD eingeben.')
       return
     }
 
@@ -569,7 +604,7 @@ export default function App(){
           bild_url: master.bild_url || f.bild_url
         }))
         setMasterArticles(prev => prev.some(x => x.id === master.id) ? prev : [...prev, master])
-        msgAt('erfassen','success','✓ Artikel aus Artikelliste übernommen. Nur MHD und Menge eingeben.')
+        msgAt('erfassen','success','✓ Artikel aus Artikelliste übernommen. Nur MHD eingeben.')
         return
       }
     }
@@ -624,7 +659,7 @@ export default function App(){
         name:item.name || item.artikel || item.artikelname || '',
         kategorie:item.kategorie || 'Sonstiges',
         mhd:String(item.mhd || todayISO()).slice(0,10),
-        menge:item.menge || item.bestand || 1,
+        menge:'',
         bild_url:item.bild_url || ''
       })
       setTab('erfassen')
@@ -642,12 +677,6 @@ export default function App(){
       msgAt('erfassen','error','Name und MHD fehlen.')
       return
     }
-    const mengeValue = Number(form.menge)
-    if(!mengeValue || mengeValue < 1){
-      appFeedback('error')
-      msgAt('erfassen','error','Bitte Menge / Bestand eingeben.')
-      return
-    }
     const payload = {
       barcode:form.barcode || '',
       artikelnummer:form.artikelnummer || form.barcode || '',
@@ -655,12 +684,18 @@ export default function App(){
       name:form.name,
       kategorie:form.kategorie,
       mhd:form.mhd,
-      menge:mengeValue,
+      menge:0,
       bild_url:form.bild_url || '',
       mitarbeiter:user.name,
       erstellt_von:Number(user.nummer)
     }
     if(db){
+      const duplicate = await findDuplicateMhdEntry(payload)
+      if(duplicate){
+        appFeedback('error')
+        msgAt('erfassen','error','Artikel wurde schon mit diesem Datum erfasst.')
+        return setError('Artikel wurde schon mit diesem Datum erfasst.')
+      }
       if(payload.barcode){
         await supabase.from('artikel_stammdaten').upsert({
           barcode: payload.barcode,
@@ -717,68 +752,32 @@ export default function App(){
     return true
   }
 
-  async function writeOffArticle(item, amount){
-    const bestand = Math.max(0, Number(item.menge || 0))
+  async function writeOffArticle(item, amount, reason='MHD'){
     const qty = Math.max(0, Number(amount || 0))
+    const cleanReason = ['MHD','Bruch','Eigenbedarf'].includes(reason) ? reason : 'MHD'
 
-    if(qty < 1) return setError('Bitte Menge größer als 0 eingeben.')
-    if(qty > bestand) return setError(`Nicht genügend Bestand vorhanden. Maximal ${bestand} Stück möglich.`)
+    let ok = true
+    if(qty > 0){
+      ok = await writeOff({ ...item, artikel_id:item.id, menge:qty, grund:cleanReason })
+    }
 
-    const ok = await writeOff({ ...item, artikel_id:item.id, menge:qty, grund: daysUntil(item.mhd) < 0 ? 'Abgelaufen' : 'MHD Abschrift' })
-    if(ok && db){
-      const rest = Math.max(0, bestand - qty)
-      if(rest <= 0){
-        await supabase.from('mhd_artikel').delete().eq('id', item.id)
-        setItems(prev => prev.filter(x => x.id !== item.id))
-      }else{
-        await supabase.from('mhd_artikel').update({ menge:rest }).eq('id', item.id)
-        setItems(prev => prev.map(x => x.id === item.id ? {...x, menge:rest} : x))
-      }
+    if(ok && db && item.id){
+      const { error:deleteError } = await supabase.from('mhd_artikel').delete().eq('id', item.id)
+      if(deleteError) return setError(deleteError.message)
+      setItems(prev => prev.filter(x => x.id !== item.id))
+    }else if(ok){
+      setItems(prev => prev.filter(x => x.id !== item.id))
+    }
+
+    if(ok){
+      setSuccess(qty > 0 ? 'Kontrolle gespeichert. Abschrift wurde erfasst und der Eintrag entfernt.' : 'Kontrolle gespeichert. Menge 0: keine Abschrift erstellt, Eintrag wurde entfernt.')
+      appFeedback('success')
     }
   }
 
   async function markArticleCheckedZero(item){
-    const d = daysUntil(item.mhd)
-    if(d > 0){
-      setError(`Kontrolle erst ab MHD-Datum möglich. Noch ${d} Tag(e).`)
-      return
-    }
-    if(!confirm('Artikel als kontrolliert markieren und aus der Übersicht entfernen?')) return
-
-    const payload = {
-      artikel_id:item.id || null,
-      barcode:item.barcode || '',
-      artikelnummer:item.artikelnummer || '',
-      artikel:item.name || item.artikel || 'Artikel',
-      name:item.name || item.artikel || 'Artikel',
-      kategorie:item.kategorie || '',
-      mhd:item.mhd || todayISO(),
-      menge:0,
-      bild_url:item.bild_url || '',
-      grund:'Kontrolliert – Bestand 0',
-      datum:todayISO(),
-      mitarbeiter:user.name,
-      mitarbeiter_nummer:Number(user.nummer),
-      status:'kontrolliert',
-      typ:'kontrolle'
-    }
-
-    if(db){
-      const { error:insertError } = await supabase.from('abschriften').insert(payload)
-      if(insertError) return setError('Kontrolle konnte nicht gespeichert werden: ' + insertError.message)
-
-      if(item.id){
-        const { error:deleteError } = await supabase.from('mhd_artikel').delete().eq('id', item.id)
-        if(deleteError) return setError(deleteError.message)
-      }
-
-      setItems(prev => prev.filter(x => x.id !== item.id))
-    }else{
-      setItems(prev => prev.filter(x => x.id !== item.id))
-    }
-
-    setSuccess('Artikel kontrolliert: Bestand 0. Er wurde aus der Übersicht entfernt.')
-    appFeedback('success')
+    if(!confirm('Artikel kontrolliert mit Menge 0? Der Eintrag verschwindet aus der Übersicht und es wird keine Abschrift erstellt.')) return
+    return writeOffArticle(item, 0, 'MHD')
   }
 
 
@@ -798,22 +797,17 @@ export default function App(){
         break
       }
 
-      const mengeText = prompt('Menge ' + round + ' für "' + articleName + '" eingeben')
-      const menge = Number(mengeText)
-      if(!mengeText || !Number.isFinite(menge) || menge < 1){
-        if(rows.length === 0) return setError('Keine gültige Menge eingetragen. Es wurde kein Eintrag erstellt.')
-        setError('Letzte Zeile ohne gültige Menge wurde nicht übernommen.')
-        break
-      }
+      rows.push({ mhd, menge:0 })
 
-      rows.push({ mhd, menge })
-
-      const more = confirm('Weitere Menge / MHD für "' + articleName + '" hinzufügen?')
+      const more = confirm('Weiteres MHD für "' + articleName + '" hinzufügen?')
       if(!more) break
       round++
     }
 
-    if(rows.length === 0) return setError('Ohne MHD und Menge wurde kein Eintrag erstellt.')
+    if(rows.length === 0) return setError('Ohne MHD wurde kein Eintrag erstellt.')
+
+    const duplicateDate = rows.find((row, index) => rows.findIndex(x => x.mhd === row.mhd) !== index)
+    if(duplicateDate) return setError('Artikel wurde schon mit diesem Datum erfasst.')
 
     const entries = rows.map(r => ({
       barcode: masterArticle.barcode || masterArticle.ean || '',
@@ -826,6 +820,10 @@ export default function App(){
     }))
 
     if(db){
+      for(const entry of entries){
+        const duplicate = await findDuplicateMhdEntry(entry)
+        if(duplicate) return setError('Artikel wurde schon mit diesem Datum erfasst.')
+      }
       const { data:newRows, error } = await supabase.from('mhd_artikel').insert(entries).select()
       if(error) return setError(error.message || 'MHD-Einträge konnten nicht gespeichert werden.')
       const rowsToShow = (newRows || []).filter(r => !itemsLimited || isVisibleInFastOverview(r))
@@ -834,9 +832,8 @@ export default function App(){
       setItems(prev => [...entries.map(e => ({...e, id:crypto.randomUUID?.() || String(Date.now()+Math.random())})), ...prev])
     }
 
-    const gesamt = entries.reduce((sum,e)=>sum+Number(e.menge || 0),0)
-    setSuccess('✓ ' + entries.length + ' MHD-Eintrag/Einträge aus Artikelliste erstellt. Gesamtmenge: ' + gesamt + '.')
-    try{ msgAt?.('stammdaten','success','✓ ' + entries.length + ' MHD-Eintrag/Einträge erstellt und in der Übersicht gespeichert. Gesamtmenge: ' + gesamt + '.') }catch{}
+    setSuccess('✓ ' + entries.length + ' MHD-Eintrag/Einträge aus Artikelliste erstellt.')
+    try{ msgAt?.('stammdaten','success','✓ ' + entries.length + ' MHD-Eintrag/Einträge erstellt und in der Übersicht gespeichert.') }catch{}
   }
 
   async function saveMasterArticle(data){
@@ -936,8 +933,8 @@ export default function App(){
         kategorie: found.kategorie || f.kategorie || 'Sonstiges',
         bild_url: found.bild_url || found.image || found.bild || f.bild_url || ''
       }))
-      setSuccess('✓ Artikel aus Artikelliste übernommen. Jetzt nur noch MHD und Menge eingeben.')
-      try{ msgAt?.('erfassen','success','✓ Artikel aus Artikelliste übernommen. Jetzt nur noch MHD und Menge eingeben.') }catch{}
+      setSuccess('✓ Artikel aus Artikelliste übernommen. Jetzt nur noch MHD eingeben.')
+      try{ msgAt?.('erfassen','success','✓ Artikel aus Artikelliste übernommen. Jetzt nur noch MHD eingeben.') }catch{}
       return true
     }
 
@@ -955,7 +952,6 @@ export default function App(){
       name:data.name || data.artikel || 'Artikel',
       kategorie:data.kategorie || 'Sonstiges',
       mhd:data.mhd,
-      menge:Number(data.menge || 1),
       bild_url:data.bild_url || ''
     }
     const { error } = await supabase.from('mhd_artikel').update(payload).eq('id', data.id)
@@ -972,7 +968,7 @@ export default function App(){
       artikelnummer:data.artikelnummer || '',
       artikel:data.name || data.artikel || 'Artikel',
       name:data.name || data.artikel || 'Artikel',
-      grund:data.grund || 'Abschrift',
+      grund:data.grund || 'MHD',
       menge:Number(data.menge || 1),
       datum:data.datum || todayISO(),
       status:'abgeschlossen'
@@ -1301,68 +1297,60 @@ function ArticleList({items,allCount,articleFilter,setArticleFilter,itemsLimited
 }
 
 function Article({item,user,writeOffArticle,markArticleCheckedZero,setEditArticle,deleteMhdEntry}){
-  const bestand = Math.max(0, Number(item.menge || 0))
-  const [amount, setAmount] = useState(String(bestand > 0 ? 1 : 0))
+  const [amount, setAmount] = useState('')
+  const [reason, setReason] = useState('MHD')
   const days = daysUntil(item.mhd)
 
-  useEffect(() => {
-    const current = Number(amount || 0)
-    if(current > bestand) setAmount(String(bestand))
-    if(bestand > 0 && current < 1) setAmount('1')
-    if(bestand <= 0) setAmount('0')
-  }, [bestand])
-
   function setSafeAmount(value){
-    let next = Number(value || 0)
-    if(Number.isNaN(next)) next = 0
-    if(next < 0) next = 0
-    if(next > bestand) next = bestand
-    setAmount(String(next))
+    const cleaned = String(value || '').replace(/[^0-9]/g,'')
+    setAmount(cleaned)
   }
 
   function step(delta){
     const current = Number(amount || 0)
-    setSafeAmount(current + delta)
+    const next = Math.max(0, current + delta)
+    setAmount(next ? String(next) : '')
   }
 
+  const qty = Number(amount || 0)
   const stateClass = days < 0 ? 'expiredArticle' : (days >= 0 && days <= 3 ? 'urgentArticle' : '')
   return <div className={'item articleItem ' + stateClass}>
     <div className="thumb"><LazyArticleImage src={item.bild_url} alt={item.name || item.artikel || 'Artikelbild'}/></div>
     <div className="grow">
       <b>{item.name || item.artikel}</b>
       <p>{item.artikelnummer ? `Art.-Nr. ${item.artikelnummer} · ` : ''}{item.kategorie || 'Sonstiges'}</p>
-      <p>MHD {item.mhd ? new Date(item.mhd).toLocaleDateString('de-DE') : '-'} · Bestand {bestand} Stk. · {days < 0 ? `${Math.abs(days)} Tage drüber` : `${days} Tage`}</p>
+      <p>MHD {item.mhd ? new Date(item.mhd).toLocaleDateString('de-DE') : '-'} · {days < 0 ? `${Math.abs(days)} Tage drüber` : `${days} Tage`}</p>
     </div>
     <div className="writeBox">
+      <label className="smallLabel">Menge für Abschrift</label>
       <div className="stepper">
-        <button onClick={() => step(-1)} disabled={Number(amount || 0) <= 0}>−</button>
+        <button onClick={() => step(-1)} disabled={qty <= 0}>−</button>
         <input
           className="qty"
           inputMode="numeric"
           type="number"
           min="0"
-          max={bestand}
           value={amount}
+          placeholder="0"
           onChange={e => setSafeAmount(e.target.value)}
         />
-        <button onClick={() => step(1)} disabled={Number(amount || 0) >= bestand}>+</button>
+        <button onClick={() => step(1)}>+</button>
       </div>
+      <label className="smallLabel">Grund</label>
+      <select className="realInput" value={reason} onChange={e => setReason(e.target.value)}>
+        <option value="MHD">MHD</option>
+        <option value="Bruch">Bruch</option>
+        <option value="Eigenbedarf">Eigenbedarf</option>
+      </select>
       <div className="actions">
         {isAdmin(user) && <button onClick={() => setEditArticle(item)}>Bearbeiten</button>}
         {isAdmin(user) && <button className="danger" onClick={() => deleteMhdEntry(item)}>Löschen</button>}
-        <button disabled={days > 1 || bestand < 1 || Number(amount || 0) < 1 || Number(amount || 0) > bestand} onClick={() => writeOffArticle(item, Number(amount || 0))} title={days > 1 ? `Abschreiben erst 1 Tag vor MHD möglich. Noch ${days} Tage.` : 'Abschreiben'}>Abschreiben</button>
-        <button
-          className="checkedZeroBtn"
-          disabled={days > 0}
-          title={days > 0 ? `Erst ab MHD-Datum möglich. Noch ${days} Tag(e).` : 'Artikel kontrolliert, Bestand 0'}
-          onClick={() => markArticleCheckedZero(item)}
-        >
-          Bestand 0 / Kontrolliert
-        </button>
+        <button onClick={() => writeOffArticle(item, qty, reason)} title="Kontrolle speichern: Menge 0 entfernt nur den Eintrag, Menge größer 0 erstellt eine Abschrift">Kontrolle speichern</button>
       </div>
     </div>
   </div>
 }
+
 
 function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addItem,user,inlineMsg,masterArticles=[]}){
   const [searchTerm, setSearchTerm] = useState('')
@@ -1378,7 +1366,7 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
       kategorie: article.kategorie || 'Sonstiges',
       bild_url: article.bild_url || '',
       mhd: f.mhd || '',
-      menge: f.menge || ''
+      menge: ''
     }))
     appFeedback('click')
     setSearchMsg({type:'success', text:'✓ Artikel gefunden: ' + (article.name || article.barcode)})
@@ -1493,9 +1481,6 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
 
     <label>MHD</label>
     <input className="realInput" type="date" value={form.mhd || ''} onChange={e => setForm({...form, mhd:e.target.value})}/>
-
-    <label>Menge / Bestand</label>
-    <input className="realInput" type="number" min="1" value={form.menge ?? ''} onChange={e => setForm({...form, menge:e.target.value})}/>
 
     {isAdmin(user) && <label className="upload">Bild/Screenshot hochladen<input type="file" accept="image/*" onChange={uploadFormImg}/></label>}
     {form.bild_url && <img className="preview" src={form.bild_url} loading="lazy" decoding="async"/>}
@@ -1787,8 +1772,8 @@ function MasterArticles({masterArticles,saveMasterArticle,deleteMasterArticle,se
   }
 
   return <section className="formCard">
-    <h2>Artikelliste</h2><div className="hint"><b>MHD direkt aus der Artikelliste:</b> Artikel scannen oder auswählen, dann bei Chef/Stationsleitung über „MHD / Menge erfassen“ MHD und Menge eintragen. Über „Weitere Menge / MHD hinzufügen“ können mehrere MHD-Datensätze für denselben Artikel erstellt werden. Ohne MHD und Menge wird kein Eintrag erstellt.</div>
-    <p className="hint">Chef/Stationsleitung pflegt hier die festen Artikeldaten. Mitarbeiter müssen beim Erfassen danach nur MHD und Menge eingeben.</p>
+    <h2>Artikelliste</h2><div className="hint"><b>MHD direkt aus der Artikelliste:</b> Artikel scannen oder auswählen, dann bei Chef/Stationsleitung über „MHD erfassen“ MHD eintragen. Über „Weiteres MHD hinzufügen“ können mehrere MHD-Datensätze für denselben Artikel erstellt werden. Ohne MHD wird kein Eintrag erstellt.</div>
+    <p className="hint">Chef/Stationsleitung pflegt hier die festen Artikeldaten. Mitarbeiter müssen beim Erfassen danach nur MHD eingeben.</p>
 
     <button className="scannerButton" type="button" onClick={() => setMasterScannerOpen(true)}>📷 EAN scannen</button>
 
@@ -1820,7 +1805,7 @@ function MasterArticles({masterArticles,saveMasterArticle,deleteMasterArticle,se
       <div className="thumb">{a.bild_url ? <img src={a.bild_url}/> : '📦'}</div>
       <div className="grow"><b>{a.name}</b><p>Art.-Nr. {a.artikelnummer || '-'} · EAN {a.barcode} · {a.kategorie || 'Sonstiges'}</p></div>
       <div className="actions">
-        <button onClick={() => edit(a)}>Bearbeiten</button><button type="button" onClick={() => quickMhdFromMaster?.(a)}>MHD / Menge erfassen</button>
+        <button onClick={() => edit(a)}>Bearbeiten</button><button type="button" onClick={() => quickMhdFromMaster?.(a)}>MHD erfassen</button>
         <button onClick={() => deleteMasterArticle(a)}>Löschen</button>
       </div>
     </div>)}
@@ -1953,9 +1938,6 @@ function ArticleModal({item,close,save}){
     <label>MHD</label>
     <input type="date" value={data.mhd || todayISO()} onChange={e => setData({...data, mhd:e.target.value})}/>
 
-    <label>Menge / Bestand</label>
-    <input type="number" min="1" value={data.menge || 1} onChange={e => setData({...data, menge:e.target.value})}/>
-
     <label>EAN / Barcode</label>
     <input placeholder="EAN / Barcode" value={data.barcode || ''} onChange={e => setData({...data, barcode:e.target.value.replace(/\D/g,'')})}/>
 
@@ -1974,7 +1956,13 @@ function WriteoffModal({item,close,save}){
     <h2>Abschrift bearbeiten</h2>
     <input value={data.artikelnummer || ''} onChange={e => setData({...data, artikelnummer:e.target.value})}/>
     <input value={data.name || data.artikel || ''} onChange={e => setData({...data, name:e.target.value})}/>
-    <input value={data.grund || ''} onChange={e => setData({...data, grund:e.target.value})}/>
+    <label>Grund</label>
+    <select value={data.grund || 'MHD'} onChange={e => setData({...data, grund:e.target.value})}>
+      <option value="MHD">MHD</option>
+      <option value="Bruch">Bruch</option>
+      <option value="Eigenbedarf">Eigenbedarf</option>
+    </select>
+    <label>Menge</label>
     <input type="number" min="1" value={data.menge || 1} onChange={e => setData({...data, menge:e.target.value})}/>
     <input type="date" value={(data.datum || todayISO()).slice(0,10)} onChange={e => setData({...data, datum:e.target.value})}/>
     <div className="modalActions"><button onClick={close}>Abbrechen</button><button onClick={() => save(data)}>Speichern</button></div>

@@ -1,0 +1,14 @@
+MHD Kontrolle – Version 6 Testversion
+
+Diese Version ist eine neue separate ZIP und überschreibt keine bestehende Version.
+
+Änderungen:
+- Beim Erfassen/Wareneingang wird keine Menge mehr abgefragt.
+- MHD-Übersicht: Mitarbeiter geben nur dann eine Menge ein, wenn das MHD gefunden wurde.
+- Button „MHD gefunden“ speichert eine Abschrift mit Grund „MHD“ und entfernt den Eintrag aus der MHD-Übersicht.
+- Button „Bestand 0 / Kontrolliert“ entfernt den Eintrag aus der MHD-Übersicht ohne Abschriften-Menge.
+- Abschriften behalten Mengenangabe.
+- Abschriften-Gründe im Bearbeiten-Fenster: MHD, Bruch, Eigenbedarf.
+- Bestehende Datenbankdaten werden nicht gelöscht oder verändert, solange die neue Version nicht bewusst installiert/veröffentlicht wird.
+
+Build-Test: erfolgreich.

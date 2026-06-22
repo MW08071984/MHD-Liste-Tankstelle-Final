@@ -1,0 +1,13 @@
+MHD Kontrolle Version 7 - Menge nur bei Kontrolle/Abschrift
+
+Geändert:
+- In der normalen MHD-Erfassung muss keine Menge mehr eingegeben werden.
+- In MHD-Übersicht und MHD-Bearbeitung wird keine Menge mehr angezeigt.
+- Pro Kontrolle gibt es ein Mengenfeld und eine Grundauswahl.
+- Gründe: MHD, Bruch, Eigenbedarf.
+- Kontrolle speichern mit Menge > 0: Abschrift wird erstellt und Eintrag verschwindet aus der MHD-Übersicht.
+- Kontrolle speichern mit Menge 0 oder leer: keine Abschrift, Eintrag verschwindet nur aus der MHD-Übersicht.
+- Bestehende Daten/Tabellen werden nicht gelöscht oder neu aufgebaut.
+
+Hinweis:
+Die Datenbankspalte menge bleibt technisch bestehen, damit alte Daten und bestehende Supabase-Struktur kompatibel bleiben. Sie wird für neue MHD-Einträge nur mit 0 gespeichert und nicht mehr angezeigt.
