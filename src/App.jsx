@@ -207,19 +207,27 @@ function groupByDay(entries = []){
   return Object.entries(grouped).sort((a,b) => b[0].localeCompare(a[0]))
 }
 
+function robustVibrate(pattern = [120], repeats = 2){
+  try{
+    if(!('vibrate' in navigator)) return
+    const seq = Array.isArray(pattern) ? pattern : [Number(pattern) || 120]
+    navigator.vibrate(seq)
+    for(let i=1;i<repeats;i++){
+      setTimeout(() => { try{ navigator.vibrate(seq) }catch{} }, i * 180)
+    }
+  }catch{}
+}
+
 function appFeedback(type = 'success'){
   try{
     const patterns = {
-      success:[220,90,220],
-      warning:[160,80,160,80,160],
-      error:[120,70,120,70,120,70,120],
-      click:[90],
-      alarm:[700,250,700,250,700]
+      success:[280,120,280,120,280],
+      warning:[220,100,220,100,220,100,220],
+      error:[180,90,180,90,180,90,180,90,180],
+      click:[130],
+      alarm:[900,250,900,250,900]
     }
-    if(navigator.vibrate){
-      navigator.vibrate(0)
-      navigator.vibrate(patterns[type] || patterns.success)
-    }
+    robustVibrate(patterns[type] || patterns.success, type === 'click' ? 1 : 2)
   }catch{}
   if(type === 'success'){
     try{
@@ -257,7 +265,7 @@ function mhdOpenAlarm(){
   try{
     stopMhdOpenAlarm()
     const started = Date.now()
-    const vibrateStrong = () => { try{ navigator.vibrate?.([700,180,700,180,700]) }catch{} }
+    const vibrateStrong = () => robustVibrate([1000,250,1000,250,1000], 2)
     vibrateStrong()
     const AudioCtx = window.AudioContext || window.webkitAudioContext
     if(AudioCtx){
@@ -415,10 +423,7 @@ export default function App(){
       const el = e.target?.closest?.('button, input, select, textarea, label, .statCard, .navBtn')
       if(!el || el.disabled) return
       try{
-        if(navigator.vibrate){
-          navigator.vibrate(0)
-          navigator.vibrate([110])
-        }
+        robustVibrate([140], 1)
       }catch{}
     }
     window.addEventListener('pointerdown', directTouchFeedback, {capture:true, passive:true})
@@ -482,10 +487,10 @@ export default function App(){
 
       if('Notification' in window){
         if(Notification.permission === 'granted'){
-          new Notification('MHD Kontrolle', { body:text, icon:'/icon-192.png' })
+          new Notification('MHD Kontrolle', { body:text, icon:'/icon-192.png', vibrate:[1000,250,1000,250,1000], requireInteraction:true })
         }else if(Notification.permission !== 'denied'){
           Notification.requestPermission().then(p => {
-            if(p === 'granted') new Notification('MHD Kontrolle', { body:text, icon:'/icon-192.png' })
+            if(p === 'granted') new Notification('MHD Kontrolle', { body:text, icon:'/icon-192.png', vibrate:[1000,250,1000,250,1000], requireInteraction:true })
           })
         }
       }
@@ -1731,7 +1736,7 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
     if(!name){ appFeedback('error'); setSearchMsg({type:'error', text:'Bitte Artikelnamen eingeben.'}); return }
     const ok = await reportMissingArticle?.(clean, 'EAN wurde beim Erfassen gescannt, aber nicht in der Artikelliste gefunden.', name)
     if(!ok){ appFeedback('error'); setSearchMsg({type:'error', text:'Fehlender Artikel konnte nicht gespeichert werden.'}); return }
-    try{ navigator.vibrate?.([250,100,250,100,250]) }catch{}
+    robustVibrate([500,150,500,150,500], 3)
     setSearchMsg({type:'success', text:'✓ Fehlender Artikel wurde an Chef/Stationsleitung gemeldet.'})
     setForm(f => ({...f, barcode:'', artikelnummer:'', name:''}))
     setSearchTerm('')
