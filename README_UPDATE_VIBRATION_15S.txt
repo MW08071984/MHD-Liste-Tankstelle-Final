@@ -1,0 +1,1 @@
+Update: Vibration beim Alarm deutlich verstärkt. Alarm ruft Vibration regelmäßig während der 15 Sekunden auf und zusätzlich beim ersten Tippen, falls Android die Vibration beim reinen App-Start blockiert.

@@ -337,3 +337,8 @@ button.danger{
 .specialBox{
   border:3px dashed #d71920;
 }
+
+/* PUSH BUTTON FINAL */
+.topActions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.pushBtn{background:#fffdf0!important;color:#7b1018!important;border:3px solid #ffd900!important;padding:11px 12px!important}
+@media(max-width:560px){.topbar{gap:10px}.topActions{flex-direction:column;align-items:stretch}.pushBtn,.logout{padding:10px 12px!important;font-size:15px}}

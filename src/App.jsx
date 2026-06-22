@@ -233,58 +233,47 @@ function appFeedback(type = 'success'){
   }
 }
 
-let activeMhdAlarm = null
+let mhdAlarmTimer = null
+let mhdAlarmCtx = null
 
 function stopMhdOpenAlarm(){
-  try{
-    if(activeMhdAlarm?.timer) clearInterval(activeMhdAlarm.timer)
-    if(activeMhdAlarm?.stopTimer) clearTimeout(activeMhdAlarm.stopTimer)
-    activeMhdAlarm?.ctx?.close?.()
-    navigator.vibrate?.(0)
-  }catch{}
-  activeMhdAlarm = null
+  try{ if(mhdAlarmTimer) clearInterval(mhdAlarmTimer) }catch{}
+  mhdAlarmTimer = null
+  try{ navigator.vibrate?.(0) }catch{}
+  try{ mhdAlarmCtx?.close?.() }catch{}
+  mhdAlarmCtx = null
 }
 
-function mhdOpenAlarm(durationMs = 15000){
+function mhdOpenAlarm(){
   try{
     stopMhdOpenAlarm()
-    const endAt = Date.now() + durationMs
-
-    function vibrateAlarm(){
-      try{ navigator.vibrate?.([700,180,700,180,700,400]) }catch{}
-    }
-
+    const started = Date.now()
+    const vibrateStrong = () => { try{ navigator.vibrate?.([700,180,700,180,700]) }catch{} }
+    vibrateStrong()
     const AudioCtx = window.AudioContext || window.webkitAudioContext
-    const ctx = AudioCtx ? new AudioCtx() : null
-    const gain = ctx ? ctx.createGain() : null
-    if(gain){
-      gain.gain.value = 0.16
+    if(AudioCtx){
+      const ctx = new AudioCtx()
+      mhdAlarmCtx = ctx
+      const gain = ctx.createGain()
+      gain.gain.value = 0.10
       gain.connect(ctx.destination)
-    }
-
-    function beep(){
-      if(Date.now() > endAt) return stopMhdOpenAlarm()
-      vibrateAlarm()
-      if(!ctx || !gain) return
-      try{
-        if(ctx.state === 'suspended') ctx.resume?.()
-        ;[0, 260, 520].forEach(delay => {
+      const beep = () => {
+        if(Date.now() - started > 15000) return stopMhdOpenAlarm()
+        ;[0, 250, 500].forEach((delay) => {
           const osc = ctx.createOscillator()
-          osc.type = 'square'
-          osc.frequency.value = delay === 260 ? 1040 : 880
+          osc.type = 'sine'
+          osc.frequency.value = delay === 250 ? 1040 : 880
           osc.connect(gain)
-          const start = ctx.currentTime + delay / 1000
-          osc.start(start)
-          osc.stop(start + 0.16)
+          osc.start(ctx.currentTime + delay/1000)
+          osc.stop(ctx.currentTime + delay/1000 + 0.16)
         })
-      }catch{}
-    }
-
-    beep()
-    activeMhdAlarm = {
-      ctx,
-      timer: setInterval(beep, 1150),
-      stopTimer: setTimeout(stopMhdOpenAlarm, durationMs)
+      }
+      beep()
+      mhdAlarmTimer = setInterval(() => { vibrateStrong(); beep() }, 1500)
+      setTimeout(stopMhdOpenAlarm, 15000)
+    }else{
+      mhdAlarmTimer = setInterval(vibrateStrong, 1500)
+      setTimeout(stopMhdOpenAlarm, 15000)
     }
   }catch(e){ console.warn('Alarm konnte nicht abgespielt werden', e) }
 }
@@ -645,6 +634,7 @@ export default function App(){
     if(!found) return setError('Nummer oder Passwort falsch.')
     setUser(found)
     if(login.remember) localStorage.setItem('mhd_user', JSON.stringify(found))
+    requestPushOnceAfterLogin(found)
   }
 
   async function changePassword(){
@@ -1260,20 +1250,43 @@ export default function App(){
   }
 
   async function enablePush(){
-    if(!('Notification' in window)) return alert('Push wird nicht unterstützt.')
+    if(!('Notification' in window)) return alert('Push wird auf diesem Gerät/Browser nicht unterstützt.')
+    try{ await navigator.serviceWorker?.register('/sw.js') }catch{}
     const permission = await Notification.requestPermission()
-    if(permission !== 'granted') return alert('Benachrichtigungen wurden nicht erlaubt.')
-    const reg = await navigator.serviceWorker.ready
-    await reg.showNotification('MHD Kontrolle aktiviert', {
-      body:'Benachrichtigungen sind aktiv.',
-      icon:'/icon-192.png'
-    })
+    localStorage.setItem('mhd_push_permission_clicked', '1')
+    if(permission !== 'granted'){
+      alert('Benachrichtigungen wurden nicht erlaubt. Du kannst es später über den 🔔 Push-Button erneut versuchen. Wenn Android die Frage nicht mehr zeigt, bitte in den App-/Browser-Einstellungen Benachrichtigungen erlauben.')
+      return
+    }
+    try{
+      const reg = await navigator.serviceWorker.ready
+      await reg.showNotification('MHD Kontrolle aktiviert', {
+        body:'Benachrichtigungen sind aktiv.',
+        icon:'/icon-192.png',
+        badge:'/icon-192.png'
+      })
+    }catch{
+      new Notification('MHD Kontrolle aktiviert', { body:'Benachrichtigungen sind aktiv.', icon:'/icon-192.png' })
+    }
+    setSuccess('Push-Benachrichtigungen sind aktiv.')
+  }
+
+  async function requestPushOnceAfterLogin(currentUser){
+    try{
+      if(!('Notification' in window)) return
+      const key = `mhd_push_login_abfrage_${currentUser?.nummer || 'user'}`
+      if(localStorage.getItem(key)) return
+      localStorage.setItem(key, '1')
+      if(Notification.permission === 'default'){
+        setTimeout(() => enablePush(), 600)
+      }
+    }catch{}
   }
 
   const stats = useMemo(() => {
     const expiredItems = items.filter(i => daysUntil(i.mhd) <= 0)
     const urgentItems = items.filter(i => daysUntil(i.mhd) >= 1 && daysUntil(i.mhd) <= 3)
-    const weekItems = items.filter(i => daysUntil(i.mhd) >= 0 && daysUntil(i.mhd) <= 7)
+    const weekItems = items.filter(i => daysUntil(i.mhd) >= 1 && daysUntil(i.mhd) <= 7)
     const nextDue = [...weekItems].sort((a,b) => daysUntil(a.mhd) - daysUntil(b.mhd))[0]
     return {
       total:items.length,
@@ -1283,7 +1296,7 @@ export default function App(){
       totalText: items.length === 1 ? '1 Artikel gesamt' : `${items.length} Artikel gesamt`,
       expiredText: expiredItems.length === 1 ? '1 Artikel abgelaufen' : `${expiredItems.length} Artikel abgelaufen`,
       urgentText: urgentItems.length === 1 ? '1 Artikel in 1-3 Tagen' : `${urgentItems.length} Artikel in 1-3 Tagen`,
-      weekText: nextDue ? `${weekItems.length} Artikel · ${daysUntil(nextDue.mhd) === 0 ? 'nächster heute' : daysUntil(nextDue.mhd) === 1 ? 'nächster in 1 Tag' : `nächster in ${daysUntil(nextDue.mhd)} Tagen`}` : '0 Artikel',
+      weekText: nextDue ? `${weekItems.length} Artikel · nächster in ${daysUntil(nextDue.mhd)} Tagen` : '0 Artikel',
       todayWriteoffs: writeoffs.filter(w => entryDateKey(w) === todayISO() && w.typ !== 'kontrolle').length,
       todayControls: writeoffs.filter(w => entryDateKey(w) === todayISO() && w.typ === 'kontrolle').length
     }
@@ -1298,7 +1311,7 @@ export default function App(){
   const filteredItems = useMemo(() => {
     if(articleFilter === 'expired') return items.filter(i => daysUntil(i.mhd) <= 0)
     if(articleFilter === 'urgent') return items.filter(i => daysUntil(i.mhd) >= 1 && daysUntil(i.mhd) <= 3)
-    if(articleFilter === 'week') return items.filter(i => daysUntil(i.mhd) >= 0 && daysUntil(i.mhd) <= 7)
+    if(articleFilter === 'week') return items.filter(i => daysUntil(i.mhd) >= 1 && daysUntil(i.mhd) <= 7)
     return items
   }, [items, articleFilter])
 
@@ -1334,7 +1347,10 @@ export default function App(){
         <p>MHD Kontrolle · {roleLabel(user.rolle)}</p>
         <h1>Hallo {user.name}</h1>
       </div>
-      <button className="logout" onClick={logout}>Logout</button>
+      <div className="topActions">
+        <button className="pushBtn" onClick={enablePush} title="Push-Benachrichtigungen aktivieren/testen">🔔 Push</button>
+        <button className="logout" onClick={logout}>Logout</button>
+      </div>
     </header>
 
     <section className="stats">
@@ -1354,9 +1370,9 @@ export default function App(){
     </nav>
 
     {error && <div className="error">{error}</div>}
-    {success && <div className="success" onClick={stopMhdOpenAlarm} title="Antippen stoppt den Alarm">{success}</div>}
+    {success && <div className="success" onClick={stopMhdOpenAlarm} title="Alarm stoppen">{success}</div>}
 
-    {tab === 'artikel' && <ArticleList items={filteredItems} allCount={items.length} articleFilter={articleFilter} setArticleFilter={setArticleFilter} itemsLimited={itemsLimited} allMhdLoaded={allMhdLoaded} loadAllItems={() => loadItems({all:true})} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} deleteMhdEntry={deleteMhdEntry} inlineMsg={inlineMsg} safeEditOverviewItem={safeEditOverviewItem}/>}
+    {tab === 'artikel' && isAdmin(user) && <ArticleList items={filteredItems} allCount={items.length} articleFilter={articleFilter} setArticleFilter={setArticleFilter} itemsLimited={itemsLimited} allMhdLoaded={allMhdLoaded} loadAllItems={() => loadItems({all:true})} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} deleteMhdEntry={deleteMhdEntry} inlineMsg={inlineMsg} safeEditOverviewItem={safeEditOverviewItem}/>}
     {tab === 'dashboard' && <Dashboard safeEditOverviewItem={safeEditOverviewItem} items={items} setTab={setTab} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} deleteMhdEntry={deleteMhdEntry} inlineMsg={inlineMsg}/>}
     {tab === 'erfassen' && <Erfassen form={form} setForm={setForm} setScannerOpen={setScannerOpen} lookupBarcode={lookupBarcode} uploadFormImg={uploadFormImg} addItem={addItem} user={user} inlineMsg={inlineMsg} masterArticles={masterArticles}/>}
     {tab === 'backwaren' && <Backwaren backwaren={backwaren} saveBackwarenList={saveBackwarenList} writeOff={writeOff} user={user}/>}
