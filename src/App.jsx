@@ -45,6 +45,27 @@ const CATEGORIES = [
 
 const todayISO = () => new Date().toISOString().slice(0,10)
 const nowISO = () => new Date().toISOString()
+function normalizeMhdInput(value){
+  const raw = String(value || '').trim()
+  if(!raw) return ''
+  if(/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw
+  const match = raw.match(/^(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{2}|\d{4})$/)
+  if(!match) return ''
+  const day = match[1].padStart(2,'0')
+  const month = match[2].padStart(2,'0')
+  const year = match[3].length === 2 ? '20' + match[3] : match[3]
+  const iso = `${year}-${month}-${day}`
+  const d = new Date(iso + 'T00:00:00')
+  if(Number.isNaN(d.getTime())) return ''
+  if(d.getFullYear() !== Number(year) || d.getMonth()+1 !== Number(month) || d.getDate() !== Number(day)) return ''
+  return iso
+}
+function toGermanDate(value){
+  const iso = normalizeMhdInput(value)
+  if(!iso) return String(value || '')
+  const [y,m,d] = iso.split('-')
+  return `${d}.${m}.${y}`
+}
 const isAdmin = u => ['chef','chef_temp','stationsleitung'].includes(u?.rolle)
 const roleLabel = r => r === 'chef' ? 'Chef' : r === 'chef_temp' ? 'Chef-Rechte' : r === 'stationsleitung' ? 'Stationsleitung' : 'Mitarbeiter'
 function daysUntil(dateStr){
@@ -184,7 +205,7 @@ function groupByDay(entries = []){
 
 function appFeedback(type = 'success'){
   try{
-    const patterns = { success:[120], warning:[80,60,80], error:[70,50,70,50,70], click:[50] }
+    const patterns = { success:[120], warning:[80,60,80], error:[70,50,70,50,70], click:[50], alarm:[700,250,700,250,700] }
     navigator.vibrate?.(patterns[type] || patterns.success)
   }catch{}
   if(type === 'success'){
@@ -206,6 +227,28 @@ function appFeedback(type = 'success'){
       setTimeout(() => ctx.close?.(), 250)
     }catch{}
   }
+}
+
+function mhdOpenAlarm(){
+  try{
+    if(navigator.vibrate) navigator.vibrate([900,250,900,250,900])
+    const AudioCtx = window.AudioContext || window.webkitAudioContext
+    if(AudioCtx){
+      const ctx = new AudioCtx()
+      const gain = ctx.createGain()
+      gain.gain.value = 0.08
+      gain.connect(ctx.destination)
+      ;[0, 350, 700].forEach((delay) => {
+        const osc = ctx.createOscillator()
+        osc.type = 'sine'
+        osc.frequency.value = 880
+        osc.connect(gain)
+        osc.start(ctx.currentTime + delay/1000)
+        osc.stop(ctx.currentTime + delay/1000 + 0.18)
+      })
+      setTimeout(() => ctx.close?.(), 1300)
+    }
+  }catch(e){ console.warn('Alarm konnte nicht abgespielt werden', e) }
 }
 
 function exportAbschriftenPDF(abschriften = [], title = 'MHD Liste', dateKey = ''){
@@ -262,6 +305,7 @@ export default function App(){
   const [articleFilter, setArticleFilter] = useState('all')
   const [itemsLimited, setItemsLimited] = useState(true)
   const [allMhdLoaded, setAllMhdLoaded] = useState(false)
+  const [openWarningKey, setOpenWarningKey] = useState('')
   const [loadedTabs, setLoadedTabs] = useState({})
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -291,6 +335,23 @@ export default function App(){
       delete next[key]
       return next
     }), 5000)
+  }
+
+
+
+  useEffect(() => {
+    if(success) appFeedback('success')
+  }, [success])
+
+  useEffect(() => {
+    if(error) appFeedback('error')
+  }, [error])
+
+  function handleGlobalActionFeedback(e){
+    const el = e.target?.closest?.('button, input, select, textarea, label')
+    if(!el) return
+    if(el.disabled) return
+    appFeedback('click')
   }
 
   useEffect(() => {
@@ -327,27 +388,27 @@ export default function App(){
   function checkDueNotifications(){
     try{
       const today = todayISO()
-      const tomorrow = new Date()
-      tomorrow.setDate(tomorrow.getDate()+1)
-      const tKey = tomorrow.toISOString().slice(0,10)
-      const dueTomorrow = (items || []).filter(x => String(x.mhd || '').slice(0,10) === tKey)
+      const dueToday = (items || []).filter(x => String(x.mhd || '').slice(0,10) === today)
       const expired = (items || []).filter(x => String(x.mhd || '').slice(0,10) < today)
-      const count = dueTomorrow.length + expired.length
+      const count = dueToday.length + expired.length
       if(!count) return
 
-      const key = `mhd-note-${today}-${count}`
-      if(localStorage.getItem(key)) return
-      localStorage.setItem(key,'1')
+      const key = `mhd-open-alarm-${today}-${count}`
+      if(openWarningKey === key) return
+      setOpenWarningKey(key)
 
-      const text = `MHD Kontrolle: ${dueTomorrow.length} laufen morgen ab, ${expired.length} sind abgelaufen.`
+      const text = dueToday.length === 1
+        ? `Achtung: 1 Artikel läuft heute ab.${expired.length ? ` Zusätzlich ${expired.length} abgelaufen.` : ''}`
+        : `Achtung: ${dueToday.length} Artikel laufen heute ab.${expired.length ? ` Zusätzlich ${expired.length} abgelaufen.` : ''}`
       setSuccess(text)
+      mhdOpenAlarm()
 
       if('Notification' in window){
         if(Notification.permission === 'granted'){
-          new Notification('MHD Kontrolle', { body:text })
+          new Notification('MHD Kontrolle', { body:text, icon:'/icon-192.png' })
         }else if(Notification.permission !== 'denied'){
           Notification.requestPermission().then(p => {
-            if(p === 'granted') new Notification('MHD Kontrolle', { body:text })
+            if(p === 'granted') new Notification('MHD Kontrolle', { body:text, icon:'/icon-192.png' })
           })
         }
       }
@@ -490,6 +551,12 @@ export default function App(){
     if(tab === 'fehlende' && isAdmin(user) && !loadedTabs.missing) loadMissingArticles()
     if((tab === 'abschriften' || tab === 'kontrollen') && isAdmin(user) && !loadedTabs.writeoffs) loadWriteoffs()
   }, [tab, user, db, loadedTabs.master, loadedTabs.missing, loadedTabs.writeoffs])
+
+
+  useEffect(() => {
+    if(!user || !items.length) return
+    checkDueNotifications()
+  }, [user, items])
 
   async function saveSetting(key, value){
     if(!isAdmin(user)) return setError('Keine Rechte.')
@@ -672,10 +739,26 @@ export default function App(){
 
   async function addItem(){
     setError('')
-    if(!form.name || !form.mhd){
+    const normalizedMhd = normalizeMhdInput(form.mhd)
+    if(!form.name){
       appFeedback('error')
-      msgAt('erfassen','error','Name und MHD fehlen.')
+      msgAt('erfassen','error','Artikel fehlt.')
       return
+    }
+    if(!String(form.mhd || '').trim()){
+      appFeedback('error')
+      msgAt('erfassen','error','Bitte MHD eingeben.')
+      return setError('Bitte MHD eingeben.')
+    }
+    if(!normalizedMhd){
+      appFeedback('error')
+      msgAt('erfassen','error','Bitte MHD im Format TT.MM.JJJJ eingeben oder Kalender nutzen.')
+      return setError('Bitte MHD im Format TT.MM.JJJJ eingeben oder Kalender nutzen.')
+    }
+    if(normalizedMhd < todayISO()){
+      appFeedback('error')
+      msgAt('erfassen','error','MHD liegt bereits in der Vergangenheit.')
+      return setError('MHD liegt bereits in der Vergangenheit.')
     }
     const payload = {
       barcode:form.barcode || '',
@@ -683,7 +766,7 @@ export default function App(){
       artikel:form.name,
       name:form.name,
       kategorie:form.kategorie,
-      mhd:form.mhd,
+      mhd:normalizedMhd,
       menge:0,
       bild_url:form.bild_url || '',
       mitarbeiter:user.name,
@@ -807,7 +890,7 @@ export default function App(){
     if(rows.length === 0) return setError('Ohne MHD wurde kein Eintrag erstellt.')
 
     const duplicateDate = rows.find((row, index) => rows.findIndex(x => x.mhd === row.mhd) !== index)
-    if(duplicateDate) return setError('Artikel wurde schon mit diesem Datum erfasst.')
+    if(duplicateDate){ appFeedback('error'); return setError('Artikel wurde schon mit diesem Datum erfasst.') }
 
     const entries = rows.map(r => ({
       barcode: masterArticle.barcode || masterArticle.ean || '',
@@ -822,7 +905,7 @@ export default function App(){
     if(db){
       for(const entry of entries){
         const duplicate = await findDuplicateMhdEntry(entry)
-        if(duplicate) return setError('Artikel wurde schon mit diesem Datum erfasst.')
+        if(duplicate){ appFeedback('error'); return setError('Artikel wurde schon mit diesem Datum erfasst.') }
       }
       const { data:newRows, error } = await supabase.from('mhd_artikel').insert(entries).select()
       if(error) return setError(error.message || 'MHD-Einträge konnten nicht gespeichert werden.')
@@ -1160,7 +1243,7 @@ export default function App(){
     ...(isAdmin(user) ? [['online','Online'], ['verwaltung','Verwaltung'], ['settings','Einstellungen']] : [])
   ]
 
-  return <main className="app">
+  return <main className="app" onClickCapture={handleGlobalActionFeedback} onChangeCapture={handleGlobalActionFeedback}>
     <header className="topbar">
       <div>
         <p>MHD Kontrolle · {roleLabel(user.rolle)}</p>
@@ -1281,18 +1364,25 @@ function Dashboard({items,setTab,user,writeOffArticle,markArticleCheckedZero,set
 }
 
 function ArticleList({items,allCount,articleFilter,setArticleFilter,itemsLimited,allMhdLoaded,loadAllItems,user,writeOffArticle,markArticleCheckedZero,setEditArticle,deleteMhdEntry,inlineMsg,safeEditOverviewItem}){
+  const [search, setSearch] = useState('')
   const title = articleFilter === 'expired' ? 'Abgelaufene Artikel' : articleFilter === 'urgent' ? 'Bald ablaufende Artikel' : articleFilter === 'week' ? 'Artikel diese Woche' : 'Artikel'
+  const term = search.trim().toLowerCase()
+  const shownItems = term ? items.filter(item => {
+    const hay = `${item.name || item.artikel || ''} ${item.artikelnummer || ''} ${item.barcode || ''}`.toLowerCase()
+    return hay.includes(term) || String(item.name || item.artikel || '').toLowerCase().startsWith(term)
+  }) : items
   return <section className="list">
     <div className="sectionHeader">
       <div>
         <h2>{title}</h2>
-        <p className="filterInfo">{items.length} von {allCount} Artikeln · Chef/Stationsleitung kann hier Einträge bearbeiten oder löschen.</p>
+        <p className="filterInfo">{shownItems.length} von {items.length} angezeigt · {allCount} Artikeln · Chef/Stationsleitung kann hier Einträge bearbeiten oder löschen.</p>
       </div>
       {itemsLimited && <button className="ghostSmall" onClick={loadAllItems}>Alle MHD laden</button>}
       {articleFilter !== 'all' && <button className="ghostSmall" onClick={() => setArticleFilter('all')}>Filter zurücksetzen</button>}
     </div>
-    {items.length === 0 && <div className="empty">Keine passenden Artikel vorhanden.</div>}
-    {items.map(item => <Article key={item.id} item={item} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} deleteMhdEntry={deleteMhdEntry} inlineMsg={inlineMsg}/>)}
+    <input className="realInput" placeholder="Artikel suchen: Name, Art.-Nr. oder EAN" value={search} onChange={e => setSearch(e.target.value)} />
+    {shownItems.length === 0 && <div className="empty">Keine passenden Artikel vorhanden.</div>}
+    {shownItems.map(item => <Article key={item.id} item={item} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} deleteMhdEntry={deleteMhdEntry} inlineMsg={inlineMsg}/>)}
   </section>
 }
 
@@ -1480,7 +1570,27 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
     </>}
 
     <label>MHD</label>
-    <input className="realInput" type="date" value={form.mhd || ''} onChange={e => setForm({...form, mhd:e.target.value})}/>
+    <div className="mhdInputRow">
+      <input
+        className="realInput"
+        type="text"
+        inputMode="numeric"
+        placeholder="TT.MM.JJJJ"
+        value={toGermanDate(form.mhd || '')}
+        onChange={e => setForm({...form, mhd:e.target.value})}
+        onBlur={e => {
+          const iso = normalizeMhdInput(e.target.value)
+          if(iso) setForm({...form, mhd:iso})
+        }}
+      />
+      <input
+        className="realInput calendarInput"
+        type="date"
+        aria-label="MHD per Kalender auswählen"
+        value={normalizeMhdInput(form.mhd) || ''}
+        onChange={e => setForm({...form, mhd:e.target.value})}
+      />
+    </div>
 
     {isAdmin(user) && <label className="upload">Bild/Screenshot hochladen<input type="file" accept="image/*" onChange={uploadFormImg}/></label>}
     {form.bild_url && <img className="preview" src={form.bild_url} loading="lazy" decoding="async"/>}
@@ -1490,14 +1600,11 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
 }
 
 function Backwaren({backwaren,saveBackwarenList,writeOff,user}){
-  function confirmDeleteBackware(row){
-    const name = row?.name || row?.artikel || row?.bezeichnung || 'Backwaren-Eintrag'
-    return window.confirm('Backwaren-Eintrag wirklich löschen?' + name + 'Diese Aktion kann nicht rückgängig gemacht werden.')
-  }
-
   const [qty, setQty] = useState({})
   const [newItem, setNewItem] = useState({ artikelnummer:'', name:'' })
   const [sending, setSending] = useState(false)
+  const [specialOpen, setSpecialOpen] = useState(false)
+  const [special, setSpecial] = useState({ artikelnummer:'', menge:'', grund:'MHD' })
 
   const entries = backwaren.map(b => ({...b, menge:Number(qty[b.artikelnummer] || 0)})).filter(b => b.menge > 0)
   const total = entries.reduce((sum, b) => sum + b.menge, 0)
@@ -1508,7 +1615,7 @@ function Backwaren({backwaren,saveBackwarenList,writeOff,user}){
   }
 
   async function submit(){
-    if(!entries.length) return alert('Bitte erst Mengen eintragen.')
+    if(!entries.length){ appFeedback('error'); return alert('Bitte erst Mengen eintragen.') }
     setSending(true)
     for(const entry of entries){
       await writeOff({ artikelnummer:entry.artikelnummer, name:entry.name, kategorie:'🥐 Backwaren', mhd:todayISO(), menge:entry.menge, grund:'Backwaren Tagesende' })
@@ -1517,15 +1624,29 @@ function Backwaren({backwaren,saveBackwarenList,writeOff,user}){
     setSending(false)
   }
 
+  async function submitSpecial(){
+    const found = backwaren.find(b => String(b.artikelnummer) === String(special.artikelnummer))
+    const amount = Number(special.menge || 0)
+    if(!found){ appFeedback('error'); return alert('Bitte Backware auswählen.') }
+    if(amount < 1){ appFeedback('error'); return alert('Bitte Menge eingeben.') }
+    const grund = special.grund === 'Bruch' ? 'Backwaren Bruch' : 'Backwaren MHD'
+    setSending(true)
+    await writeOff({ artikelnummer:found.artikelnummer, name:found.name, kategorie:'🥐 Backwaren', mhd:todayISO(), menge:amount, grund })
+    setSpecial({ artikelnummer:'', menge:'', grund:'MHD' })
+    setSpecialOpen(false)
+    setSending(false)
+  }
+
   function addBackware(){
-    if(!newItem.artikelnummer || !newItem.name) return
+    if(!newItem.artikelnummer || !newItem.name){ appFeedback('error'); return }
+    if(backwaren.some(b => String(b.artikelnummer) === String(newItem.artikelnummer))){ appFeedback('error'); return alert('Diese Artikelnummer ist schon in der Backwarenliste.') }
     saveBackwarenList([...backwaren, { artikelnummer:newItem.artikelnummer, name:newItem.name }])
     setNewItem({ artikelnummer:'', name:'' })
   }
 
   function deleteBackware(num){
-    if(!window.confirm('Backwaren-Eintrag wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.')) return;
-    if(confirm('Backware löschen?')) saveBackwarenList(backwaren.filter(b => b.artikelnummer !== num))
+    if(!window.confirm('Backwaren-Eintrag wirklich löschen? Bestehende Abschriften bleiben erhalten.')) return
+    saveBackwarenList(backwaren.filter(b => b.artikelnummer !== num))
   }
 
   return <section className="list backwarenPage">
@@ -1533,10 +1654,29 @@ function Backwaren({backwaren,saveBackwarenList,writeOff,user}){
       <div><h2>Backwaren Tagesende</h2><p>{entries.length} Positionen · {total} Stück</p></div>
       <button disabled={!entries.length || sending} onClick={submit}>{sending ? 'Speichern...' : 'Alles absenden'}</button>
     </div>
-    <div className="submitHint">Menge mit +/− ändern. Bis zum Absenden kann alles geändert werden. Danach nur Chef/Stationsleitung.</div>
+    <div className="submitHint">Tagesende ist die normale Backwaren-Abschrift. MHD und Bruch findest du unter „Sonderabschrift“.</div>
+
+    <button className="ghostSmall" onClick={() => setSpecialOpen(!specialOpen)}>{specialOpen ? 'Sonderabschrift schließen' : '➕ Sonderabschrift MHD / Bruch'}</button>
+
+    {specialOpen && <div className="adminBox specialBox">
+      <h3>Backwaren Sonderabschrift</h3>
+      <label>Grund</label>
+      <select className="realInput" value={special.grund} onChange={e => setSpecial({...special, grund:e.target.value})}>
+        <option value="MHD">MHD</option>
+        <option value="Bruch">Bruch</option>
+      </select>
+      <label>Backware</label>
+      <select className="realInput" value={special.artikelnummer} onChange={e => setSpecial({...special, artikelnummer:e.target.value})}>
+        <option value="">Backware auswählen...</option>
+        {backwaren.map(b => <option key={b.artikelnummer} value={b.artikelnummer}>{b.name} · {b.artikelnummer}</option>)}
+      </select>
+      <label>Menge</label>
+      <input className="realInput" inputMode="numeric" type="number" min="0" value={special.menge} onChange={e => setSpecial({...special, menge:e.target.value.replace(/\D/g,'')})} placeholder="0"/>
+      <button className="primary" disabled={sending} onClick={submitSpecial}>{sending ? 'Speichern...' : 'Sonderabschrift speichern'}</button>
+    </div>}
 
     {isAdmin(user) && <div className="adminBox">
-      <h3>Backwaren verwalten</h3>
+      <h3>Backwarenliste erweitern</h3>
       <input placeholder="Artikelnummer" value={newItem.artikelnummer} onChange={e => setNewItem({...newItem, artikelnummer:e.target.value})}/>
       <input placeholder="Name" value={newItem.name} onChange={e => setNewItem({...newItem, name:e.target.value})}/>
       <button onClick={addBackware}>Backware hinzufügen</button>
@@ -1544,7 +1684,7 @@ function Backwaren({backwaren,saveBackwarenList,writeOff,user}){
 
     {backwaren.map(b => <div className={'item bakery ' + (Number(qty[b.artikelnummer] || 0) > 0 ? 'selectedBakery' : '')} key={b.artikelnummer}>
       <div className="artikelnummer">{b.artikelnummer}</div>
-      <div className="grow"><b>{b.name}</b><p>Artikelnummer {b.artikelnummer}</p>{isAdmin(user) && <button className="ghostSmall" onClick={() => { if(confirmDeleteBackware(b.artikelnummer)) deleteBackware(b.artikelnummer) }}>Löschen</button>}</div>
+      <div className="grow"><b>{b.name}</b><p>Artikelnummer {b.artikelnummer}</p>{isAdmin(user) && <button className="ghostSmall" onClick={() => deleteBackware(b.artikelnummer)}>Löschen</button>}</div>
       <div className="stepper">
         <button onClick={() => step(b.artikelnummer, -1)}>−</button>
         <input className="qty" inputMode="numeric" value={qty[b.artikelnummer] || ''} onChange={e => setQty({...qty, [b.artikelnummer]:e.target.value.replace(/\D/g,'')})} placeholder="0"/>
@@ -1552,7 +1692,7 @@ function Backwaren({backwaren,saveBackwarenList,writeOff,user}){
       </div>
     </div>)}
 
-    <button className="fixedSubmit" disabled={!entries.length || sending} onClick={submit}>{sending ? 'Speichern...' : `Backwaren absenden (${total})`}</button>
+    <button className="fixedSubmit" disabled={!entries.length || sending} onClick={submit}>{sending ? 'Speichern...' : `Backwaren Tagesende absenden (${total})`}</button>
   </section>
 }
 
@@ -1643,6 +1783,12 @@ function MasterArticles({masterArticles,saveMasterArticle,deleteMasterArticle,se
   const empty = { barcode:'', artikelnummer:'', name:'', kategorie:'Sonstiges', bild_url:'' }
   const [data,setData] = useState(empty)
   const [msg,setMsg] = useState(null)
+  const [articleSearch, setArticleSearch] = useState('')
+  const filteredMasterArticles = useMemo(() => {
+    const term = articleSearch.trim().toLowerCase()
+    if(!term) return masterArticles
+    return masterArticles.filter(a => `${a.name || ''} ${a.artikelnummer || ''} ${a.barcode || ''}`.toLowerCase().includes(term) || String(a.name || '').toLowerCase().startsWith(term))
+  }, [masterArticles, articleSearch])
 
   function findExistingMaster(ean = data.barcode, artNr = data.artikelnummer){
     const cleanEan = String(ean || '').replace(/\D/g,'')
@@ -1801,7 +1947,8 @@ function MasterArticles({masterArticles,saveMasterArticle,deleteMasterArticle,se
 
     <h3>Gespeicherte Artikel</h3>
     {masterArticles.length === 0 && <div className="empty">Noch keine Artikel in der Artikelliste.</div>}
-    {masterArticles.map(a => <div className="item" key={a.id || a.barcode}>
+    <input className="realInput" placeholder="Artikel suchen: Name, Artikelnummer oder EAN" value={articleSearch} onChange={e => setArticleSearch(e.target.value)} />
+    {filteredMasterArticles.map(a => <div className="item" key={a.id || a.barcode}>
       <div className="thumb">{a.bild_url ? <img src={a.bild_url}/> : '📦'}</div>
       <div className="grow"><b>{a.name}</b><p>Art.-Nr. {a.artikelnummer || '-'} · EAN {a.barcode} · {a.kategorie || 'Sonstiges'}</p></div>
       <div className="actions">

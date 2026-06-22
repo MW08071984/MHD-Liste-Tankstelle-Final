@@ -322,3 +322,18 @@ button.danger{
   color:#fff!important;
   border-color:#8b1016!important;
 }
+
+.mhdInputRow{
+  display:grid;
+  grid-template-columns: 1fr 76px;
+  gap:10px;
+  align-items:center;
+}
+.calendarInput{
+  min-width:76px;
+  padding-left:10px!important;
+  padding-right:10px!important;
+}
+.specialBox{
+  border:3px dashed #d71920;
+}
