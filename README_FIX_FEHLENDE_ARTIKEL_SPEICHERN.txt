@@ -1,0 +1,1 @@
+Fix: fehlende Artikel werden jetzt zuverlässig gespeichert und lokal angezeigt, falls Supabase die Tabelle/Spalten noch nicht akzeptiert. Popup-Vibration beim Senden verstärkt. Build geprüft am 22.06.2026.
