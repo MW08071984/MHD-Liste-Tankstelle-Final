@@ -49,16 +49,39 @@ function normalizeMhdInput(value){
   const raw = String(value || '').trim()
   if(!raw) return ''
   if(/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw
-  const match = raw.match(/^(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{2}|\d{4})$/)
-  if(!match) return ''
-  const day = match[1].padStart(2,'0')
-  const month = match[2].padStart(2,'0')
-  const year = match[3].length === 2 ? '20' + match[3] : match[3]
-  const iso = `${year}-${month}-${day}`
-  const d = new Date(iso + 'T00:00:00')
-  if(Number.isNaN(d.getTime())) return ''
-  if(d.getFullYear() !== Number(year) || d.getMonth()+1 !== Number(month) || d.getDate() !== Number(day)) return ''
-  return iso
+
+  // Normale Eingabe mit Tag: 31.12.2026, 31/12/26 oder 31-12-2026
+  const full = raw.match(/^(\d{1,2})[.\-/\s](\d{1,2})[.\-/\s](\d{2}|\d{4})$/)
+  if(full){
+    const day = full[1].padStart(2,'0')
+    const month = full[2].padStart(2,'0')
+    const year = full[3].length === 2 ? '20' + full[3] : full[3]
+    const iso = `${year}-${month}-${day}`
+    const d = new Date(iso + 'T00:00:00')
+    if(Number.isNaN(d.getTime())) return ''
+    if(d.getFullYear() !== Number(year) || d.getMonth()+1 !== Number(month) || d.getDate() !== Number(day)) return ''
+    return iso
+  }
+
+  // Praxis-Fall: nur Monat/Jahr auf Verpackung, z. B. 12.2026, 12/2026 oder 12 2026.
+  // Dann gilt automatisch der letzte Tag des Monats.
+  const monthYear = raw.match(/^(\d{1,2})[.\-/\s](\d{2}|\d{4})$/)
+  if(monthYear){
+    const monthNum = Number(monthYear[1])
+    const yearNum = Number(monthYear[2].length === 2 ? '20' + monthYear[2] : monthYear[2])
+    if(monthNum < 1 || monthNum > 12 || yearNum < 2000) return ''
+    const lastDay = new Date(yearNum, monthNum, 0).getDate()
+    return `${yearNum}-${String(monthNum).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`
+  }
+
+  return ''
+}
+function normalizeBarcodeRaw(v){
+  return String(v || '').replace(/\D/g,'').trim()
+}
+function normalizeBarcodeCompare(v){
+  const raw = normalizeBarcodeRaw(v)
+  return raw.replace(/^0+/, '') || raw
 }
 function toGermanDate(value){
   const iso = normalizeMhdInput(value)
@@ -207,47 +230,48 @@ function groupByDay(entries = []){
   return Object.entries(grouped).sort((a,b) => b[0].localeCompare(a[0]))
 }
 
-function robustVibrate(pattern = [120], repeats = 2){
+function robustVibrate(pattern = [120], repeats = 1){
   try{
     if(!('vibrate' in navigator)) return
     const seq = Array.isArray(pattern) ? pattern : [Number(pattern) || 120]
     navigator.vibrate(seq)
     for(let i=1;i<repeats;i++){
-      setTimeout(() => { try{ navigator.vibrate(seq) }catch{} }, i * 180)
+      setTimeout(() => { try{ navigator.vibrate(seq) }catch{} }, i * 260)
     }
+  }catch{}
+}
+
+function appTone(type = 'success'){
+  try{
+    const AudioCtx = window.AudioContext || window.webkitAudioContext
+    if(!AudioCtx) return
+    const ctx = new AudioCtx()
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.type = 'sine'
+    osc.frequency.value = type === 'error' ? 220 : 880
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(type === 'error' ? 0.10 : 0.07, ctx.currentTime + 0.01)
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + (type === 'error' ? 0.20 : 0.12))
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    osc.start()
+    osc.stop(ctx.currentTime + (type === 'error' ? 0.22 : 0.14))
+    setTimeout(() => ctx.close?.(), 350)
   }catch{}
 }
 
 function appFeedback(type = 'success'){
   try{
     const patterns = {
-      success:[280,120,280,120,280],
-      warning:[220,100,220,100,220,100,220],
-      error:[180,90,180,90,180,90,180,90,180],
-      click:[130],
-      alarm:[900,250,900,250,900]
+      success:[100,100,100],
+      error:[300,100,300],
+      warning:[160,90,160],
+      click:[60]
     }
-    robustVibrate(patterns[type] || patterns.success, type === 'click' ? 1 : 2)
+    robustVibrate(patterns[type] || patterns.success, 1)
   }catch{}
-  if(type === 'success'){
-    try{
-      const AudioCtx = window.AudioContext || window.webkitAudioContext
-      if(!AudioCtx) return
-      const ctx = new AudioCtx()
-      const osc = ctx.createOscillator()
-      const gain = ctx.createGain()
-      osc.type = 'sine'
-      osc.frequency.value = 880
-      gain.gain.setValueAtTime(0.0001, ctx.currentTime)
-      gain.gain.exponentialRampToValueAtTime(0.08, ctx.currentTime + 0.01)
-      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.12)
-      osc.connect(gain)
-      gain.connect(ctx.destination)
-      osc.start()
-      osc.stop(ctx.currentTime + 0.14)
-      setTimeout(() => ctx.close?.(), 250)
-    }catch{}
-  }
+  if(type === 'success' || type === 'error') appTone(type)
 }
 
 let mhdAlarmTimer = null
@@ -265,7 +289,7 @@ function mhdOpenAlarm(){
   try{
     stopMhdOpenAlarm()
     const started = Date.now()
-    const vibrateStrong = () => robustVibrate([1000,250,1000,250,1000], 2)
+    const vibrateStrong = () => robustVibrate([500,300,500,300,500], 1)
     vibrateStrong()
     const AudioCtx = window.AudioContext || window.webkitAudioContext
     if(AudioCtx){
@@ -686,7 +710,7 @@ export default function App(){
     // Bilder/Base64 machen die Liste auf Handys langsam. Für Suche/Erfassung reichen diese Felder.
     const { data, error } = await supabase
       .from('artikel_stammdaten')
-      .select('id,barcode,artikelnummer,name,kategorie,updated_at')
+      .select('id,barcode,artikelnummer,name,kategorie,bild_url,updated_at')
       .order('name')
     if(error){
       console.warn('Artikelliste konnte nicht geladen werden:', error)
@@ -1047,8 +1071,8 @@ export default function App(){
     }
     if(!normalizedMhd){
       appFeedback('error')
-      msgAt('erfassen','error','Bitte MHD im Format TT.MM.JJJJ eingeben oder Kalender nutzen.')
-      return setError('Bitte MHD im Format TT.MM.JJJJ eingeben oder Kalender nutzen.')
+      msgAt('erfassen','error','Bitte MHD im Format TT.MM.JJJJ oder MM.JJJJ eingeben.')
+      return setError('Bitte MHD im Format TT.MM.JJJJ oder MM.JJJJ eingeben.')
     }
     if(normalizedMhd < todayISO()){
       appFeedback('error')
@@ -1236,7 +1260,7 @@ export default function App(){
 
     const duplicate = masterArticles.find(a => {
       if(data.id && a.id === data.id) return false
-      const sameEan = payload.barcode && String(a.barcode || '') === payload.barcode
+      const sameEan = payload.barcode && normalizeBarcodeCompare(a.barcode || '') === normalizeBarcodeCompare(payload.barcode)
       const sameArtNr = payload.artikelnummer && String(a.artikelnummer || '').trim() === String(payload.artikelnummer).trim()
       return sameEan || sameArtNr
     })
@@ -1293,14 +1317,20 @@ export default function App(){
 
 
   function normalizeBarcodeValue(v){
-    return String(v || '').replace(/\D/g,'').trim()
+    return normalizeBarcodeRaw(v)
+  }
+
+  function sameBarcodeLoose(a,b){
+    const aa = normalizeBarcodeCompare(a)
+    const bb = normalizeBarcodeCompare(b)
+    return !!aa && !!bb && aa === bb
   }
 
   function findMasterByBarcodeOrNumber(code){
     const c = normalizeBarcodeValue(code)
     if(!c) return null
     return (masterArticles || []).find(a =>
-      normalizeBarcodeValue(a.barcode || a.ean) === c ||
+      sameBarcodeLoose(a.barcode || a.ean, c) ||
       normalizeBarcodeValue(a.artikelnummer) === c ||
       normalizeBarcodeValue(a.nr) === c
     ) || null
@@ -1606,7 +1636,7 @@ export default function App(){
     {tab === 'backwaren' && <Backwaren backwaren={backwaren} saveBackwarenList={saveBackwarenList} writeOff={writeOff} user={user}/>}
     {tab === 'abschriften' && isAdmin(user) && <Abschriften writeoffs={writeoffs.filter(w => w.typ !== 'kontrolle')} user={user} setEditWriteoff={setEditWriteoff} deleteWriteoff={deleteWriteoff} undoWriteoff={undoWriteoff}/>}
     {tab === 'kontrollen' && isAdmin(user) && <Kontrollen controls={writeoffs.filter(w => w.typ === 'kontrolle')} user={user} deleteWriteoff={deleteWriteoff}/>}
-    {tab === 'fehlende' && isAdmin(user) && <MissingArticles missingArticles={missingArticles} markMissingDone={markMissingDone} takeOverMissingArticle={takeOverMissingArticle}/>}    {tab === 'stammdaten' && isAdmin(user) && <MasterArticles prefillArticle={prefillMasterArticle} onPrefillUsed={() => setPrefillMasterArticle(null)} onMissingSaved={markMissingDone} quickMhdFromMaster={quickMhdFromMaster} masterArticles={masterArticles} saveMasterArticle={saveMasterArticle} deleteMasterArticle={deleteMasterArticle} setMasterScannerOpen={setMasterScannerOpen}/>}
+    {tab === 'fehlende' && isAdmin(user) && <MissingArticles missingArticles={missingArticles} markMissingDone={markMissingDone} takeOverMissingArticle={takeOverMissingArticle} saveMasterArticle={saveMasterArticle}/>}    {tab === 'stammdaten' && isAdmin(user) && <MasterArticles prefillArticle={prefillMasterArticle} onPrefillUsed={() => setPrefillMasterArticle(null)} onMissingSaved={markMissingDone} quickMhdFromMaster={quickMhdFromMaster} masterArticles={masterArticles} saveMasterArticle={saveMasterArticle} deleteMasterArticle={deleteMasterArticle} setMasterScannerOpen={setMasterScannerOpen}/>}
     {tab === 'dienstplan' && <Dienstplan settings={settings} saveSetting={saveSetting} user={user}/>}
     {tab === 'online' && isAdmin(user) && <Online online={online}/>}
     {tab === 'verwaltung' && isAdmin(user) && <Verwaltung employees={employees} saveEmployee={saveEmployee} deleteEmployee={deleteEmployee} resetPassword={resetPassword}/>}
@@ -1718,6 +1748,7 @@ function ArticleList({items,allCount,articleFilter,setArticleFilter,itemsLimited
 function Article({item,user,writeOffArticle,markArticleCheckedZero,setEditArticle,deleteMhdEntry}){
   const [amount, setAmount] = useState('')
   const [reason, setReason] = useState('MHD')
+  const [detailsOpen, setDetailsOpen] = useState(false)
   const days = daysUntil(item.mhd)
 
   function setSafeAmount(value){
@@ -1734,11 +1765,18 @@ function Article({item,user,writeOffArticle,markArticleCheckedZero,setEditArticl
   const qty = Number(amount || 0)
   const stateClass = days <= 0 ? 'expiredArticle' : (days >= 1 && days <= 3 ? 'urgentArticle' : '')
   return <div className={'item articleItem ' + stateClass}>
-    <div className="thumb"><LazyArticleImage src={item.bild_url} alt={item.name || item.artikel || 'Artikelbild'}/></div>
+    <div className="artikelnummer small">{item.artikelnummer || item.barcode || 'MHD'}</div>
     <div className="grow">
       <b>{item.name || item.artikel}</b>
       <p>{item.artikelnummer ? `Art.-Nr. ${item.artikelnummer}` : ''}</p>
       <p>MHD {item.mhd ? new Date(item.mhd).toLocaleDateString('de-DE') : '-'} · {days <= 0 ? (days === 0 ? 'heute fällig' : `${Math.abs(days)} Tage drüber`) : `${days} Tage`}</p>
+      <button className="ghostSmall" type="button" onClick={() => setDetailsOpen(!detailsOpen)}>{detailsOpen ? 'Details ausblenden' : 'Details anzeigen'}</button>
+      {detailsOpen && <div className="detailBox">
+        {item.bild_url ? <img className="detailImage" src={item.bild_url} loading="lazy" decoding="async"/> : <div className="empty small">Kein Bild hinterlegt</div>}
+        <p><b>EAN:</b> {item.barcode || '-'}</p>
+        <p><b>Interne Artikelnummer:</b> {item.artikelnummer || '-'}</p>
+        <p><b>MHD:</b> {item.mhd ? new Date(item.mhd).toLocaleDateString('de-DE') : '-'}</p>
+      </div>}
     </div>
     <div className="writeBox">
       <label className="smallLabel">Menge für Abschrift</label>
@@ -1801,7 +1839,7 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
 
     const found = masterArticles.find(a =>
       String(a.artikelnummer || '').trim() === term ||
-      String(a.barcode || '').trim() === term
+      normalizeBarcodeCompare(a.barcode || '') === normalizeBarcodeCompare(term)
     )
 
     if(found) return übernehmen(found)
@@ -1954,7 +1992,7 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
         className="realInput"
         type="text"
         inputMode="numeric"
-        placeholder="TT.MM.JJJJ"
+        placeholder="TT.MM.JJJJ oder MM.JJJJ"
         value={toGermanDate(form.mhd || '')}
         onChange={e => setForm({...form, mhd:e.target.value})}
         onBlur={e => {
@@ -2157,20 +2195,71 @@ function Kontrollen({controls,user,deleteWriteoff}){
 }
 
 
-function MissingArticles({missingArticles,markMissingDone,takeOverMissingArticle}){
+function MissingArticles({missingArticles,markMissingDone,takeOverMissingArticle,saveMasterArticle}){
   const open = missingArticles.filter(x => x.status !== 'erledigt')
+  const [forms, setForms] = useState({})
+
+  function extractName(row){
+    const direct = String(row?.artikelname || row?.name || '').trim()
+    if(direct) return direct
+    const hint = String(row?.hinweis || '')
+    const m = hint.match(/Artikelname:\s*(.*?)\s*(?:·|$)/i)
+    return (m?.[1] || '').trim()
+  }
+
+  function value(row, key){
+    const id = row.id || row.barcode
+    const fallback = key === 'barcode' ? row.barcode : key === 'name' ? extractName(row) : key === 'artikelnummer' ? (row.artikelnummer || row.barcode || '') : (row.bild_url || '')
+    return forms[id]?.[key] ?? fallback ?? ''
+  }
+  function change(row, key, val){
+    const id = row.id || row.barcode
+    setForms(prev => ({...prev, [id]: {...(prev[id] || {}), [key]:val}}))
+  }
+  async function upload(row,e){
+    const file = await compressImageFile(e.target.files?.[0])
+    if(!file) return
+    change(row, 'bild_url', await fileToDataUrl(file))
+  }
+  async function übernehmen(row){
+    const payload = {
+      barcode: normalizeBarcodeRaw(value(row,'barcode')),
+      artikelnummer: value(row,'artikelnummer'),
+      name: value(row,'name'),
+      kategorie: 'Sonstiges',
+      bild_url: value(row,'bild_url')
+    }
+    if(!payload.barcode || !payload.name){ appFeedback('error'); return alert('EAN und Artikelname müssen ausgefüllt sein.') }
+    const ok = await saveMasterArticle?.(payload)
+    if(ok === false){ appFeedback('error'); return }
+    await markMissingDone?.(row)
+    appFeedback('success')
+  }
+
   return <section className="formCard">
     <h2>Fehlende Artikel</h2>
-    <p className="hint">Hier landen EANs, die Mitarbeiter gescannt haben, aber nicht in der Artikelliste vorhanden sind. Chef/Stationsleitung kann sie danach in der Artikelliste einpflegen oder den Vorschlag löschen.</p>
+    <p className="hint">Hier landen EANs, die Mitarbeiter gescannt haben, aber nicht in der Artikelliste vorhanden sind. Chef/Stationsleitung kann sie direkt mit Artikelnummer und Bild in die Artikelliste übernehmen.</p>
     {open.length === 0 && <div className="empty">Keine fehlenden Artikel vorhanden.</div>}
-    {open.map(row => <div className="item" key={row.id || row.barcode}>
+    {open.map(row => <div className="item missingItem" key={row.id || row.barcode}>
       <div className="artikelnummer small">EAN</div>
       <div className="grow">
         <b>{row.barcode}</b>
         <p>{row.hinweis || 'Nicht in Artikelliste gefunden'} · {row.gemeldet_von || '-'} · {row.created_at ? new Date(row.created_at).toLocaleDateString('de-DE') : ''}</p>
+        <div className="inlineForm">
+          <label>EAN</label>
+          <input value={value(row,'barcode')} onChange={e => change(row,'barcode', e.target.value.replace(/\D/g,''))}/>
+          <label>Interne Artikelnummer</label>
+          <input value={value(row,'artikelnummer')} onChange={e => change(row,'artikelnummer', e.target.value)}/>
+          <label>Artikelname</label>
+          <input value={value(row,'name')} onChange={e => change(row,'name', e.target.value)}/>
+          <label>Bild URL</label>
+          <input value={value(row,'bild_url')} onChange={e => change(row,'bild_url', e.target.value)}/>
+          <label className="upload">Bild hochladen<input type="file" accept="image/*" onChange={e => upload(row,e)}/></label>
+          {value(row,'bild_url') && <img className="preview transparentPreview" src={value(row,'bild_url')} loading="lazy" decoding="async"/>}
+        </div>
       </div>
       <div className="actions">
-        <button onClick={() => takeOverMissingArticle?.(row)}>In Artikelliste übernehmen</button>
+        <button onClick={() => übernehmen(row)}>In Artikelliste übernehmen</button>
         <button onClick={() => navigator.clipboard?.writeText(row.barcode)}>EAN kopieren</button>
         <button onClick={() => markMissingDone(row)}>Vorschlag löschen</button>
       </div>
@@ -2207,7 +2296,7 @@ function MasterArticles({masterArticles,saveMasterArticle,deleteMasterArticle,se
     const cleanArtNr = String(artNr || '').trim()
     return masterArticles.find(a => {
       if(data.id && a.id === data.id) return false
-      const sameEan = cleanEan && String(a.barcode || '') === cleanEan
+      const sameEan = cleanEan && normalizeBarcodeCompare(a.barcode || '') === normalizeBarcodeCompare(cleanEan)
       const sameArtNr = cleanArtNr && String(a.artikelnummer || '').trim() === cleanArtNr
       return sameEan || sameArtNr
     })
