@@ -1668,10 +1668,9 @@ export default function App(){
     </header>
 
     <section className="stats">
-      <Stat label="Artikel" value={stats.totalText} tone="normal" onClick={() => openArticleFilter('all')}/>
+      {isAdmin(user) && <Stat label="Artikel" value={stats.totalText} tone="normal" onClick={() => openArticleFilter('all')}/>}
       <Stat label="Abgelaufen" value={stats.expiredText} tone="expired" onClick={() => openArticleFilter('expired')}/>
-      <Stat label="Bald" value={stats.urgentText} tone="urgent" onClick={() => openArticleFilter('urgent')}/>
-      <Stat label="Woche" value={stats.weekText} tone="week" onClick={() => openArticleFilter('week')}/>
+      <Stat label="7 Tage" value={stats.weekText} tone="week" onClick={() => openArticleFilter('week')}/>
     </section>
 
     {isAdmin(user) && <section className="todayStats single">
