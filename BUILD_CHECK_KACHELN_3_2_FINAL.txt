@@ -1,0 +1,6 @@
+Build geprüft: npm ci && npm run build erfolgreich.
+Änderung: Übersichts-Kacheln reduziert.
+- Mitarbeiter: nur Abgelaufen und 7 Tage.
+- Chef/Stationsleitung: Artikel, Abgelaufen und 7 Tage.
+- Bald 1-3 Tage entfernt.
+- Mitarbeiter-Klicks öffnen die erlaubte Übersicht mit passendem Filter.
