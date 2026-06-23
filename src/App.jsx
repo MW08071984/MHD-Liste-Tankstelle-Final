@@ -1686,7 +1686,7 @@ export default function App(){
 
     {tab === 'artikel' && isAdmin(user) && <ArticleList items={filteredItems} allCount={items.length} articleFilter={articleFilter} setArticleFilter={setArticleFilter} itemsLimited={itemsLimited} allMhdLoaded={allMhdLoaded} loadAllItems={() => loadItems({all:true})} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} deleteMhdEntry={deleteMhdEntry} inlineMsg={inlineMsg} safeEditOverviewItem={safeEditOverviewItem}/>}
     {tab === 'dashboard' && <Dashboard safeEditOverviewItem={safeEditOverviewItem} items={articleFilter === 'all' ? items : filteredItems} articleFilter={articleFilter} setTab={setTab} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} deleteMhdEntry={deleteMhdEntry} inlineMsg={inlineMsg}/>}
-    {tab === 'erfassen' && <Erfassen form={form} setForm={setForm} setScannerOpen={setScannerOpen} lookupBarcode={lookupBarcode} uploadFormImg={uploadFormImg} addItem={addItem} user={user} inlineMsg={inlineMsg} masterArticles={masterArticles} reportMissingArticle={reportMissingArticle}/>}
+    {tab === 'erfassen' && <Erfassen form={form} setForm={setForm} setScannerOpen={setScannerOpen} lookupBarcode={lookupBarcode} uploadFormImg={uploadFormImg} addItem={addItem} user={user} inlineMsg={inlineMsg} masterArticles={masterArticles} reportMissingArticle={reportMissingArticle} saveMasterArticle={saveMasterArticle}/>}
     {tab === 'backwaren' && <Backwaren backwaren={backwaren} saveBackwarenList={saveBackwarenList} writeOff={writeOff} user={user}/>}
     {tab === 'abschriften' && isAdmin(user) && <Abschriften writeoffs={writeoffs.filter(w => w.typ !== 'kontrolle')} user={user} setEditWriteoff={setEditWriteoff} deleteWriteoff={deleteWriteoff} deleteWriteoffsForDay={deleteWriteoffsForDay} undoWriteoff={undoWriteoff}/>}
     {tab === 'fehlende' && isAdmin(user) && <MissingArticles missingArticles={missingArticles} markMissingDone={markMissingDone} takeOverMissingArticle={takeOverMissingArticle} recheckMissingArticle={recheckMissingArticle}/>}    {tab === 'stammdaten' && isAdmin(user) && <MasterArticles prefillArticle={prefillMasterArticle} onPrefillUsed={() => setPrefillMasterArticle(null)} onMissingSaved={markMissingDone} quickMhdFromMaster={quickMhdFromMaster} masterArticles={masterArticles} saveMasterArticle={saveMasterArticle} deleteMasterArticle={deleteMasterArticle} setMasterScannerOpen={setMasterScannerOpen}/>}
@@ -1862,11 +1862,11 @@ function Article({item,user,writeOffArticle,markArticleCheckedZero,setEditArticl
 }
 
 
-function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addItem,user,inlineMsg,masterArticles=[],reportMissingArticle}){
+function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addItem,user,inlineMsg,masterArticles=[],reportMissingArticle,saveMasterArticle}){
   const [searchTerm, setSearchTerm] = useState('')
   const [searchMsg, setSearchMsg] = useState(null)
   const [missingMode, setMissingMode] = useState(false)
-  const [missingDialog, setMissingDialog] = useState({ open:false, ean:'', name:'' })
+  const [missingDialog, setMissingDialog] = useState({ open:false, ean:'', artikelnummer:'', name:'', bild_url:'' })
 
   function übernehmen(article){
     if(!article) return false
@@ -1902,7 +1902,7 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
     const clean = term.replace(/\D/g,'')
     if(clean){
       setForm(f => ({...f, barcode:f.barcode || clean, artikelnummer:f.artikelnummer || clean}))
-      setMissingDialog({ open:true, ean:clean, name:'' })
+      setMissingDialog({ open:true, ean:clean, artikelnummer:'', name:'', bild_url:'' })
     }
     setSearchMsg({type:'warning', text:'Artikel nicht in Artikelliste gefunden. Bitte Namen eingeben und als fehlenden Artikel melden.'})
     return false
@@ -1944,12 +1944,37 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
     setForm(f => ({...f, barcode:'', artikelnummer:'', name:''}))
     setSearchTerm('')
     setMissingMode(false)
-    setMissingDialog({ open:false, ean:'', name:'' })
+    setMissingDialog({ open:false, ean:'', artikelnummer:'', name:'', bild_url:'' })
+    appFeedback('success')
+  }
+
+  async function uploadMissingDialogImage(e){
+    const file = await compressImageFile(e.target.files?.[0])
+    if(!file) return
+    const url = await fileToDataUrl(file)
+    setMissingDialog(d => ({...d, bild_url:url}))
+    appFeedback('success')
+  }
+
+  async function createArticleFromMissingDialog(){
+    const clean = String(missingDialog.ean || form.barcode || searchTerm || '').replace(/\D/g,'')
+    const artikelnummer = String(missingDialog.artikelnummer || '').trim()
+    const name = String(missingDialog.name || '').trim()
+    if(!clean){ appFeedback('error'); setSearchMsg({type:'error', text:'Bitte erst EAN scannen oder eingeben.'}); return }
+    if(!artikelnummer){ appFeedback('error'); setSearchMsg({type:'error', text:'Bitte interne Artikelnummer eingeben.'}); return }
+    if(!name){ appFeedback('error'); setSearchMsg({type:'error', text:'Bitte Artikelnamen eingeben.'}); return }
+    const ok = await saveMasterArticle?.({ barcode:clean, artikelnummer, name, bild_url:missingDialog.bild_url || '', kategorie:'Sonstiges' })
+    if(ok === false){ appFeedback('error'); setSearchMsg({type:'error', text:'Artikel konnte nicht angelegt werden.'}); return }
+    setForm(f => ({...f, barcode:clean, artikelnummer, name, bild_url:missingDialog.bild_url || f.bild_url || '', kategorie:f.kategorie || 'Sonstiges'}))
+    setSearchTerm(clean)
+    setMissingMode(false)
+    setMissingDialog({ open:false, ean:'', artikelnummer:'', name:'', bild_url:'' })
+    setSearchMsg({type:'success', text:'✓ Artikel wurde direkt in der Artikelliste angelegt. MHD kann jetzt eingetragen werden.'})
     appFeedback('success')
   }
 
   function closeMissingDialog(){
-    setMissingDialog({ open:false, ean:'', name:'' })
+    setMissingDialog({ open:false, ean:'', artikelnummer:'', name:'', bild_url:'' })
   }
 
   const nameReadOnly = !isAdmin(user) && !missingMode
@@ -1963,6 +1988,15 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
         <div className="submitHint">Diese EAN ist nicht in der Artikelliste. Bitte Artikelnamen eingeben und an Chef/Stationsleitung melden.</div>
         <label>EAN / Barcode</label>
         <input className="realInput" value={missingDialog.ean} readOnly />
+        {isAdmin(user) && <>
+          <label>Interne Artikelnummer</label>
+          <input
+            className="realInput"
+            placeholder="Interne Artikelnummer eingeben"
+            value={missingDialog.artikelnummer || ''}
+            onChange={e => setMissingDialog(d => ({...d, artikelnummer:e.target.value}))}
+          />
+        </>}
         <label>Artikelname</label>
         <input
           className="realInput"
@@ -1970,11 +2004,23 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
           placeholder="Name des Artikels eingeben"
           value={missingDialog.name}
           onChange={e => setMissingDialog(d => ({...d, name:e.target.value}))}
-          onKeyDown={e => { if(e.key === 'Enter'){ e.preventDefault(); meldenFehlendenArtikel(missingDialog.ean, missingDialog.name) } }}
+          onKeyDown={e => { if(e.key === 'Enter'){ e.preventDefault(); isAdmin(user) ? createArticleFromMissingDialog() : meldenFehlendenArtikel(missingDialog.ean, missingDialog.name) } }}
         />
+        {isAdmin(user) && <>
+          <div className="captureRow">
+            <label className="upload captureButton">📷 Bild aufnehmen<input type="file" accept="image/*" capture="environment" onChange={uploadMissingDialogImage}/></label>
+            <label className="upload captureButton">📁 Bild hochladen<input type="file" accept="image/*" onChange={uploadMissingDialogImage}/></label>
+          </div>
+          {missingDialog.bild_url && <img className="preview" src={missingDialog.bild_url} loading="lazy" decoding="async"/>}
+        </>}
         <div className="modalActions">
           <button className="ghostSmall" type="button" onClick={closeMissingDialog}>Abbrechen</button>
-          <button type="button" onClick={() => meldenFehlendenArtikel(missingDialog.ean, missingDialog.name)}>An fehlende Artikel senden</button>
+          {isAdmin(user)
+            ? <>
+                <button className="primary" type="button" onClick={createArticleFromMissingDialog}>Artikel direkt anlegen</button>
+                <button className="ghostSmall" type="button" onClick={() => meldenFehlendenArtikel(missingDialog.ean, missingDialog.name)}>Als fehlenden Artikel speichern</button>
+              </>
+            : <button type="button" onClick={() => meldenFehlendenArtikel(missingDialog.ean, missingDialog.name)}>An fehlende Artikel senden</button>}
         </div>
       </div>
     </div>}
@@ -2061,7 +2107,7 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
       />
     </div>
 
-    {isAdmin(user) && <label className="upload">Bild/Screenshot hochladen<input type="file" accept="image/*" onChange={uploadFormImg}/></label>}
+    {isAdmin(user) && <div className="captureRow"><label className="upload captureButton">📷 Bild aufnehmen<input type="file" accept="image/*" capture="environment" onChange={uploadFormImg}/></label><label className="upload captureButton">📁 Bild hochladen<input type="file" accept="image/*" onChange={uploadFormImg}/></label></div>}
     {form.bild_url && <img className="preview" src={form.bild_url} loading="lazy" decoding="async"/>}
     <InlineFeedback msg={inlineMsg?.erfassen}/>
     <button className="primary" onClick={addItem}>Speichern</button>
