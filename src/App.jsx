@@ -60,6 +60,26 @@ function normalizeMhdInput(value){
   if(d.getFullYear() !== Number(year) || d.getMonth()+1 !== Number(month) || d.getDate() !== Number(day)) return ''
   return iso
 }
+
+function cleanBarcode(value){
+  return String(value || '').replace(/\D/g,'')
+}
+function normalizeBarcode(value){
+  const clean = cleanBarcode(value)
+  if(!clean) return ''
+  return clean.replace(/^0+/, '') || '0'
+}
+function barcodeMatches(a, b){
+  const aa = normalizeBarcode(a)
+  const bb = normalizeBarcode(b)
+  return !!aa && !!bb && aa === bb
+}
+function barcodeVariants(value){
+  const clean = cleanBarcode(value)
+  const norm = normalizeBarcode(clean)
+  return Array.from(new Set([clean, norm].filter(Boolean)))
+}
+
 function toGermanDate(value){
   const iso = normalizeMhdInput(value)
   if(!iso) return String(value || '')
@@ -354,8 +374,8 @@ export default function App(){
   }
   function upsertMissingLocal(row){
     const list = readMissingLocal()
-    const exists = list.some(x => String(x.barcode) === String(row.barcode) && x.status !== 'erledigt')
-    const next = exists ? list.map(x => String(x.barcode) === String(row.barcode) && x.status !== 'erledigt' ? {...x, ...row, id:x.id || row.id} : x) : [row, ...list]
+    const exists = list.some(x => barcodeMatches(x.barcode, row.barcode) && x.status !== 'erledigt')
+    const next = exists ? list.map(x => barcodeMatches(x.barcode, row.barcode) && x.status !== 'erledigt' ? {...x, ...row, id:x.id || row.id} : x) : [row, ...list]
     writeMissingLocal(next)
     setMissingArticles(prev => {
       const merged = next.concat(prev || [])
@@ -541,9 +561,9 @@ export default function App(){
   function sameMhdArticle(a, b){
     const sameDate = String(a?.mhd || '').slice(0,10) === String(b?.mhd || '').slice(0,10)
     if(!sameDate) return false
-    const aBarcode = String(a?.barcode || '').trim()
-    const bBarcode = String(b?.barcode || '').trim()
-    if(aBarcode && bBarcode) return aBarcode === bBarcode
+    const aBarcode = cleanBarcode(a?.barcode || '')
+    const bBarcode = cleanBarcode(b?.barcode || '')
+    if(aBarcode && bBarcode) return barcodeMatches(aBarcode, bBarcode)
     const aNum = String(a?.artikelnummer || '').trim()
     const bNum = String(b?.artikelnummer || '').trim()
     if(aNum && bNum) return aNum === bNum
@@ -853,17 +873,17 @@ export default function App(){
     const barcode = String(row?.barcode || '').replace(/\D/g,'')
     if(!barcode){ appFeedback('error'); return setError('EAN fehlt.') }
 
-    let found = masterArticles.find(a => String(a.barcode || '').replace(/\D/g,'') === barcode)
+    let found = masterArticles.find(a => barcodeMatches(a.barcode, barcode))
 
     // Bei Chef/Stationsleitung zusätzlich frisch in Supabase prüfen, damit der Abgleich geräteübergreifend stimmt.
     if(!found && db){
       const { data, error } = await supabase
         .from('artikel_stammdaten')
         .select('*')
-        .eq('barcode', barcode)
-        .maybeSingle()
+        .in('barcode', barcodeVariants(barcode))
+      const dataRow = (data || []).find(a => barcodeMatches(a.barcode, barcode)) || data?.[0]
       if(error){ appFeedback('error'); return setError('EAN konnte nicht abgeglichen werden: ' + error.message) }
-      found = data
+      found = dataRow
     }
 
     if(found){
@@ -905,7 +925,7 @@ export default function App(){
       return
     }
 
-    const localMaster = masterArticles.find(a => String(a.barcode || '') === String(form.barcode || ''))
+    const localMaster = masterArticles.find(a => barcodeMatches(a.barcode, form.barcode))
     if(localMaster){
       setForm(f => ({
         ...f,
@@ -920,7 +940,8 @@ export default function App(){
     }
 
     if(db){
-      const { data: master } = await supabase.from('artikel_stammdaten').select('*').eq('barcode', form.barcode).maybeSingle()
+      const { data: masters } = await supabase.from('artikel_stammdaten').select('*').in('barcode', barcodeVariants(form.barcode))
+      const master = (masters || []).find(a => barcodeMatches(a.barcode, form.barcode)) || masters?.[0]
       if(master){
         setForm(f => ({
           ...f,
@@ -961,7 +982,7 @@ export default function App(){
         bild_url: next.bild_url,
         updated_at: nowISO()
       }, { onConflict:'barcode' })
-      setMasterArticles(prev => prev.some(x => String(x.barcode || '') === String(next.barcode || '')) ? prev : [...prev, {...next, kategorie:form.kategorie || 'Sonstiges'}])
+      setMasterArticles(prev => prev.some(x => barcodeMatches(x.barcode, next.barcode)) ? prev : [...prev, {...next, kategorie:form.kategorie || 'Sonstiges'}])
     }
 
     msgAt('erfassen','success', next.bild_url ? '✓ Produkt im Internet gefunden, Bild übernommen und Artikelliste gespeichert.' : '✓ Produkt im Internet gefunden und Artikelliste gespeichert.')
@@ -1765,7 +1786,7 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
 
     const found = masterArticles.find(a =>
       String(a.artikelnummer || '').trim() === term ||
-      String(a.barcode || '').trim() === term
+      barcodeMatches(a.barcode, term)
     )
 
     if(found) return übernehmen(found)
@@ -2172,7 +2193,7 @@ function MasterArticles({masterArticles,saveMasterArticle,deleteMasterArticle,se
     const cleanArtNr = String(artNr || '').trim()
     return masterArticles.find(a => {
       if(data.id && a.id === data.id) return false
-      const sameEan = cleanEan && String(a.barcode || '') === cleanEan
+      const sameEan = cleanEan && barcodeMatches(a.barcode, cleanEan)
       const sameArtNr = cleanArtNr && String(a.artikelnummer || '').trim() === cleanArtNr
       return sameEan || sameArtNr
     })
