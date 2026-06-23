@@ -369,3 +369,54 @@ button.danger{
 .takeoverForm .primary{margin-top:8px!important}
 .imageOnlyModal{width:min(300px,92vw)!important;text-align:center!important;justify-items:center!important}
 .smallProductImage{width:140px!important;height:140px!important;object-fit:contain!important;background:#fff;border:3px solid #d71920;border-radius:18px;padding:6px}
+
+/* Abschriften: PDF und Tagesliste direkt in der Tageszeile */
+.dayHeader{
+  padding:8px;
+  display:grid;
+  grid-template-columns:1fr auto;
+  gap:8px;
+  align-items:center;
+}
+.dayHeaderToggle{
+  background:transparent!important;
+  color:#ffd900!important;
+  border:0!important;
+  border-radius:0!important;
+  padding:8px 10px!important;
+  min-height:44px;
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  align-items:center;
+  text-align:left;
+}
+.dayHeaderActions{
+  display:flex;
+  gap:8px;
+  align-items:center;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+}
+.dayPdfBtn,
+.dayDeleteBtn{
+  min-height:42px;
+  padding:9px 12px!important;
+  border:3px solid #ffd900!important;
+  font-weight:1000!important;
+  white-space:nowrap;
+}
+.dayPdfBtn{
+  background:#fffdf0!important;
+  color:#7b1018!important;
+}
+.dayDeleteBtn{
+  background:#8b1016!important;
+  color:#ffd900!important;
+}
+@media(max-width:560px){
+  .dayHeader{grid-template-columns:1fr;}
+  .dayHeaderToggle{width:100%;}
+  .dayHeaderActions{width:100%;display:grid;grid-template-columns:1fr 1fr;}
+  .dayPdfBtn,.dayDeleteBtn{width:100%;}
+}

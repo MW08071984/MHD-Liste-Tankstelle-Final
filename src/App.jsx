@@ -1410,6 +1410,23 @@ export default function App(){
     appFeedback('success')
   }
 
+  async function deleteWriteoffsForDay(day, entries = []){
+    if(!isAdmin(user)) return setError('Nur Chef/Stationsleitung darf löschen.')
+    const count = entries.length
+    if(count < 1) return setError('Für diesen Tag sind keine Abschriften vorhanden.')
+    if(!confirm(`Wirklich alle ${count} Abschriften vom ${formatDateDE(day)} löschen?`)) return
+
+    const ids = entries.map(x => x.id).filter(Boolean)
+    if(ids.length){
+      const { error } = await supabase.from('abschriften').delete().in('id', ids)
+      if(error) return setError(error.message)
+    }
+
+    setWriteoffs(prev => prev.filter(x => entryDateKey(x) !== day || x.typ === 'kontrolle'))
+    setSuccess(`Abschriftenliste vom ${formatDateDE(day)} gelöscht.`)
+    appFeedback('success')
+  }
+
   async function undoWriteoff(item){
     if(!isAdmin(user)) return setError('Nur Chef/Stationsleitung darf Abschriften rückgängig machen.')
     if(!confirm('Abschrift rückgängig machen und Bestand wiederherstellen?')) return
@@ -1636,7 +1653,7 @@ export default function App(){
     {tab === 'dashboard' && <Dashboard safeEditOverviewItem={safeEditOverviewItem} items={items} setTab={setTab} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} deleteMhdEntry={deleteMhdEntry} inlineMsg={inlineMsg}/>}
     {tab === 'erfassen' && <Erfassen form={form} setForm={setForm} setScannerOpen={setScannerOpen} lookupBarcode={lookupBarcode} uploadFormImg={uploadFormImg} addItem={addItem} user={user} inlineMsg={inlineMsg} masterArticles={masterArticles} reportMissingArticle={reportMissingArticle}/>}
     {tab === 'backwaren' && <Backwaren backwaren={backwaren} saveBackwarenList={saveBackwarenList} writeOff={writeOff} user={user}/>}
-    {tab === 'abschriften' && isAdmin(user) && <Abschriften writeoffs={writeoffs.filter(w => w.typ !== 'kontrolle')} user={user} setEditWriteoff={setEditWriteoff} deleteWriteoff={deleteWriteoff} undoWriteoff={undoWriteoff}/>}
+    {tab === 'abschriften' && isAdmin(user) && <Abschriften writeoffs={writeoffs.filter(w => w.typ !== 'kontrolle')} user={user} setEditWriteoff={setEditWriteoff} deleteWriteoff={deleteWriteoff} deleteWriteoffsForDay={deleteWriteoffsForDay} undoWriteoff={undoWriteoff}/>}
     {tab === 'fehlende' && isAdmin(user) && <MissingArticles missingArticles={missingArticles} markMissingDone={markMissingDone} takeOverMissingArticle={takeOverMissingArticle}/>}    {tab === 'stammdaten' && isAdmin(user) && <MasterArticles prefillArticle={prefillMasterArticle} onPrefillUsed={() => setPrefillMasterArticle(null)} onMissingSaved={markMissingDone} quickMhdFromMaster={quickMhdFromMaster} masterArticles={masterArticles} saveMasterArticle={saveMasterArticle} deleteMasterArticle={deleteMasterArticle} setMasterScannerOpen={setMasterScannerOpen}/>}
     {tab === 'dienstplan' && <Dienstplan settings={settings} saveSetting={saveSetting} user={user}/>}
     {tab === 'online' && isAdmin(user) && <Online online={online}/>}
@@ -2128,7 +2145,7 @@ function Backwaren({backwaren,saveBackwarenList,writeOff,user}){
   </section>
 }
 
-function Abschriften({writeoffs,user,setEditWriteoff,deleteWriteoff,undoWriteoff}){
+function Abschriften({writeoffs,user,setEditWriteoff,deleteWriteoff,deleteWriteoffsForDay,undoWriteoff}){
   const groups = groupByDay(writeoffs)
   const [openDay, setOpenDay] = useState(groups[0]?.[0] || '')
 
@@ -2139,13 +2156,18 @@ function Abschriften({writeoffs,user,setEditWriteoff,deleteWriteoff,undoWriteoff
     {groups.length === 0 && <div className="empty">Keine Abschriften vorhanden.</div>}
 
     {groups.map(([day, entries]) => <div className="dayGroup" key={day}>
-      <button className="dayHeader" onClick={() => setOpenDay(openDay === day ? '' : day)}>
-        <span>📅 {formatDateDE(day)}</span>
-        <b>❌ {entries.length} Abschriften</b>
-      </button>
+      <div className="dayHeader">
+        <button className="dayHeaderToggle" onClick={() => setOpenDay(openDay === day ? '' : day)}>
+          <span>📅 {formatDateDE(day)}</span>
+          <b>❌ {entries.length} Abschriften</b>
+        </button>
+        <div className="dayHeaderActions">
+          <button className="dayPdfBtn" onClick={() => exportAbschriftenPDF(entries, 'Abschriften', day)}>📄 PDF</button>
+          {isAdmin(user) && <button className="dayDeleteBtn" onClick={() => deleteWriteoffsForDay(day, entries)}>🗑️ Löschen</button>}
+        </div>
+      </div>
 
       {openDay === day && <div className="dayContent">
-        <button className="pdfButton" onClick={() => exportAbschriftenPDF(entries, 'Abschriften', day)}>PDF-Liste speichern</button>
         {entries.map(w => <div className="item" key={w.id}>
           <div className="artikelnummer small">{w.artikelnummer || 'MHD'}</div>
           <div className="grow"><b>❌ Abschrift – {w.name || w.artikel}</b><p>{w.grund} · {w.menge} Stk. · {w.mitarbeiter} · {new Date(w.datum || w.created_at).toLocaleDateString('de-DE')}</p></div>
