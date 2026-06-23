@@ -949,22 +949,54 @@ export default function App(){
 
   async function markMissingDone(row){
     if(!isAdmin(user)) return setError('Keine Rechte.')
+    const clean = cleanCode(row?.barcode)
     if(db){
+      await removeMissingFromSettings(clean)
       const { error } = await supabase.from('fehlende_artikel').delete().eq('id', row.id)
-      if(error){
-        if(isMissingArticlesTableError(error)){
-          setMissingArticles(prev => prev.filter(x => x.id !== row.id && x.barcode !== row.barcode))
-          return setSuccess('Vorschlag gelöscht.')
-        }
+      if(error && !isMissingArticlesTableError(error)){
         return setError(error.message)
       }
-      setMissingArticles(prev => prev.filter(x => x.id !== row.id))
-    }else{
-      setMissingArticles(prev => prev.filter(x => x.id !== row.id && x.barcode !== row.barcode))
     }
-    writeMissingLocal(readMissingLocal().filter(x => x.id !== row.id && x.barcode !== row.barcode))
+    setMissingArticles(prev => prev.filter(x => x.id !== row.id && !codesEqual(x.barcode, clean)))
+    writeMissingLocal(readMissingLocal().filter(x => x.id !== row.id && !codesEqual(x.barcode, clean)))
     if(db) await loadMissingArticles()
     setSuccess('Vorschlag gelöscht.')
+  }
+
+  async function recheckMissingArticle(row){
+    if(!isAdmin(user)) return setError('Keine Rechte.')
+    const clean = cleanCode(row?.barcode)
+    if(!clean){ appFeedback('error'); return setError('EAN fehlt.') }
+
+    let list = masterArticles || []
+    if(db){
+      const { data, error } = await supabase
+        .from('artikel_stammdaten')
+        .select('id,barcode,artikelnummer,name')
+        .order('name')
+      if(error){ appFeedback('error'); return setError('EAN-Prüfung nicht möglich: ' + error.message) }
+      list = data || []
+      setMasterArticles(list)
+    }
+
+    const found = list.find(a => codesEqual(a?.barcode, clean))
+    if(found){
+      if(db){
+        await removeMissingFromSettings(clean)
+        try{
+          if(row?.id) await supabase.from('fehlende_artikel').delete().eq('id', row.id)
+          await supabase.from('fehlende_artikel').delete().eq('barcode', clean)
+        }catch(e){ console.warn('Fehlende Artikel Tabelle konnte beim EAN-Check nicht bereinigt werden:', e) }
+      }
+      setMissingArticles(prev => prev.filter(x => !codesEqual(x.barcode, clean) && x.id !== row.id))
+      writeMissingLocal(readMissingLocal().filter(x => !codesEqual(x.barcode, clean) && x.id !== row.id))
+      appFeedback('success')
+      setSuccess('EAN gefunden: ' + (found.name || found.artikelnummer || found.barcode) + '. Vorschlag wurde entfernt.')
+      return
+    }
+
+    appFeedback('error')
+    setError('EAN weiterhin nicht in der Artikelliste gefunden.')
   }
 
   async function lookupBarcode(){
@@ -1654,7 +1686,7 @@ export default function App(){
     {tab === 'erfassen' && <Erfassen form={form} setForm={setForm} setScannerOpen={setScannerOpen} lookupBarcode={lookupBarcode} uploadFormImg={uploadFormImg} addItem={addItem} user={user} inlineMsg={inlineMsg} masterArticles={masterArticles} reportMissingArticle={reportMissingArticle}/>}
     {tab === 'backwaren' && <Backwaren backwaren={backwaren} saveBackwarenList={saveBackwarenList} writeOff={writeOff} user={user}/>}
     {tab === 'abschriften' && isAdmin(user) && <Abschriften writeoffs={writeoffs.filter(w => w.typ !== 'kontrolle')} user={user} setEditWriteoff={setEditWriteoff} deleteWriteoff={deleteWriteoff} deleteWriteoffsForDay={deleteWriteoffsForDay} undoWriteoff={undoWriteoff}/>}
-    {tab === 'fehlende' && isAdmin(user) && <MissingArticles missingArticles={missingArticles} markMissingDone={markMissingDone} takeOverMissingArticle={takeOverMissingArticle}/>}    {tab === 'stammdaten' && isAdmin(user) && <MasterArticles prefillArticle={prefillMasterArticle} onPrefillUsed={() => setPrefillMasterArticle(null)} onMissingSaved={markMissingDone} quickMhdFromMaster={quickMhdFromMaster} masterArticles={masterArticles} saveMasterArticle={saveMasterArticle} deleteMasterArticle={deleteMasterArticle} setMasterScannerOpen={setMasterScannerOpen}/>}
+    {tab === 'fehlende' && isAdmin(user) && <MissingArticles missingArticles={missingArticles} markMissingDone={markMissingDone} takeOverMissingArticle={takeOverMissingArticle} recheckMissingArticle={recheckMissingArticle}/>}    {tab === 'stammdaten' && isAdmin(user) && <MasterArticles prefillArticle={prefillMasterArticle} onPrefillUsed={() => setPrefillMasterArticle(null)} onMissingSaved={markMissingDone} quickMhdFromMaster={quickMhdFromMaster} masterArticles={masterArticles} saveMasterArticle={saveMasterArticle} deleteMasterArticle={deleteMasterArticle} setMasterScannerOpen={setMasterScannerOpen}/>}
     {tab === 'dienstplan' && <Dienstplan settings={settings} saveSetting={saveSetting} user={user}/>}
     {tab === 'online' && isAdmin(user) && <Online online={online}/>}
     {tab === 'verwaltung' && isAdmin(user) && <Verwaltung employees={employees} saveEmployee={saveEmployee} deleteEmployee={deleteEmployee} resetPassword={resetPassword}/>}
@@ -2213,7 +2245,7 @@ function Kontrollen({controls,user,deleteWriteoff}){
 }
 
 
-function MissingArticles({missingArticles,markMissingDone,takeOverMissingArticle}){
+function MissingArticles({missingArticles,markMissingDone,takeOverMissingArticle,recheckMissingArticle}){
   const open = missingArticles.filter(x => x.status !== 'erledigt')
   return <section className="formCard">
     <h2>Fehlende Artikel</h2>
@@ -2227,6 +2259,7 @@ function MissingArticles({missingArticles,markMissingDone,takeOverMissingArticle
       </div>
       <div className="actions">
         <button onClick={() => takeOverMissingArticle?.(row)}>In Artikelliste übernehmen</button>
+        <button onClick={() => recheckMissingArticle?.(row)}>EAN erneut prüfen</button>
         <button onClick={() => navigator.clipboard?.writeText(row.barcode)}>EAN kopieren</button>
         <button onClick={() => markMissingDone(row)}>Vorschlag löschen</button>
       </div>
