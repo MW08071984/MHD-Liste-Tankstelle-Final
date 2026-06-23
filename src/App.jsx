@@ -2509,7 +2509,7 @@ function MasterArticles({masterArticles,saveMasterArticle,deleteMasterArticle,se
 
     <label>Bild</label>
     <input placeholder="Bild URL oder Upload nutzen" value={data.bild_url} onChange={e => setData({...data, bild_url:e.target.value})}/>
-    <label className="upload">Bild hochladen<input type="file" accept="image/*" onChange={upload}/></label>
+    <div className="captureRow"><label className="upload captureButton">📷 Bild aufnehmen<input type="file" accept="image/*" capture="environment" onChange={upload}/></label><label className="upload captureButton">📁 Bild hochladen<input type="file" accept="image/*" onChange={upload}/></label></div>
     {data.bild_url && <button type="button" onClick={removeArticleBg}>✂️ Bild freistellen</button>}
     {data.bild_url && <img className="preview transparentPreview" src={data.bild_url}/>}    
     <InlineFeedback msg={msg}/>
@@ -2659,7 +2659,7 @@ function ArticleModal({item,close,save}){
     <label>EAN / Barcode</label>
     <input placeholder="EAN / Barcode" value={data.barcode || ''} onChange={e => setData({...data, barcode:e.target.value.replace(/\D/g,'')})}/>
 
-    <label className="upload">Bild hochladen<input type="file" accept="image/*" onChange={upload}/></label>
+    <div className="captureRow"><label className="upload captureButton">📷 Bild aufnehmen<input type="file" accept="image/*" capture="environment" onChange={upload}/></label><label className="upload captureButton">📁 Bild hochladen<input type="file" accept="image/*" onChange={upload}/></label></div>
     {data.bild_url && <button type="button" onClick={removeArticleBg}>✂️ Bild freistellen</button>}
     {data.bild_url && <img className="preview transparentPreview" src={data.bild_url}/>}
     <InlineFeedback msg={localMsg}/>
