@@ -2251,23 +2251,35 @@ function Kontrollen({controls,user,deleteWriteoff}){
 
 function MissingArticles({missingArticles,markMissingDone,takeOverMissingArticle,recheckMissingArticle}){
   const open = missingArticles.filter(x => x.status !== 'erledigt')
+  const getMissingName = (row) => {
+    const direct = String(row?.artikelname || row?.name || '').trim()
+    if(direct) return direct
+    const hint = String(row?.hinweis || '')
+    const m = hint.match(/Artikelname:\s*(.*?)\s*(?:·|$)/i)
+    return (m?.[1] || '').trim() || 'Ohne Namen'
+  }
   return <section className="formCard">
     <h2>Fehlende Artikel</h2>
     <p className="hint">Hier landen EANs, die Mitarbeiter gescannt haben, aber nicht in der Artikelliste vorhanden sind. Chef/Stationsleitung kann sie danach in der Artikelliste einpflegen oder den Vorschlag löschen.</p>
     {open.length === 0 && <div className="empty">Keine fehlenden Artikel vorhanden.</div>}
-    {open.map(row => <div className="item" key={row.id || row.barcode}>
-      <div className="artikelnummer small">EAN</div>
-      <div className="grow">
-        <b>{row.barcode}</b>
-        <p>{row.hinweis || 'Nicht in Artikelliste gefunden'} · {row.gemeldet_von || '-'} · {row.created_at ? new Date(row.created_at).toLocaleDateString('de-DE') : ''}</p>
+    {open.map(row => {
+      const name = getMissingName(row)
+      return <div className="missingCard" key={row.id || row.barcode}>
+        <div className="missingInfo">
+          <div className="missingEanLabel">EAN</div>
+          <div className="missingEan">{row.barcode}</div>
+          <div className="missingNameLabel">Artikelname</div>
+          <div className="missingName">{name}</div>
+          <div className="missingMeta">{row.gemeldet_von || '-'} · {row.created_at ? new Date(row.created_at).toLocaleDateString('de-DE') : ''}</div>
+        </div>
+        <div className="missingActions">
+          <button onClick={() => takeOverMissingArticle?.(row)}>In Artikelliste übernehmen</button>
+          <button onClick={() => recheckMissingArticle?.(row)}>Abgleich starten</button>
+          <button onClick={() => navigator.clipboard?.writeText(row.barcode)}>EAN kopieren</button>
+          <button onClick={() => markMissingDone(row)}>Vorschlag löschen</button>
+        </div>
       </div>
-      <div className="actions">
-        <button onClick={() => takeOverMissingArticle?.(row)}>In Artikelliste übernehmen</button>
-        <button onClick={() => recheckMissingArticle?.(row)}>EAN erneut prüfen</button>
-        <button onClick={() => navigator.clipboard?.writeText(row.barcode)}>EAN kopieren</button>
-        <button onClick={() => markMissingDone(row)}>Vorschlag löschen</button>
-      </div>
-    </div>)}
+    })}
   </section>
 }
 

@@ -1,0 +1,1 @@
+Build erfolgreich geprüft am 23.06.2026. Änderung: Fehlende Artikel kompakter gestaltet, Artikelname hervorgehoben, Buttontext Abgleich starten. Sonst keine absichtlichen Funktionsänderungen.
