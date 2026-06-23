@@ -394,6 +394,73 @@ export default function App(){
     writeMissingLocal(stillLocal)
     return stillLocal
   }
+
+
+  const missingSettingsKey = 'fehlende_artikel_liste'
+  function cleanMissingRow(row){
+    const barcode = String(row?.barcode || '').replace(/\D/g,'')
+    if(!barcode) return null
+    return {
+      id: row?.id || ('app-' + barcode + '-' + Date.now()),
+      created_at: row?.created_at || nowISO(),
+      barcode,
+      hinweis: row?.hinweis || 'Artikel nicht in Artikelliste gefunden',
+      gemeldet_von: row?.gemeldet_von || user?.name || '',
+      gemeldet_von_nummer: Number(row?.gemeldet_von_nummer || user?.nummer || 0),
+      status: row?.status || 'offen',
+      erledigt_am: row?.erledigt_am || null,
+      erledigt_von: row?.erledigt_von || ''
+    }
+  }
+  function mergeMissingLists(...lists){
+    const out = []
+    const seen = new Set()
+    for(const list of lists){
+      for(const raw of (list || [])){
+        const row = cleanMissingRow(raw)
+        if(!row || row.status === 'erledigt') continue
+        const key = String(row.barcode || row.id)
+        if(seen.has(key)) continue
+        seen.add(key)
+        out.push(row)
+      }
+    }
+    return out.sort((a,b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
+  }
+  async function readMissingFromSettings(){
+    if(!db) return []
+    try{
+      const { data, error } = await supabase.from('app_settings').select('value').eq('key', missingSettingsKey).maybeSingle()
+      if(error) return []
+      return JSON.parse(data?.value || '[]')
+    }catch{
+      return []
+    }
+  }
+  async function writeMissingToSettings(list){
+    if(!db) return false
+    try{
+      const value = JSON.stringify(mergeMissingLists(list))
+      const { error } = await supabase.from('app_settings').upsert({ key:missingSettingsKey, value, updated_by:user?.name || '' }, { onConflict:'key' })
+      return !error
+    }catch{
+      return false
+    }
+  }
+  async function addMissingToSettings(row){
+    const current = await readMissingFromSettings()
+    const next = mergeMissingLists([row], current)
+    const ok = await writeMissingToSettings(next)
+    if(ok) setMissingArticles(next)
+    return ok
+  }
+  async function removeMissingFromSettings(barcode){
+    const clean = String(barcode || '').replace(/\D/g,'')
+    const current = await readMissingFromSettings()
+    const next = (current || []).filter(x => String(x?.barcode || '').replace(/\D/g,'') !== clean)
+    await writeMissingToSettings(next)
+  }
+
   const [writeoffs, setWriteoffs] = useState([])
   const [settings, setSettings] = useState({})
   const [online, setOnline] = useState([])
@@ -632,25 +699,32 @@ export default function App(){
   }
 
   async function loadMissingArticles(){
+    const localRows = readMissingLocal()
     if(!db){
-      setMissingArticles(readMissingLocal())
+      setMissingArticles(localRows)
       setLoadedTabs(prev => ({...prev, missing:true}))
       return
     }
+
     const localLeft = await syncMissingLocalToSupabase()
+    const settingsRows = await readMissingFromSettings()
+    let tableRows = []
+
     const { data, error } = await supabase.from('fehlende_artikel').select('*').order('created_at', { ascending:false })
     if(error){
-      console.warn('Fehlende Artikel konnten nicht geladen werden:', error)
-      setMissingArticles(localLeft || [])
-      setLoadedTabs(prev => ({...prev, missing:true}))
-      if(isMissingArticlesTableError(error)) setError('Tabelle fehlende_artikel fehlt. Bitte FINAL_SQL_FEHLENDE_ARTIKEL.sql in Supabase ausführen.')
+      console.warn('Fehlende Artikel konnten aus Tabelle nicht geladen werden, nutze zentrale Ersatzliste:', error)
+      if(isMissingArticlesTableError(error)) setError('Tabelle fehlende_artikel fehlt oder ist nicht erreichbar. Ersatzspeicher über App-Einstellungen aktiv.')
       else setError(error.message)
-      return
+    }else{
+      tableRows = data || []
     }
-    const merged = [...(data || []), ...(localLeft || [])]
-    const seen = new Set()
-    setMissingArticles(merged.filter(x => { const k = String(x.id || x.barcode); if(seen.has(k)) return false; seen.add(k); return true }))
+
+    const merged = mergeMissingLists(tableRows, settingsRows, localLeft)
+    setMissingArticles(merged)
     setLoadedTabs(prev => ({...prev, missing:true}))
+
+    // Falls aus altem lokalen Speicher noch Einträge vorhanden sind, zentral nachziehen.
+    if(localLeft?.length) await writeMissingToSettings(merged)
   }
 
   async function loadWriteoffs(){
@@ -752,8 +826,8 @@ export default function App(){
     const cleanName = String(artikelname || '').trim()
     const finalHinweis = cleanName ? ('Artikelname: ' + cleanName + ' · ' + hinweis) : hinweis
 
-    const localRow = {
-      id: 'lokal-' + clean + '-' + Date.now(),
+    const row = {
+      id: 'app-' + clean + '-' + Date.now(),
       created_at: nowISO(),
       barcode: clean,
       hinweis: finalHinweis,
@@ -763,64 +837,54 @@ export default function App(){
     }
 
     if(!db){
-      upsertMissingLocal(localRow)
+      upsertMissingLocal(row)
       return true
     }
 
-    const payload = {
-      barcode: clean,
-      hinweis: finalHinweis,
-      gemeldet_von: user?.name || '',
-      gemeldet_von_nummer: Number(user?.nummer || 0),
-      status: 'offen'
-    }
+    let savedCentral = false
 
-    const { data: existing, error: findError } = await supabase
-      .from('fehlende_artikel')
-      .select('*')
-      .eq('barcode', clean)
-      .eq('status','offen')
-      .maybeSingle()
+    // 1) Immer zuerst in der zentralen Ersatzliste speichern.
+    // Diese liegt in app_settings und ist auf allen Geräten sichtbar.
+    savedCentral = await addMissingToSettings(row)
 
-    if(findError){
-      console.warn('Fehlende Artikel konnte nicht gelesen werden:', findError)
-      setError(isMissingArticlesTableError(findError) ? 'Tabelle fehlende_artikel fehlt. Bitte FINAL_SQL_FEHLENDE_ARTIKEL.sql in Supabase ausführen.' : findError.message)
-      return false
-    }
+    // 2) Zusätzlich versuchen wir die eigene Tabelle fehlende_artikel zu pflegen.
+    // Wenn die Tabelle fehlt, RLS blockiert oder Supabase-Cache hängt, bleibt die zentrale Ersatzliste trotzdem aktiv.
+    try{
+      const { data: existing, error: findError } = await supabase
+        .from('fehlende_artikel')
+        .select('*')
+        .eq('barcode', clean)
+        .eq('status','offen')
+        .maybeSingle()
 
-    if(existing){
-      let row = existing
-      if(cleanName && !String(existing.hinweis || '').includes(cleanName)){
-        const { data: updated, error: updateError } = await supabase
-          .from('fehlende_artikel')
-          .update({ hinweis: finalHinweis })
-          .eq('id', existing.id)
-          .select()
-          .single()
-        if(updateError){
-          console.warn('Fehlender Artikel konnte nicht aktualisiert werden:', updateError)
-          setError(updateError.message)
-          return false
+      if(findError){
+        console.warn('Fehlende-Artikel-Tabelle nicht erreichbar, Ersatzliste wurde genutzt:', findError)
+      }else if(existing){
+        if(cleanName && !String(existing.hinweis || '').includes(cleanName)){
+          await supabase.from('fehlende_artikel').update({ hinweis: finalHinweis }).eq('id', existing.id)
         }
-        row = updated || {...existing, hinweis: finalHinweis}
+      }else{
+        await supabase.from('fehlende_artikel').insert({
+          barcode: clean,
+          hinweis: finalHinweis,
+          gemeldet_von: user?.name || '',
+          gemeldet_von_nummer: Number(user?.nummer || 0),
+          status: 'offen'
+        })
       }
-      setMissingArticles(prev => prev.some(x => x.id === row.id) ? prev.map(x => x.id === row.id ? row : x) : [row, ...prev])
+    }catch(e){
+      console.warn('Fehlende-Artikel-Tabelle konnte nicht geschrieben werden, Ersatzliste wurde genutzt:', e)
+    }
+
+    if(savedCentral){
       if(tab === 'fehlende') await loadMissingArticles()
       return true
     }
 
-    const { data, error } = await supabase.from('fehlende_artikel').insert(payload).select().single()
-    if(error){
-      console.warn('Fehlender Artikel konnte nicht in Supabase gespeichert werden:', error)
-      setError(isMissingArticlesTableError(error) ? 'Tabelle fehlende_artikel fehlt. Bitte FINAL_SQL_FEHLENDE_ARTIKEL.sql in Supabase ausführen.' : error.message)
-      return false
-    }
-    if(data){
-      setMissingArticles(prev => [data, ...prev])
-      if(tab === 'fehlende') await loadMissingArticles()
-      return true
-    }
-    return false
+    // 3) Letzter Notfall: lokal speichern, damit nichts verloren geht.
+    upsertMissingLocal(row)
+    setError('Fehlender Artikel wurde lokal gesichert. Zentrale Speicherung war nicht erreichbar.')
+    return true
   }
 
   function extractMissingArticleName(row){

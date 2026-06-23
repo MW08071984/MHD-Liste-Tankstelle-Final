@@ -1,33 +1,18 @@
+import React from 'react'
+import { createRoot } from 'react-dom/client'
+import { createClient } from '@supabase/supabase-js'
+import './style.css'
+import App from './App.jsx'
 
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
+export const supabase = import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY
+  ? createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY)
+  : null
 
-export function exportAbschriftenPDF(abschriften = []) {
-  try {
-    const doc = new jsPDF();
+createRoot(document.getElementById('root')).render(<App />)
 
-    doc.setFontSize(18);
-    doc.text("MHD Abschriften", 14, 20);
 
-    const rows = abschriften.map((item) => [
-      item.artikelnummer || "",
-      item.name || item.artikel || "",
-      String(item.menge || 0),
-      item.mhd || "",
-      item.mitarbeiter || "",
-    ]);
-
-    autoTable(doc, {
-      startY: 30,
-      head: [["Artikelnummer", "Name", "Menge", "MHD", "Mitarbeiter"]],
-      body: rows,
-      styles: { fontSize: 10 },
-      headStyles: { fillColor: [215, 25, 32] },
-    });
-
-    doc.save("abschriften.pdf");
-  } catch (err) {
-    alert("PDF Fehler: " + err.message);
-    console.error(err);
-  }
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {})
+  })
 }
