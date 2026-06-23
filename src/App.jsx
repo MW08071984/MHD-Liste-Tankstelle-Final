@@ -1614,8 +1614,12 @@ export default function App(){
 
   function openArticleFilter(filter){
     setArticleFilter(filter)
-    setTab('artikel')
-    window.scrollTo({top:0, behavior:'smooth'})
+    setTab(isAdmin(user) ? 'artikel' : 'dashboard')
+    setTimeout(() => {
+      const target = document.querySelector('.list') || document.querySelector('.tabs')
+      if(target) target.scrollIntoView({behavior:'smooth', block:'start'})
+      else window.scrollTo({top:0, behavior:'smooth'})
+    }, 80)
   }
 
   const filteredItems = useMemo(() => {
