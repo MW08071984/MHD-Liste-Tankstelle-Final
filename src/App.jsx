@@ -1711,32 +1711,40 @@ export default function App(){
 }
 
 
-async function compressImageFile(file, maxSize = 360, quality = 0.55){
+async function compressImageFile(file, maxSize = 360, quality = 0.68){
   if(!file || !file.type || !file.type.startsWith('image/')) return file
+  let url = ''
   try{
     const img = new Image()
-    const url = URL.createObjectURL(file)
+    url = URL.createObjectURL(file)
     await new Promise((resolve, reject) => {
       img.onload = resolve
       img.onerror = reject
       img.src = url
     })
-    let w = img.width
-    let h = img.height
-    const scale = Math.min(1, maxSize / Math.max(w, h))
-    w = Math.round(w * scale)
-    h = Math.round(h * scale)
+
+    // FINAL BILD-FIX:
+    // Alle aufgenommenen/hochgeladenen Artikelbilder werden automatisch
+    // quadratisch zugeschnitten und klein gespeichert. Dadurch haben alle
+    // Bilder die gleiche Ausrichtung/Größe und die App lädt schneller.
+    const sourceSize = Math.min(img.width || maxSize, img.height || maxSize)
+    const sourceX = Math.max(0, Math.round(((img.width || sourceSize) - sourceSize) / 2))
+    const sourceY = Math.max(0, Math.round(((img.height || sourceSize) - sourceSize) / 2))
+    const targetSize = maxSize
     const canvas = document.createElement('canvas')
-    canvas.width = w
-    canvas.height = h
+    canvas.width = targetSize
+    canvas.height = targetSize
     const ctx = canvas.getContext('2d')
-    ctx.drawImage(img, 0, 0, w, h)
-    URL.revokeObjectURL(url)
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, targetSize, targetSize)
+    ctx.drawImage(img, sourceX, sourceY, sourceSize, sourceSize, 0, 0, targetSize, targetSize)
     const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', quality))
     if(!blob) return file
-    return new File([blob], (file.name || 'bild') + '.jpg', { type:'image/jpeg' })
+    return new File([blob], (file.name || 'artikelbild').replace(/\.[^.]+$/, '') + '.jpg', { type:'image/jpeg' })
   }catch{
     return file
+  }finally{
+    if(url) URL.revokeObjectURL(url)
   }
 }
 

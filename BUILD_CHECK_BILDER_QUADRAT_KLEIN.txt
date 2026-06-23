@@ -1,0 +1,1 @@
+Änderung: Hochgeladene und aufgenommene Artikelbilder werden vor dem Speichern automatisch quadratisch zugeschnitten, auf 360x360 px verkleinert und als komprimiertes JPG gespeichert. Ziel: gleiche Ausrichtung, kleine Dateien, schnelleres Laden.
