@@ -60,26 +60,6 @@ function normalizeMhdInput(value){
   if(d.getFullYear() !== Number(year) || d.getMonth()+1 !== Number(month) || d.getDate() !== Number(day)) return ''
   return iso
 }
-
-function cleanBarcode(value){
-  return String(value || '').replace(/\D/g,'')
-}
-function normalizeBarcode(value){
-  const clean = cleanBarcode(value)
-  if(!clean) return ''
-  return clean.replace(/^0+/, '') || '0'
-}
-function barcodeMatches(a, b){
-  const aa = normalizeBarcode(a)
-  const bb = normalizeBarcode(b)
-  return !!aa && !!bb && aa === bb
-}
-function barcodeVariants(value){
-  const clean = cleanBarcode(value)
-  const norm = normalizeBarcode(clean)
-  return Array.from(new Set([clean, norm].filter(Boolean)))
-}
-
 function toGermanDate(value){
   const iso = normalizeMhdInput(value)
   if(!iso) return String(value || '')
@@ -227,29 +207,27 @@ function groupByDay(entries = []){
   return Object.entries(grouped).sort((a,b) => b[0].localeCompare(a[0]))
 }
 
-function robustVibrate(pattern = [120], repeats = 1){
+function robustVibrate(pattern = [120], repeats = 2){
   try{
     if(!('vibrate' in navigator)) return
     const seq = Array.isArray(pattern) ? pattern : [Number(pattern) || 120]
     navigator.vibrate(seq)
+    for(let i=1;i<repeats;i++){
+      setTimeout(() => { try{ navigator.vibrate(seq) }catch{} }, i * 180)
+    }
   }catch{}
 }
 
 function appFeedback(type = 'success'){
   try{
     const patterns = {
-      // Einheitlich in der ganzen App:
-      // Erfolg = kurz / Pause / kurz
-      success:[100,100,100],
-      warning:[100,100,100],
-      // Fehler = lang / Pause / lang
-      error:[300,100,300],
-      // Normale Bedienung nur ganz leicht
-      click:[60],
-      // MHD-Alarm läuft separat 15 Sekunden mit eigenem Muster
-      alarm:[500,300]
+      success:[280,120,280,120,280],
+      warning:[220,100,220,100,220,100,220],
+      error:[180,90,180,90,180,90,180,90,180],
+      click:[130],
+      alarm:[900,250,900,250,900]
     }
-    robustVibrate(patterns[type] || patterns.success, 1)
+    robustVibrate(patterns[type] || patterns.success, type === 'click' ? 1 : 2)
   }catch{}
   if(type === 'success'){
     try{
@@ -287,7 +265,7 @@ function mhdOpenAlarm(){
   try{
     stopMhdOpenAlarm()
     const started = Date.now()
-    const vibrateStrong = () => robustVibrate([500,300])
+    const vibrateStrong = () => robustVibrate([1000,250,1000,250,1000], 2)
     vibrateStrong()
     const AudioCtx = window.AudioContext || window.webkitAudioContext
     if(AudioCtx){
@@ -308,10 +286,10 @@ function mhdOpenAlarm(){
         })
       }
       beep()
-      mhdAlarmTimer = setInterval(() => { vibrateStrong(); beep() }, 800)
+      mhdAlarmTimer = setInterval(() => { vibrateStrong(); beep() }, 1500)
       setTimeout(stopMhdOpenAlarm, 15000)
     }else{
-      mhdAlarmTimer = setInterval(vibrateStrong, 800)
+      mhdAlarmTimer = setInterval(vibrateStrong, 1500)
       setTimeout(stopMhdOpenAlarm, 15000)
     }
   }catch(e){ console.warn('Alarm konnte nicht abgespielt werden', e) }
@@ -374,8 +352,8 @@ export default function App(){
   }
   function upsertMissingLocal(row){
     const list = readMissingLocal()
-    const exists = list.some(x => barcodeMatches(x.barcode, row.barcode) && x.status !== 'erledigt')
-    const next = exists ? list.map(x => barcodeMatches(x.barcode, row.barcode) && x.status !== 'erledigt' ? {...x, ...row, id:x.id || row.id} : x) : [row, ...list]
+    const exists = list.some(x => String(x.barcode) === String(row.barcode) && x.status !== 'erledigt')
+    const next = exists ? list.map(x => String(x.barcode) === String(row.barcode) && x.status !== 'erledigt' ? {...x, ...row, id:x.id || row.id} : x) : [row, ...list]
     writeMissingLocal(next)
     setMissingArticles(prev => {
       const merged = next.concat(prev || [])
@@ -386,36 +364,30 @@ export default function App(){
 
   async function syncMissingLocalToSupabase(){
     if(!db) return readMissingLocal()
-    const localRows = readMissingLocal().filter(x => x && x.status !== 'erledigt' && String(x.barcode || '').trim())
-    if(localRows.length === 0) return []
-
+    const local = readMissingLocal().filter(x => x && x.status !== 'erledigt' && String(x.barcode || '').trim())
+    if(!local.length) return []
     const stillLocal = []
-    for(const row of localRows){
+    for(const row of local){
       const clean = String(row.barcode || '').replace(/\D/g,'')
       if(!clean) continue
-      const payload = {
-        barcode: clean,
-        hinweis: row.hinweis || 'EAN wurde beim Erfassen gescannt, aber nicht in der Artikelliste gefunden.',
-        gemeldet_von: row.gemeldet_von || user?.name || '',
-        gemeldet_von_nummer: Number(row.gemeldet_von_nummer || user?.nummer || 0),
-        status: row.status || 'offen',
-        created_at: row.created_at || nowISO()
-      }
       try{
         const { data: existing, error: findError } = await supabase
           .from('fehlende_artikel')
-          .select('id,barcode,status')
+          .select('*')
           .eq('barcode', clean)
-          .eq('status','offen')
-          .limit(1)
+          .eq('status', 'offen')
           .maybeSingle()
-        if(findError) throw findError
-        if(!existing){
-          const { error: insertError } = await supabase.from('fehlende_artikel').insert(payload)
-          if(insertError) throw insertError
-        }
-      }catch(e){
-        console.warn('Lokaler fehlender Artikel konnte noch nicht zentral synchronisiert werden:', e)
+        if(findError){ stillLocal.push(row); continue }
+        if(existing) continue
+        const { error: insertError } = await supabase.from('fehlende_artikel').insert({
+          barcode: clean,
+          hinweis: row.hinweis || 'Artikel nicht in Artikelliste gefunden',
+          gemeldet_von: row.gemeldet_von || user?.name || '',
+          gemeldet_von_nummer: Number(row.gemeldet_von_nummer || user?.nummer || 0),
+          status: 'offen'
+        })
+        if(insertError) stillLocal.push(row)
+      }catch{
         stillLocal.push(row)
       }
     }
@@ -472,17 +444,30 @@ export default function App(){
     if(error) appFeedback('error')
   }, [error])
 
-  const lastClickFeedbackRef = useRef(0)
-
   function handleGlobalActionFeedback(e){
     const el = e.target?.closest?.('button, input, select, textarea, label, .statCard, .navBtn')
     if(!el) return
     if(el.disabled) return
-    const now = Date.now()
-    if(now - lastClickFeedbackRef.current < 180) return
-    lastClickFeedbackRef.current = now
     appFeedback('click')
   }
+
+  useEffect(() => {
+    function directTouchFeedback(e){
+      const el = e.target?.closest?.('button, input, select, textarea, label, .statCard, .navBtn')
+      if(!el || el.disabled) return
+      try{
+        robustVibrate([140], 1)
+      }catch{}
+    }
+    window.addEventListener('pointerdown', directTouchFeedback, {capture:true, passive:true})
+    window.addEventListener('touchstart', directTouchFeedback, {capture:true, passive:true})
+    window.addEventListener('keydown', directTouchFeedback, {capture:true})
+    return () => {
+      window.removeEventListener('pointerdown', directTouchFeedback, {capture:true})
+      window.removeEventListener('touchstart', directTouchFeedback, {capture:true})
+      window.removeEventListener('keydown', directTouchFeedback, {capture:true})
+    }
+  }, [])
 
   useEffect(() => {
     navigator.serviceWorker?.register('/sw.js').catch(()=>{})
@@ -535,10 +520,10 @@ export default function App(){
 
       if('Notification' in window){
         if(Notification.permission === 'granted'){
-          new Notification('MHD Kontrolle', { body:text, icon:'/icon-192.png', vibrate:[500,300,500,300,500], requireInteraction:true })
+          new Notification('MHD Kontrolle', { body:text, icon:'/icon-192.png', vibrate:[1000,250,1000,250,1000], requireInteraction:true })
         }else if(Notification.permission !== 'denied'){
           Notification.requestPermission().then(p => {
-            if(p === 'granted') new Notification('MHD Kontrolle', { body:text, icon:'/icon-192.png', vibrate:[500,300,500,300,500], requireInteraction:true })
+            if(p === 'granted') new Notification('MHD Kontrolle', { body:text, icon:'/icon-192.png', vibrate:[1000,250,1000,250,1000], requireInteraction:true })
           })
         }
       }
@@ -561,9 +546,9 @@ export default function App(){
   function sameMhdArticle(a, b){
     const sameDate = String(a?.mhd || '').slice(0,10) === String(b?.mhd || '').slice(0,10)
     if(!sameDate) return false
-    const aBarcode = cleanBarcode(a?.barcode || '')
-    const bBarcode = cleanBarcode(b?.barcode || '')
-    if(aBarcode && bBarcode) return barcodeMatches(aBarcode, bBarcode)
+    const aBarcode = String(a?.barcode || '').trim()
+    const bBarcode = String(b?.barcode || '').trim()
+    if(aBarcode && bBarcode) return aBarcode === bBarcode
     const aNum = String(a?.artikelnummer || '').trim()
     const bNum = String(b?.artikelnummer || '').trim()
     if(aNum && bNum) return aNum === bNum
@@ -647,34 +632,22 @@ export default function App(){
   }
 
   async function loadMissingArticles(){
-    let local = readMissingLocal()
     if(!db){
-      setMissingArticles(local)
+      setMissingArticles(readMissingLocal())
       setLoadedTabs(prev => ({...prev, missing:true}))
       return
     }
-
-    // Wichtig: Meldungen von Handys dürfen nicht nur auf diesem Gerät bleiben.
-    // Lokale Alt-Einträge werden zuerst zentral nach Supabase übertragen.
-    local = await syncMissingLocalToSupabase()
-
-    const { data, error } = await supabase
-      .from('fehlende_artikel')
-      .select('*')
-      .neq('status','erledigt')
-      .order('created_at', { ascending:false })
+    const localLeft = await syncMissingLocalToSupabase()
+    const { data, error } = await supabase.from('fehlende_artikel').select('*').order('created_at', { ascending:false })
     if(error){
-      console.warn('Fehlende Artikel konnten nicht zentral geladen werden, lokale Meldungen bleiben sichtbar:', error)
-      setMissingArticles(local)
+      console.warn('Fehlende Artikel konnten nicht geladen werden:', error)
+      setMissingArticles(localLeft || [])
       setLoadedTabs(prev => ({...prev, missing:true}))
-      if(isMissingArticlesTableError(error)){
-        setError('Fehlende Artikel sind noch nicht zentral eingerichtet. Bitte FINAL_SQL_FEHLENDE_ARTIKEL.sql einmal in Supabase ausführen.')
-      }else{
-        setError('Fehlende Artikel konnten nicht geladen werden: ' + error.message)
-      }
+      if(isMissingArticlesTableError(error)) setError('Tabelle fehlende_artikel fehlt. Bitte FINAL_SQL_FEHLENDE_ARTIKEL.sql in Supabase ausführen.')
+      else setError(error.message)
       return
     }
-    const merged = [...(data || []), ...local]
+    const merged = [...(data || []), ...(localLeft || [])]
     const seen = new Set()
     setMissingArticles(merged.filter(x => { const k = String(x.id || x.barcode); if(seen.has(k)) return false; seen.add(k); return true }))
     setLoadedTabs(prev => ({...prev, missing:true}))
@@ -719,10 +692,6 @@ export default function App(){
     if(tab === 'fehlende' && isAdmin(user)) loadMissingArticles()
     if((tab === 'abschriften' || tab === 'kontrollen') && isAdmin(user) && !loadedTabs.writeoffs) loadWriteoffs()
   }, [tab, user, db, loadedTabs.master, loadedTabs.writeoffs])
-
-  // Fehlende Artikel werden bewusst nicht dauerhaft alle paar Sekunden aktualisiert,
-  // damit Datenvolumen, Akku und Supabase-Abfragen niedrig bleiben.
-  // Aktualisierung passiert beim Öffnen der Seite sowie nach Speichern/Löschen/Übernehmen.
 
 
   useEffect(() => {
@@ -793,6 +762,11 @@ export default function App(){
       status: 'offen'
     }
 
+    if(!db){
+      upsertMissingLocal(localRow)
+      return true
+    }
+
     const payload = {
       barcode: clean,
       hinweis: finalHinweis,
@@ -801,44 +775,52 @@ export default function App(){
       status: 'offen'
     }
 
-    if(db){
-      const { data: existing, error: findError } = await supabase.from('fehlende_artikel').select('*').eq('barcode', clean).eq('status','offen').maybeSingle()
-      if(findError){
-        console.warn('Fehlende Artikel konnte nicht zentral geprüft werden, lokaler Eintrag wird gespeichert und später synchronisiert:', findError)
-        upsertMissingLocal(localRow)
-        setError('Fehlender Artikel wurde lokal gespeichert, aber noch nicht zentral synchronisiert: ' + findError.message)
-        return true
-      }
-      if(existing){
-        let row = existing
-        if(cleanName && !String(existing.hinweis || '').includes(cleanName)){
-          const updatedHinweis = finalHinweis
-          const { data: updated, error: updateError } = await supabase.from('fehlende_artikel').update({ hinweis: updatedHinweis }).eq('id', existing.id).select().single()
-          if(updateError){
-            console.warn('Fehlender Artikel konnte nicht aktualisiert werden, lokaler Eintrag wird gespeichert:', updateError)
-            upsertMissingLocal({...localRow, id: existing.id})
-            return true
-          }
-          row = updated || {...existing, hinweis: updatedHinweis}
-        }
-        setMissingArticles(prev => prev.some(x => x.id === row.id) ? prev.map(x => x.id === row.id ? row : x) : [row, ...prev])
-        return true
-      }
-      const { data, error } = await supabase.from('fehlende_artikel').insert(payload).select().single()
-      if(error){
-        console.warn('Fehlender Artikel konnte nicht in Supabase gespeichert werden, lokaler Eintrag wird gespeichert und später synchronisiert:', error)
-        upsertMissingLocal(localRow)
-        setError('Fehlender Artikel wurde lokal gespeichert, aber noch nicht zentral synchronisiert: ' + error.message)
-        return true
-      }
-      if(data){
-        setMissingArticles(prev => [data, ...prev])
-        return true
-      }
+    const { data: existing, error: findError } = await supabase
+      .from('fehlende_artikel')
+      .select('*')
+      .eq('barcode', clean)
+      .eq('status','offen')
+      .maybeSingle()
+
+    if(findError){
+      console.warn('Fehlende Artikel konnte nicht gelesen werden:', findError)
+      setError(isMissingArticlesTableError(findError) ? 'Tabelle fehlende_artikel fehlt. Bitte FINAL_SQL_FEHLENDE_ARTIKEL.sql in Supabase ausführen.' : findError.message)
+      return false
     }
 
-    upsertMissingLocal(localRow)
-    return true
+    if(existing){
+      let row = existing
+      if(cleanName && !String(existing.hinweis || '').includes(cleanName)){
+        const { data: updated, error: updateError } = await supabase
+          .from('fehlende_artikel')
+          .update({ hinweis: finalHinweis })
+          .eq('id', existing.id)
+          .select()
+          .single()
+        if(updateError){
+          console.warn('Fehlender Artikel konnte nicht aktualisiert werden:', updateError)
+          setError(updateError.message)
+          return false
+        }
+        row = updated || {...existing, hinweis: finalHinweis}
+      }
+      setMissingArticles(prev => prev.some(x => x.id === row.id) ? prev.map(x => x.id === row.id ? row : x) : [row, ...prev])
+      if(tab === 'fehlende') await loadMissingArticles()
+      return true
+    }
+
+    const { data, error } = await supabase.from('fehlende_artikel').insert(payload).select().single()
+    if(error){
+      console.warn('Fehlender Artikel konnte nicht in Supabase gespeichert werden:', error)
+      setError(isMissingArticlesTableError(error) ? 'Tabelle fehlende_artikel fehlt. Bitte FINAL_SQL_FEHLENDE_ARTIKEL.sql in Supabase ausführen.' : error.message)
+      return false
+    }
+    if(data){
+      setMissingArticles(prev => [data, ...prev])
+      if(tab === 'fehlende') await loadMissingArticles()
+      return true
+    }
+    return false
   }
 
   function extractMissingArticleName(row){
@@ -863,39 +845,8 @@ export default function App(){
     })
     setError('')
     setSuccess('Fehlender Artikel wurde in die Artikelliste-Maske übernommen. Bitte prüfen und speichern.')
-    appFeedback('success')
     setTab('stammdaten')
     window.setTimeout(() => window.scrollTo({top:0, behavior:'smooth'}), 80)
-  }
-
-  async function recheckMissingArticle(row){
-    if(!isAdmin(user)) return setError('Keine Rechte.')
-    const barcode = String(row?.barcode || '').replace(/\D/g,'')
-    if(!barcode){ appFeedback('error'); return setError('EAN fehlt.') }
-
-    let found = masterArticles.find(a => barcodeMatches(a.barcode, barcode))
-
-    // Bei Chef/Stationsleitung zusätzlich frisch in Supabase prüfen, damit der Abgleich geräteübergreifend stimmt.
-    if(!found && db){
-      const { data, error } = await supabase
-        .from('artikel_stammdaten')
-        .select('*')
-        .in('barcode', barcodeVariants(barcode))
-      const dataRow = (data || []).find(a => barcodeMatches(a.barcode, barcode)) || data?.[0]
-      if(error){ appFeedback('error'); return setError('EAN konnte nicht abgeglichen werden: ' + error.message) }
-      found = dataRow
-    }
-
-    if(found){
-      await markMissingDone(row)
-      setSuccess('EAN ist bereits in der Artikelliste vorhanden: ' + (found.name || found.artikelnummer || barcode) + '. Vorschlag wurde entfernt.')
-      appFeedback('success')
-      loadMissingArticles()
-      return
-    }
-
-    setSuccess('EAN wurde geprüft: Artikel ist noch nicht in der Artikelliste vorhanden.')
-    appFeedback('success')
   }
 
 
@@ -915,6 +866,7 @@ export default function App(){
       setMissingArticles(prev => prev.filter(x => x.id !== row.id && x.barcode !== row.barcode))
     }
     writeMissingLocal(readMissingLocal().filter(x => x.id !== row.id && x.barcode !== row.barcode))
+    if(db) await loadMissingArticles()
     setSuccess('Vorschlag gelöscht.')
   }
 
@@ -925,7 +877,7 @@ export default function App(){
       return
     }
 
-    const localMaster = masterArticles.find(a => barcodeMatches(a.barcode, form.barcode))
+    const localMaster = masterArticles.find(a => String(a.barcode || '') === String(form.barcode || ''))
     if(localMaster){
       setForm(f => ({
         ...f,
@@ -940,8 +892,7 @@ export default function App(){
     }
 
     if(db){
-      const { data: masters } = await supabase.from('artikel_stammdaten').select('*').in('barcode', barcodeVariants(form.barcode))
-      const master = (masters || []).find(a => barcodeMatches(a.barcode, form.barcode)) || masters?.[0]
+      const { data: master } = await supabase.from('artikel_stammdaten').select('*').eq('barcode', form.barcode).maybeSingle()
       if(master){
         setForm(f => ({
           ...f,
@@ -982,7 +933,7 @@ export default function App(){
         bild_url: next.bild_url,
         updated_at: nowISO()
       }, { onConflict:'barcode' })
-      setMasterArticles(prev => prev.some(x => barcodeMatches(x.barcode, next.barcode)) ? prev : [...prev, {...next, kategorie:form.kategorie || 'Sonstiges'}])
+      setMasterArticles(prev => prev.some(x => String(x.barcode || '') === String(next.barcode || '')) ? prev : [...prev, {...next, kategorie:form.kategorie || 'Sonstiges'}])
     }
 
     msgAt('erfassen','success', next.bild_url ? '✓ Produkt im Internet gefunden, Bild übernommen und Artikelliste gespeichert.' : '✓ Produkt im Internet gefunden und Artikelliste gespeichert.')
@@ -1591,7 +1542,7 @@ export default function App(){
     {tab === 'backwaren' && <Backwaren backwaren={backwaren} saveBackwarenList={saveBackwarenList} writeOff={writeOff} user={user}/>}
     {tab === 'abschriften' && isAdmin(user) && <Abschriften writeoffs={writeoffs.filter(w => w.typ !== 'kontrolle')} user={user} setEditWriteoff={setEditWriteoff} deleteWriteoff={deleteWriteoff} undoWriteoff={undoWriteoff}/>}
     {tab === 'kontrollen' && isAdmin(user) && <Kontrollen controls={writeoffs.filter(w => w.typ === 'kontrolle')} user={user} deleteWriteoff={deleteWriteoff}/>}
-    {tab === 'fehlende' && isAdmin(user) && <MissingArticles missingArticles={missingArticles} markMissingDone={markMissingDone} takeOverMissingArticle={takeOverMissingArticle} recheckMissingArticle={recheckMissingArticle}/>}    {tab === 'stammdaten' && isAdmin(user) && <MasterArticles prefillArticle={prefillMasterArticle} onPrefillUsed={() => setPrefillMasterArticle(null)} onMissingSaved={markMissingDone} quickMhdFromMaster={quickMhdFromMaster} masterArticles={masterArticles} saveMasterArticle={saveMasterArticle} deleteMasterArticle={deleteMasterArticle} setMasterScannerOpen={setMasterScannerOpen}/>}
+    {tab === 'fehlende' && isAdmin(user) && <MissingArticles missingArticles={missingArticles} markMissingDone={markMissingDone} takeOverMissingArticle={takeOverMissingArticle}/>}    {tab === 'stammdaten' && isAdmin(user) && <MasterArticles prefillArticle={prefillMasterArticle} onPrefillUsed={() => setPrefillMasterArticle(null)} onMissingSaved={markMissingDone} quickMhdFromMaster={quickMhdFromMaster} masterArticles={masterArticles} saveMasterArticle={saveMasterArticle} deleteMasterArticle={deleteMasterArticle} setMasterScannerOpen={setMasterScannerOpen}/>}
     {tab === 'dienstplan' && <Dienstplan settings={settings} saveSetting={saveSetting} user={user}/>}
     {tab === 'online' && isAdmin(user) && <Online online={online}/>}
     {tab === 'verwaltung' && isAdmin(user) && <Verwaltung employees={employees} saveEmployee={saveEmployee} deleteEmployee={deleteEmployee} resetPassword={resetPassword}/>}
@@ -1786,7 +1737,7 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
 
     const found = masterArticles.find(a =>
       String(a.artikelnummer || '').trim() === term ||
-      barcodeMatches(a.barcode, term)
+      String(a.barcode || '').trim() === term
     )
 
     if(found) return übernehmen(found)
@@ -1834,7 +1785,7 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
     if(!name){ appFeedback('error'); setSearchMsg({type:'error', text:'Bitte Artikelnamen eingeben.'}); return }
     const ok = await reportMissingArticle?.(clean, 'EAN wurde beim Erfassen gescannt, aber nicht in der Artikelliste gefunden.', name)
     if(!ok){ appFeedback('error'); setSearchMsg({type:'error', text:'Fehlender Artikel konnte nicht gespeichert werden.'}); return }
-    appFeedback('success')
+    robustVibrate([500,150,500,150,500], 3)
     setSearchMsg({type:'success', text:'✓ Fehlender Artikel wurde an Chef/Stationsleitung gemeldet.'})
     setForm(f => ({...f, barcode:'', artikelnummer:'', name:''}))
     setSearchTerm('')
@@ -2142,7 +2093,7 @@ function Kontrollen({controls,user,deleteWriteoff}){
 }
 
 
-function MissingArticles({missingArticles,markMissingDone,takeOverMissingArticle,recheckMissingArticle}){
+function MissingArticles({missingArticles,markMissingDone,takeOverMissingArticle}){
   const open = missingArticles.filter(x => x.status !== 'erledigt')
   return <section className="formCard">
     <h2>Fehlende Artikel</h2>
@@ -2156,8 +2107,7 @@ function MissingArticles({missingArticles,markMissingDone,takeOverMissingArticle
       </div>
       <div className="actions">
         <button onClick={() => takeOverMissingArticle?.(row)}>In Artikelliste übernehmen</button>
-        <button onClick={() => recheckMissingArticle?.(row)}>EAN erneut prüfen</button>
-        <button onClick={() => { navigator.clipboard?.writeText(row.barcode); appFeedback('success') }}>EAN kopieren</button>
+        <button onClick={() => navigator.clipboard?.writeText(row.barcode)}>EAN kopieren</button>
         <button onClick={() => markMissingDone(row)}>Vorschlag löschen</button>
       </div>
     </div>)}
@@ -2193,7 +2143,7 @@ function MasterArticles({masterArticles,saveMasterArticle,deleteMasterArticle,se
     const cleanArtNr = String(artNr || '').trim()
     return masterArticles.find(a => {
       if(data.id && a.id === data.id) return false
-      const sameEan = cleanEan && barcodeMatches(a.barcode, cleanEan)
+      const sameEan = cleanEan && String(a.barcode || '') === cleanEan
       const sameArtNr = cleanArtNr && String(a.artikelnummer || '').trim() === cleanArtNr
       return sameEan || sameArtNr
     })
