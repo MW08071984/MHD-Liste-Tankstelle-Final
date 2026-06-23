@@ -343,10 +343,29 @@ button.danger{
 .pushBtn{background:#fffdf0!important;color:#7b1018!important;border:3px solid #ffd900!important;padding:11px 12px!important}
 @media(max-width:560px){.topbar{gap:10px}.topActions{flex-direction:column;align-items:stretch}.pushBtn,.logout{padding:10px 12px!important;font-size:15px}}
 
-.detailBox{margin-top:10px;padding:10px;border:1px solid rgba(0,0,0,.12);border-radius:12px;background:#fffdf7}
-.detailBox p{margin:4px 0;font-size:.92rem}
-.detailImage{max-width:160px;max-height:160px;object-fit:contain;background:#fff;border-radius:10px;border:1px solid rgba(0,0,0,.08);padding:6px;margin-bottom:8px}
-.inlineForm{display:grid;grid-template-columns:1fr;gap:6px;margin-top:10px;padding:10px;border-radius:12px;background:#fffdf7;border:1px solid rgba(0,0,0,.10)}
-.inlineForm label{font-size:.82rem;font-weight:700;margin-top:2px}
-.inlineForm input{width:100%;box-sizing:border-box}
-.missingItem{align-items:flex-start}
+
+/* Sammelupdate Praxistest */
+.imageButton{margin-top:8px;max-width:210px}
+.imageOnlyModal{width:min(360px,94vw);text-align:center;justify-items:center}
+.smallProductImage{width:150px;height:150px;object-fit:contain;border:3px solid var(--red);border-radius:20px;background:#fff;padding:6px}
+.takeoverForm{max-width:620px;margin:0 auto}
+.takeoverForm input{font-size:18px}
+.takeoverForm .preview{width:110px;height:110px;object-fit:contain;background:#fff}
+.todayStats button{font-size:18px}
+@media(max-width:560px){.imageButton{width:100%;max-width:none}.smallProductImage{width:140px;height:140px}.todayStats button{font-size:16px}}
+
+
+/* PRAXISTEST SAMMELUPDATE FINAL */
+.todayStats.single{grid-template-columns:1fr!important}
+.todayStats.single button{min-height:68px;font-size:19px}
+.takeoverForm{
+  max-width:680px!important;
+  padding:20px!important;
+  border-width:4px!important;
+}
+.takeoverForm h2{font-size:32px!important;margin-bottom:8px!important}
+.takeoverForm label{margin-top:12px!important}
+.takeoverForm input{font-size:18px!important;padding:16px!important}
+.takeoverForm .primary{margin-top:8px!important}
+.imageOnlyModal{width:min(300px,92vw)!important;text-align:center!important;justify-items:center!important}
+.smallProductImage{width:140px!important;height:140px!important;object-fit:contain!important;background:#fff;border:3px solid #d71920;border-radius:18px;padding:6px}
