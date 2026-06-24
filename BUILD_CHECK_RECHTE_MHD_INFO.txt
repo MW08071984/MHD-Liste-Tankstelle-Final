@@ -1,0 +1,7 @@
+Build OK
+Änderungen:
+- MHD-Hinweis unter den Datumsfeldern entfernt und in Info-Button verschoben.
+- Info-Text enthält nur: vollständiges Datum in MHD vollständiges Datum, Monat/Jahr in MHD nur Monat/Jahr.
+- Rechteverwaltung pro Mitarbeiter ergänzt.
+- Rechte werden in app_settings unter mitarbeiter_rechte_v1 gespeichert, keine bestehenden Artikeldaten werden geändert.
+- Build erfolgreich mit npm run build geprüft.

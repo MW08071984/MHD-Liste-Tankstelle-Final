@@ -93,6 +93,74 @@ function mhdMonthYearInputValue(value){
   return raw
 }
 const isAdmin = u => ['chef','chef_temp','stationsleitung'].includes(u?.rolle)
+
+const PERMISSION_GROUPS = [
+  ['MHD', [
+    ['mhd_erfassen','MHD erfassen'],
+    ['mhd_alle_ansehen','Alle MHD ansehen'],
+    ['mhd_bearbeiten','MHD bearbeiten'],
+    ['mhd_loeschen','MHD löschen']
+  ]],
+  ['Artikel', [
+    ['artikel_ansehen','Artikelliste ansehen'],
+    ['artikel_anlegen','Artikel anlegen'],
+    ['artikel_bearbeiten','Artikel bearbeiten'],
+    ['artikel_loeschen','Artikel löschen']
+  ]],
+  ['Bilder', [
+    ['bilder_ansehen','Bilder ansehen'],
+    ['bilder_hochladen','Bilder aufnehmen/hochladen']
+  ]],
+  ['Fehlende Artikel', [
+    ['fehlende_melden','Fehlende Artikel melden'],
+    ['fehlende_bearbeiten','Fehlende Artikel bearbeiten']
+  ]],
+  ['Backwaren', [
+    ['backwaren','Backwaren nutzen'],
+    ['backwaren_bearbeiten','Backwarenliste bearbeiten']
+  ]],
+  ['Abschriften', [
+    ['abschriften_ansehen','Abschriften ansehen'],
+    ['abschriften_download','Abschriften-PDF herunterladen'],
+    ['abschriften_bearbeiten','Abschriften bearbeiten'],
+    ['abschriften_loeschen','Abschriften löschen']
+  ]],
+  ['Dienstplan', [
+    ['dienstplan_ansehen','Dienstplan ansehen'],
+    ['dienstplan_bearbeiten','Dienstplan hochladen/löschen']
+  ]],
+  ['Verwaltung', [
+    ['online_ansehen','Online-Status ansehen'],
+    ['mitarbeiter_verwalten','Mitarbeiter/Rechte verwalten'],
+    ['einstellungen','Einstellungen ändern'],
+    ['push_senden','Push aktivieren/testen']
+  ]]
+]
+const ALL_PERMISSION_KEYS = PERMISSION_GROUPS.flatMap(([,items]) => items.map(([key]) => key))
+const allRights = () => Object.fromEntries(ALL_PERMISSION_KEYS.map(k => [k, true]))
+function defaultRightsForRole(role){
+  if(['chef','chef_temp','stationsleitung'].includes(role)) return allRights()
+  return {
+    mhd_erfassen:true,
+    bilder_ansehen:true,
+    fehlende_melden:true,
+    backwaren:true,
+    dienstplan_ansehen:true
+  }
+}
+function parseRightsMap(settings = {}){
+  try{ return JSON.parse(settings.mitarbeiter_rechte_v1 || '{}') || {} }catch{ return {} }
+}
+function userRights(user, settings = {}){
+  if(!user) return {}
+  if(['chef','chef_temp'].includes(user.rolle)) return allRights()
+  const base = defaultRightsForRole(user.rolle)
+  const custom = parseRightsMap(settings)[String(user.nummer)]
+  return custom ? {...base, ...custom} : base
+}
+function can(user, settings, key){
+  return !!userRights(user, settings)[key]
+}
 const cleanCode = v => String(v || '').replace(/\D/g,'')
 const stripLeadingZeros = v => cleanCode(v).replace(/^0+/, '')
 const codesEqual = (a,b) => { const x=cleanCode(a), y=cleanCode(b); return !!x && !!y && (x===y || stripLeadingZeros(x)===stripLeadingZeros(y)) }
@@ -835,8 +903,8 @@ export default function App(){
   useEffect(() => {
     if(!db || !user) return
     if((tab === 'erfassen' || tab === 'stammdaten') && !loadedTabs.master) loadMasterArticles()
-    if(tab === 'fehlende' && isAdmin(user)) loadMissingArticles()
-    if((tab === 'abschriften' || tab === 'kontrollen') && isAdmin(user) && !loadedTabs.writeoffs) loadWriteoffs()
+    if(tab === 'fehlende' && can(user, settings, 'fehlende_bearbeiten')) loadMissingArticles()
+    if((tab === 'abschriften' || tab === 'kontrollen') && can(user, settings, 'abschriften_ansehen') && !loadedTabs.writeoffs) loadWriteoffs()
   }, [tab, user, db, loadedTabs.master, loadedTabs.writeoffs])
 
 
@@ -856,7 +924,7 @@ export default function App(){
   }
 
   async function saveBackwarenList(next){
-    if(!isAdmin(user)) return setError('Keine Rechte.')
+    if(!can(user, settings, 'backwaren_bearbeiten')) return setError('Keine Rechte.')
     setBackwaren(next)
     if(db){
       const { error } = await supabase.from('app_settings').upsert({ key:'backwaren_liste', value:JSON.stringify(next), updated_by:user.name }, { onConflict:'key' })
@@ -1162,6 +1230,7 @@ export default function App(){
 
   async function addItem(){
     setError('')
+    if(!can(user, settings, 'mhd_erfassen')) return setError('Keine Rechte.')
     const normalizedMhd = normalizeMhdInput(form.mhd)
     if(!form.name){
       appFeedback('error')
@@ -1288,7 +1357,7 @@ export default function App(){
 
 
   async function quickMhdFromMaster(masterArticle){
-    if(!isAdmin(user)) return setError('Keine Rechte.')
+    if(!can(user, settings, 'mhd_erfassen')) return setError('Keine Rechte.')
     if(!masterArticle) return setError('Kein Artikel ausgewählt.')
 
     const articleName = masterArticle.name || masterArticle.artikel || masterArticle.artikelname || masterArticle.bezeichnung || masterArticle.barcode || 'Artikel'
@@ -1372,7 +1441,7 @@ export default function App(){
   }
 
   async function saveMasterArticle(data){
-    if(!isAdmin(user)){ setError('Keine Rechte.'); return false }
+    if(!can(user, settings, data?.id ? 'artikel_bearbeiten' : 'artikel_anlegen')){ setError('Keine Rechte.'); return false }
     const payload = {
       barcode:String(data.barcode || '').replace(/\D/g,''),
       artikelnummer:data.artikelnummer || '',
@@ -1418,7 +1487,7 @@ export default function App(){
   }
 
   async function deleteMasterArticle(article){
-    if(!isAdmin(user)) return setError('Keine Rechte.')
+    if(!can(user, settings, 'artikel_loeschen')) return setError('Keine Rechte.')
     if(!confirm('Artikel aus Artikelliste löschen? Bestehende MHD-Einträge bleiben erhalten.')) return
     if(db){
       const { error } = await supabase.from('artikel_stammdaten').delete().eq('id', article.id)
@@ -1433,7 +1502,7 @@ export default function App(){
 
 
   async function deleteMhdEntry(item){
-    if(!isAdmin(user)) return setError('Keine Rechte.')
+    if(!can(user, settings, 'mhd_loeschen')) return setError('Keine Rechte.')
     const name = item?.name || item?.artikel || 'Artikel'
     if(!confirm('Diesen MHD-Eintrag wirklich aus der Übersicht löschen?\n\n' + name + '\n\nNur diesen erfassten MHD-Eintrag löschen, die Artikelliste bleibt unverändert.')) return
 
@@ -1487,7 +1556,7 @@ export default function App(){
   }
 
   async function saveArticle(data){
-    if(!isAdmin(user)) return setError('Keine Rechte.')
+    if(!can(user, settings, 'mhd_bearbeiten')) return setError('Keine Rechte.')
     if(isPastMhd(data.mhd)){ appFeedback('error'); return setError('MHD darf nicht in der Vergangenheit liegen.') }
     const payload = {
       barcode:data.barcode || '',
@@ -1513,7 +1582,7 @@ export default function App(){
   }
 
   async function saveWriteoff(data){
-    if(!isAdmin(user)) return setError('Nur Chef/Stationsleitung darf Abschriften ändern.')
+    if(!can(user, settings, 'abschriften_bearbeiten')) return setError('Keine Rechte.')
     const payload = {
       artikelnummer:data.artikelnummer || '',
       artikel:data.name || data.artikel || 'Artikel',
@@ -1532,7 +1601,7 @@ export default function App(){
   }
 
   async function deleteWriteoff(item){
-    if(!isAdmin(user)) return setError('Nur Chef/Stationsleitung darf löschen.')
+    if(!can(user, settings, 'abschriften_loeschen')) return setError('Keine Rechte.')
     if(!confirm('Abschrift löschen?')) return
     const { error } = await supabase.from('abschriften').delete().eq('id', item.id)
     if(error) return setError(error.message)
@@ -1542,7 +1611,7 @@ export default function App(){
   }
 
   async function deleteWriteoffsForDay(day, entries = []){
-    if(!isAdmin(user)) return setError('Nur Chef/Stationsleitung darf löschen.')
+    if(!can(user, settings, 'abschriften_loeschen')) return setError('Keine Rechte.')
     const count = entries.length
     if(count < 1) return setError('Für diesen Tag sind keine Abschriften vorhanden.')
     if(!confirm(`Wirklich alle ${count} Abschriften vom ${formatDateDE(day)} löschen?`)) return
@@ -1559,7 +1628,7 @@ export default function App(){
   }
 
   async function undoWriteoff(item){
-    if(!isAdmin(user)) return setError('Nur Chef/Stationsleitung darf Abschriften rückgängig machen.')
+    if(!can(user, settings, 'abschriften_bearbeiten')) return setError('Keine Rechte.')
     if(!confirm('Abschrift rückgängig machen und Bestand wiederherstellen?')) return
 
     const qty = Number(item.menge || 0)
@@ -1621,7 +1690,7 @@ export default function App(){
   }
 
   async function saveEmployee(emp){
-    if(!isAdmin(user)) return setError('Keine Rechte.')
+    if(!can(user, settings, 'mitarbeiter_verwalten')) return setError('Keine Rechte.')
     const payload = {
       nummer:Number(emp.nummer),
       name:emp.name,
@@ -1640,7 +1709,7 @@ export default function App(){
   }
 
   async function deleteEmployee(emp){
-    if(!isAdmin(user)) return setError('Keine Rechte.')
+    if(!can(user, settings, 'mitarbeiter_verwalten')) return setError('Keine Rechte.')
     if(!confirm(`${emp.name} löschen?`)) return
     const { error } = await supabase.from('mitarbeiter').delete().eq('nummer', emp.nummer)
     if(error) return setError(error.message)
@@ -1650,7 +1719,7 @@ export default function App(){
   }
 
   async function resetPassword(emp){
-    if(!isAdmin(user)) return setError('Keine Rechte.')
+    if(!can(user, settings, 'mitarbeiter_verwalten')) return setError('Keine Rechte.')
     const { error } = await supabase.from('mitarbeiter').update({ passwort:'0000', muss_passwort_aendern:true }).eq('nummer', emp.nummer)
     if(error) return setError(error.message)
     setEmployees(prev => prev.map(x => Number(x.nummer) === Number(emp.nummer) ? {...x, passwort:'0000', muss_passwort_aendern:true} : x))
@@ -1658,7 +1727,22 @@ export default function App(){
     appFeedback('success')
   }
 
+  async function saveEmployeeRights(nummer, rights){
+    if(!can(user, settings, 'mitarbeiter_verwalten')) return setError('Keine Rechte.')
+    const map = parseRightsMap(settings)
+    map[String(nummer)] = rights || {}
+    const value = JSON.stringify(map)
+    if(db){
+      const { error } = await supabase.from('app_settings').upsert({ key:'mitarbeiter_rechte_v1', value, updated_by:user.name }, { onConflict:'key' })
+      if(error) return setError(error.message)
+    }
+    setSettings(prev => ({...prev, mitarbeiter_rechte_v1:value}))
+    setSuccess('Rechte gespeichert.')
+    appFeedback('success')
+  }
+
   async function enablePush(){
+    if(user && !can(user, settings, 'push_senden')) return setError('Keine Rechte.')
     if(!('Notification' in window)) return alert('Push wird auf diesem Gerät/Browser nicht unterstützt.')
     try{ await navigator.serviceWorker?.register('/sw.js') }catch{}
     const permission = await Notification.requestPermission()
@@ -1713,7 +1797,7 @@ export default function App(){
 
   function openArticleFilter(filter){
     setArticleFilter(filter)
-    setTab(isAdmin(user) ? 'artikel' : 'dashboard')
+    setTab(can(user, settings, 'mhd_alle_ansehen') ? 'artikel' : 'dashboard')
     setTimeout(() => {
       const target = document.querySelector('.list') || document.querySelector('.tabs')
       if(target) target.scrollIntoView({behavior:'smooth', block:'start'})
@@ -1746,12 +1830,16 @@ export default function App(){
 
   const tabs = [
     ['dashboard','Übersicht'],
-    ['erfassen','Erfassen'],
-    ['backwaren','Backwaren'],
-    ...(isAdmin(user) ? [['abschriften','Abschriften']] : []),
-    ...(isAdmin(user) ? [['artikel','Alle MHD'], ['stammdaten','Artikelliste'], ['fehlende','Fehlende Artikel'],] : []),
-    ['dienstplan','Dienstplan'],
-    ...(isAdmin(user) ? [['online','Online'], ['verwaltung','Verwaltung'], ['settings','Einstellungen']] : [])
+    ...(can(user, settings, 'mhd_erfassen') ? [['erfassen','Erfassen']] : []),
+    ...(can(user, settings, 'backwaren') ? [['backwaren','Backwaren']] : []),
+    ...(can(user, settings, 'abschriften_ansehen') ? [['abschriften','Abschriften']] : []),
+    ...(can(user, settings, 'mhd_alle_ansehen') ? [['artikel','Alle MHD']] : []),
+    ...(can(user, settings, 'artikel_ansehen') ? [['stammdaten','Artikelliste']] : []),
+    ...(can(user, settings, 'fehlende_bearbeiten') ? [['fehlende','Fehlende Artikel']] : []),
+    ...(can(user, settings, 'dienstplan_ansehen') ? [['dienstplan','Dienstplan']] : []),
+    ...(can(user, settings, 'online_ansehen') ? [['online','Online']] : []),
+    ...(can(user, settings, 'mitarbeiter_verwalten') ? [['verwaltung','Verwaltung']] : []),
+    ...(can(user, settings, 'einstellungen') ? [['settings','Einstellungen']] : [])
   ]
 
   return <main className="app" onClickCapture={handleGlobalActionFeedback}>
@@ -1767,12 +1855,12 @@ export default function App(){
     </header>
 
     <section className="stats">
-      {isAdmin(user) && <Stat label="Artikel" value={stats.totalText} tone="normal" onClick={() => openArticleFilter('all')}/>}
+      {can(user, settings, 'mhd_alle_ansehen') && <Stat label="Artikel" value={stats.totalText} tone="normal" onClick={() => openArticleFilter('all')}/>}
       <Stat label="Abgelaufen" value={stats.expiredText} tone="expired" onClick={() => openArticleFilter('expired')}/>
       <Stat label="7 Tage" value={stats.weekText} tone="week" onClick={() => openArticleFilter('week')}/>
     </section>
 
-    {isAdmin(user) && <section className="todayStats single">
+    {can(user, settings, 'abschriften_download') && <section className="todayStats single">
       <button className="pdfButton" onClick={() => exportAbschriftenPDF(writeoffs.filter(w => w.typ !== 'kontrolle' && entryDateKey(w) === todayISO()), 'Abschriftenliste', todayISO(), settings?.abschriften_pdf_passwort || '')}>📄 Abschriftenliste herunterladen</button>
     </section>}
 
@@ -1783,16 +1871,16 @@ export default function App(){
     {error && <div className="error">{error}</div>}
     {success && <div className="success" onClick={stopMhdOpenAlarm} title="Alarm stoppen">{success}</div>}
 
-    {tab === 'artikel' && isAdmin(user) && <ArticleList items={filteredItems} allCount={items.length} articleFilter={articleFilter} setArticleFilter={setArticleFilter} itemsLimited={itemsLimited} allMhdLoaded={allMhdLoaded} loadAllItems={() => loadItems({all:true})} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} deleteMhdEntry={deleteMhdEntry} inlineMsg={inlineMsg} safeEditOverviewItem={safeEditOverviewItem} getArticleImage={getArticleImage}/>}
+    {tab === 'artikel' && can(user, settings, 'mhd_alle_ansehen') && <ArticleList items={filteredItems} allCount={items.length} articleFilter={articleFilter} setArticleFilter={setArticleFilter} itemsLimited={itemsLimited} allMhdLoaded={allMhdLoaded} loadAllItems={() => loadItems({all:true})} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} deleteMhdEntry={deleteMhdEntry} inlineMsg={inlineMsg} safeEditOverviewItem={safeEditOverviewItem} getArticleImage={getArticleImage}/>}
     {tab === 'dashboard' && <Dashboard safeEditOverviewItem={safeEditOverviewItem} items={articleFilter === 'all' ? items : filteredItems} articleFilter={articleFilter} setTab={setTab} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} deleteMhdEntry={deleteMhdEntry} inlineMsg={inlineMsg} getArticleImage={getArticleImage}/>}
     {tab === 'erfassen' && <Erfassen form={form} setForm={setForm} setScannerOpen={setScannerOpen} lookupBarcode={lookupBarcode} uploadFormImg={uploadFormImg} addItem={addItem} user={user} inlineMsg={inlineMsg} masterArticles={masterArticles} reportMissingArticle={reportMissingArticle} saveMasterArticle={saveMasterArticle}/>}
     {tab === 'backwaren' && <Backwaren backwaren={backwaren} saveBackwarenList={saveBackwarenList} writeOff={writeOff} user={user}/>}
-    {tab === 'abschriften' && isAdmin(user) && <Abschriften writeoffs={writeoffs.filter(w => w.typ !== 'kontrolle')} user={user} setEditWriteoff={setEditWriteoff} deleteWriteoff={deleteWriteoff} deleteWriteoffsForDay={deleteWriteoffsForDay} undoWriteoff={undoWriteoff} pdfPassword={settings?.abschriften_pdf_passwort || ''}/>}
-    {tab === 'fehlende' && isAdmin(user) && <MissingArticles missingArticles={missingArticles} markMissingDone={markMissingDone} takeOverMissingArticle={takeOverMissingArticle} recheckMissingArticle={recheckMissingArticle}/>}    {tab === 'stammdaten' && isAdmin(user) && <MasterArticles prefillArticle={prefillMasterArticle} onPrefillUsed={() => setPrefillMasterArticle(null)} onMissingSaved={markMissingDone} quickMhdFromMaster={quickMhdFromMaster} masterArticles={masterArticles} mhdItems={items} saveMasterArticle={saveMasterArticle} deleteMasterArticle={deleteMasterArticle} setMasterScannerOpen={setMasterScannerOpen}/>}
+    {tab === 'abschriften' && can(user, settings, 'abschriften_ansehen') && <Abschriften writeoffs={writeoffs.filter(w => w.typ !== 'kontrolle')} user={user} setEditWriteoff={setEditWriteoff} deleteWriteoff={deleteWriteoff} deleteWriteoffsForDay={deleteWriteoffsForDay} undoWriteoff={undoWriteoff} pdfPassword={settings?.abschriften_pdf_passwort || ''}/>}
+    {tab === 'fehlende' && can(user, settings, 'fehlende_bearbeiten') && <MissingArticles missingArticles={missingArticles} markMissingDone={markMissingDone} takeOverMissingArticle={takeOverMissingArticle} recheckMissingArticle={recheckMissingArticle}/>}    {tab === 'stammdaten' && can(user, settings, 'artikel_ansehen') && <MasterArticles prefillArticle={prefillMasterArticle} onPrefillUsed={() => setPrefillMasterArticle(null)} onMissingSaved={markMissingDone} quickMhdFromMaster={quickMhdFromMaster} masterArticles={masterArticles} mhdItems={items} saveMasterArticle={saveMasterArticle} deleteMasterArticle={deleteMasterArticle} setMasterScannerOpen={setMasterScannerOpen}/>}
     {tab === 'dienstplan' && <Dienstplan settings={settings} saveSetting={saveSetting} user={user}/>}
-    {tab === 'online' && isAdmin(user) && <Online online={online}/>}
-    {tab === 'verwaltung' && isAdmin(user) && <Verwaltung employees={employees} saveEmployee={saveEmployee} deleteEmployee={deleteEmployee} resetPassword={resetPassword}/>}
-    {tab === 'settings' && isAdmin(user) && <Settings enablePush={enablePush} settings={settings} saveSetting={saveSetting}/>}
+    {tab === 'online' && can(user, settings, 'online_ansehen') && <Online online={online}/>}
+    {tab === 'verwaltung' && can(user, settings, 'mitarbeiter_verwalten') && <Verwaltung employees={employees} settings={settings} saveEmployee={saveEmployee} deleteEmployee={deleteEmployee} resetPassword={resetPassword} saveEmployeeRights={saveEmployeeRights}/>}
+    {tab === 'settings' && can(user, settings, 'einstellungen') && <Settings enablePush={enablePush} settings={settings} saveSetting={saveSetting}/>}
 
     {globalImage && <div className="modalOverlay"><div className="modalCard imageOnlyModal"><h2>{globalImage.title || 'Bild anzeigen'}</h2><img className="smallProductImage" src={globalImage.src}/><button onClick={() => setGlobalImage(null)}>Schließen</button></div></div>}
 
@@ -2277,7 +2365,7 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
 
 
 
-    <label>MHD vollständiges Datum</label>
+    <div className="labelInfoRow"><label>MHD vollständiges Datum</label><InfoButton title="MHD-Eingabe"><p>Wenn auf dem Artikel Tag / Monat / Jahr steht, bei <b>MHD vollständiges Datum</b> eintragen.</p><p>Wenn auf dem Artikel nur Monat / Jahr steht, bei <b>MHD nur Monat/Jahr</b> eintragen.</p></InfoButton></div>
     <div className="mhdInputRow">
       <input
         className="realInput"
@@ -2316,7 +2404,6 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
         if(iso) setForm({...form, mhd:iso})
       }}
     />
-    <div className="submitHint">Wenn auf dem Artikel nur Monat/Jahr steht, wird automatisch der letzte Tag des Monats gespeichert.</div>
 
     <InlineFeedback msg={inlineMsg?.erfassen}/>
     <button className="primary" onClick={addItem}>Speichern</button>
@@ -2890,10 +2977,18 @@ function Online({online}){
   </section>
 }
 
-function Verwaltung({employees,saveEmployee,deleteEmployee,resetPassword}){
+function Verwaltung({employees, settings = {}, saveEmployee, deleteEmployee, resetPassword, saveEmployeeRights}){
   const [emp, setEmp] = useState({ nummer:'', name:'', rolle:'mitarbeiter' })
+  const [editingNr, setEditingNr] = useState(null)
+  const rightsMap = parseRightsMap(settings)
+  function rightsForEmployee(e){ return {...defaultRightsForRole(e.rolle), ...(rightsMap[String(e.nummer)] || {})} }
+  function toggleRight(e, key){
+    const current = rightsForEmployee(e)
+    const next = {...current, [key]: !current[key]}
+    saveEmployeeRights?.(e.nummer, next)
+  }
   return <section className="formCard">
-    <PageTitle title="Mitarbeiter verwalten" info="Hier verwaltet Chef/Stationsleitung Mitarbeiter, Rollen und Passwort-Reset." />
+    <PageTitle title="Mitarbeiter verwalten" info="Hier verwaltet Chef/Stationsleitung Mitarbeiter, Rollen, Passwort-Reset und einzelne Rechte." />
     <div className="adminBox">
       <input placeholder="Nummer" value={emp.nummer} onChange={e => setEmp({...emp, nummer:e.target.value.replace(/\D/g,'')})}/>
       <input placeholder="Name" value={emp.name} onChange={e => setEmp({...emp, name:e.target.value})}/>
@@ -2905,11 +3000,24 @@ function Verwaltung({employees,saveEmployee,deleteEmployee,resetPassword}){
       </select>
       <button onClick={() => { saveEmployee(emp); setEmp({ nummer:'', name:'', rolle:'mitarbeiter' }) }}>Mitarbeiter speichern</button>
     </div>
-    {employees.map(e => <div className="item" key={e.nummer}>
-      <div className="artikelnummer small">{e.nummer}</div>
-      <div className="grow"><b>{e.name}</b><p>{roleLabel(e.rolle)}</p></div>
-      <div className="actions"><button onClick={() => resetPassword(e)}>PW 0000</button><button onClick={() => deleteEmployee(e)}>Löschen</button></div>
-    </div>)}
+    {employees.map(e => {
+      const open = String(editingNr) === String(e.nummer)
+      const rights = rightsForEmployee(e)
+      return <div className="item employeeCard" key={e.nummer}>
+        <div className="artikelnummer small">{e.nummer}</div>
+        <div className="grow"><b>{e.name}</b><p>{roleLabel(e.rolle)}</p></div>
+        <div className="actions"><button onClick={() => setEditingNr(open ? null : e.nummer)}>{open ? 'Rechte schließen' : 'Rechte'}</button><button onClick={() => resetPassword(e)}>PW 0000</button><button onClick={() => deleteEmployee(e)}>Löschen</button></div>
+        {open && <div className="rightsPanel">
+          {PERMISSION_GROUPS.map(([group, list]) => <div className="rightsGroup" key={group}>
+            <h4>{group}</h4>
+            {list.map(([key,label]) => <label className="rightCheck" key={key}>
+              <input type="checkbox" checked={!!rights[key]} onChange={() => toggleRight(e, key)} />
+              <span>{label}</span>
+            </label>)}
+          </div>)}
+        </div>}
+      </div>
+    })}
   </section>
 }
 
