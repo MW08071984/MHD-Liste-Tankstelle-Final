@@ -448,3 +448,56 @@ button.danger{
 .planFullView img { width:100%; height:auto; display:block; }
 .dienstplanEditBox input { width:100%; margin:8px 0; }
 .dienstplanEditBox button { width:100%; }
+
+
+/* Artikelliste Chef/Stationsleitung: aufgeräumte Karten ohne Bildsymbol */
+.masterArticleCard{
+  align-items:flex-start;
+  gap:14px;
+}
+.masterArticleInfo{
+  display:grid;
+  gap:3px;
+}
+.masterArticleTitle{
+  display:block;
+  font-size:23px!important;
+  line-height:1.15;
+  color:#240b00;
+  margin-bottom:4px;
+}
+.masterArticleInfo p{
+  margin:2px 0!important;
+}
+.masterArticleInfo p span{
+  display:inline-block;
+  min-width:66px;
+  color:#8b1016;
+  font-weight:1000;
+}
+.imageStatus{
+  width:max-content;
+  border-radius:999px;
+  padding:5px 10px;
+  font-weight:1000!important;
+  margin-top:6px!important;
+}
+.imageStatus.ok{
+  background:#ecffd8;
+  border:2px solid #68a000;
+  color:#285000!important;
+}
+.imageStatus.missing{
+  background:#fff1d6;
+  border:2px solid #d71920;
+  color:#8b1016!important;
+}
+.masterArticleActions{
+  justify-content:flex-end;
+  min-width:180px;
+}
+@media(max-width:560px){
+  .masterArticleCard{display:grid;grid-template-columns:1fr;}
+  .masterArticleActions{min-width:0;width:100%;}
+  .masterArticleActions button{flex:1;}
+}

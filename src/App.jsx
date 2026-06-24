@@ -2710,10 +2710,14 @@ function MasterArticles({masterArticles,saveMasterArticle,deleteMasterArticle,se
     <h3>Gespeicherte Artikel</h3>
     {masterArticles.length === 0 && <div className="empty">Noch keine Artikel in der Artikelliste.</div>}
     <input className="realInput" placeholder="Artikel suchen: Name, Artikelnummer oder EAN" value={articleSearch} onChange={e => setArticleSearch(e.target.value)} />
-    {filteredMasterArticles.map(a => <div className="item" key={a.id || a.barcode}>
-      <div className="thumb">{a.bild_url ? <img src={a.bild_url}/> : '📦'}</div>
-      <div className="grow"><b>{a.name}</b><p>Art.-Nr. {a.artikelnummer || '-'} · EAN {a.barcode}</p></div>
-      <div className="actions">
+    {filteredMasterArticles.map(a => <div className="item masterArticleCard" key={a.id || a.barcode}>
+      <div className="grow masterArticleInfo">
+        <b className="masterArticleTitle">{a.name}</b>
+        <p><span>Art.-Nr.</span> {a.artikelnummer || '-'}</p>
+        <p><span>EAN</span> {a.barcode || '-'}</p>
+        <p className={a.bild_url ? 'imageStatus ok' : 'imageStatus missing'}>{a.bild_url ? '✓ Bild vorhanden' : 'Kein Bild hinterlegt'}</p>
+      </div>
+      <div className="actions masterArticleActions">
         <button onClick={() => edit(a)}>Bearbeiten</button><button type="button" onClick={() => quickMhdFromMaster?.(a)}>MHD erfassen</button>
         <button onClick={() => deleteMasterArticle(a)}>Löschen</button>
       </div>
