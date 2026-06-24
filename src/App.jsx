@@ -84,6 +84,14 @@ function mhdInputValue(value){
   if(/^\d{4}-\d{2}-\d{2}$/.test(raw)) return toGermanDate(raw)
   return raw
 }
+function mhdMonthYearInputValue(value){
+  const raw = String(value || '')
+  if(/^\d{4}-\d{2}-\d{2}$/.test(raw)){
+    const [y,m] = raw.split('-')
+    return `${m}.${y}`
+  }
+  return raw
+}
 const isAdmin = u => ['chef','chef_temp','stationsleitung'].includes(u?.rolle)
 const cleanCode = v => String(v || '').replace(/\D/g,'')
 const stripLeadingZeros = v => cleanCode(v).replace(/^0+/, '')
@@ -1938,9 +1946,11 @@ function Article({item,user,writeOffArticle,markArticleCheckedZero,setEditArticl
 
 function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addItem,user,inlineMsg,masterArticles=[],reportMissingArticle,saveMasterArticle}){
   const [searchTerm, setSearchTerm] = useState('')
+  const [articleNumberTerm, setArticleNumberTerm] = useState('')
   const [searchMsg, setSearchMsg] = useState(null)
   const [missingMode, setMissingMode] = useState(false)
   const [missingDialog, setMissingDialog] = useState({ open:false, ean:'', artikelnummer:'', name:'', bild_url:'' })
+  const [mhdInputMode, setMhdInputMode] = useState('full')
 
   function übernehmen(article){
     if(!article) return false
@@ -1955,51 +1965,68 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
       menge: ''
     }))
     setMissingMode(false)
+    setSearchTerm(article.barcode || '')
+    setArticleNumberTerm(article.artikelnummer || '')
     appFeedback('click')
     setSearchMsg({type:'success', text:'✓ Artikel gefunden: ' + (article.name || article.barcode)})
     return true
   }
 
   function suche(value, options = {}){
-    const { openMissing = false } = options
+    const { openMissing = false, mode = 'any' } = options
     const term = String(value || '').trim()
     if(!term) return false
 
-    const found = masterArticles.find(a =>
-      String(a.artikelnummer || '').trim() === term ||
-      codesEqual(a.barcode, term)
-    )
+    const found = masterArticles.find(a => {
+      const byArticle = String(a.artikelnummer || '').trim() === term
+      const byEan = codesEqual(a.barcode, term)
+      if(mode === 'artikelnummer') return byArticle
+      if(mode === 'ean') return byEan
+      return byArticle || byEan
+    })
 
     if(found) return übernehmen(found)
 
     const clean = term.replace(/\D/g,'')
-    if(clean){
-      setForm(f => ({...f, barcode:f.barcode || clean, artikelnummer:f.artikelnummer || clean}))
+    if(clean && mode !== 'artikelnummer'){
+      setForm(f => ({...f, barcode:clean, artikelnummer:f.artikelnummer || ''}))
+    }
+    if(clean && mode === 'artikelnummer'){
+      setForm(f => ({...f, artikelnummer:clean}))
     }
 
-    // Bei manueller Eingabe nicht nach wenigen Ziffern automatisch melden.
-    // Das Popup öffnet nur nach Barcode-Scan, Enter oder fertiger EAN-Länge.
-    if(openMissing && clean){
+    // Bei manueller Eingabe nur suchen und keine Meldemaske erzwingen.
+    // Die Meldemaske öffnet nur beim echten Scanner oder bewusstem Enter im EAN-Feld.
+    if(openMissing && clean && mode !== 'artikelnummer'){
       appFeedback('warning')
       setMissingMode(true)
       setMissingDialog({ open:true, ean:clean, artikelnummer:'', name:'', bild_url:'' })
       setSearchMsg({type:'warning', text:'Artikel nicht in Artikelliste gefunden. Bitte Namen eingeben und als fehlenden Artikel melden.'})
     }else{
-      setSearchMsg({type:'warning', text:'Noch kein Treffer. Weiter eingeben oder Enter drücken zum Melden.'})
+      setSearchMsg({type:'warning', text:'Noch kein Treffer gefunden. EAN vollständig eingeben, Barcode scannen oder Artikelnummer prüfen.'})
     }
     return false
   }
 
   function handleSearch(value){
-    setSearchTerm(value)
-    const term = String(value || '').trim()
-    if(term.length >= 3) suche(term, { openMissing:false })
+    const clean = String(value || '').replace(/\D/g,'')
+    setSearchTerm(clean)
+    setForm(f => ({...f, barcode:clean}))
+    if(clean.length >= 3) suche(clean, { openMissing:false, mode:'ean' })
+  }
+
+  function handleArticleNumberSearch(value){
+    const clean = String(value || '').replace(/\D/g,'')
+    setArticleNumberTerm(clean)
+    setForm(f => ({...f, artikelnummer:clean}))
+    if(clean.length >= 1) suche(clean, { openMissing:false, mode:'artikelnummer' })
   }
 
   function handleBarcode(value){
     const clean = String(value || '').replace(/\D/g,'')
-    setForm(f => ({...f, barcode:clean, artikelnummer:f.artikelnummer || clean}))
-    if([8,12,13].includes(clean.length)) suche(clean, { openMissing:true })
+    setSearchTerm(clean)
+    setForm(f => ({...f, barcode:clean}))
+    if(clean.length >= 3) suche(clean, { openMissing:false, mode:'ean' })
   }
 
   useEffect(() => {
@@ -2007,8 +2034,8 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
       const code = String(e.detail || '').replace(/\D/g,'')
       if(code){
         setSearchTerm(code)
-        setForm(f => ({...f, barcode:code, artikelnummer:f.artikelnummer || code}))
-        setTimeout(() => suche(code, { openMissing:true }), 50)
+        setForm(f => ({...f, barcode:code}))
+        setTimeout(() => suche(code, { openMissing:true, mode:'ean' }), 50)
       }
     }
     window.addEventListener('mhd-scan-code', onScan)
@@ -2025,6 +2052,7 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
     setSearchMsg({type:'success', text:'✓ Fehlender Artikel wurde an Chef/Stationsleitung gemeldet.'})
     setForm(f => ({...f, barcode:'', artikelnummer:'', name:''}))
     setSearchTerm('')
+    setArticleNumberTerm('')
     setMissingMode(false)
     setMissingDialog({ open:false, ean:'', artikelnummer:'', name:'', bild_url:'' })
     appFeedback('success')
@@ -2049,6 +2077,7 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
     if(ok === false){ appFeedback('error'); setSearchMsg({type:'error', text:'Artikel konnte nicht angelegt werden.'}); return }
     setForm(f => ({...f, barcode:clean, artikelnummer, name, bild_url:missingDialog.bild_url || f.bild_url || '', kategorie:f.kategorie || 'Sonstiges'}))
     setSearchTerm(clean)
+    setArticleNumberTerm(artikelnummer)
     setMissingMode(false)
     setMissingDialog({ open:false, ean:'', artikelnummer:'', name:'', bild_url:'' })
     setSearchMsg({type:'success', text:'✓ Artikel wurde direkt in der Artikelliste angelegt. MHD kann jetzt eingetragen werden.'})
@@ -2109,16 +2138,27 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
 
     <button className="scannerButton" type="button" onClick={() => setScannerOpen(true)}>📷 Barcode scannen</button>
 
-    <label>Artikelnummer oder EAN suchen</label>
+    <label>EAN / Barcode suchen</label>
     <input
       className="realInput"
       type="text"
       inputMode="numeric"
       autoComplete="off"
-      placeholder="Artikelnummer oder EAN"
+      placeholder="EAN / Barcode scannen oder eingeben"
       value={searchTerm}
       onChange={e => handleSearch(e.target.value)}
-      onKeyDown={e => { if(e.key === 'Enter'){ e.preventDefault(); suche(searchTerm, { openMissing:true }) } }}
+      onKeyDown={e => { if(e.key === 'Enter'){ e.preventDefault(); suche(searchTerm, { openMissing:true, mode:'ean' }) } }}
+    />
+
+    <label>Interne Artikelnummer suchen</label>
+    <input
+      className="realInput"
+      type="text"
+      inputMode="numeric"
+      autoComplete="off"
+      placeholder="Interne Artikelnummer"
+      value={articleNumberTerm}
+      onChange={e => handleArticleNumberSearch(e.target.value)}
     />
     <InlineFeedback msg={searchMsg}/>
 
@@ -2166,15 +2206,16 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
 
 
 
-    <label>MHD</label>
+    <label>MHD vollständiges Datum</label>
     <div className="mhdInputRow">
       <input
         className="realInput"
         type="text"
         inputMode="numeric"
-        placeholder="TT.MM.JJJJ oder MM.JJJJ"
-        value={mhdInputValue(form.mhd || '')}
-        onChange={e => setForm({...form, mhd:e.target.value})}
+        placeholder="TT.MM.JJJJ"
+        value={mhdInputMode === 'full' ? mhdInputValue(form.mhd || '') : ''}
+        onFocus={() => setMhdInputMode('full')}
+        onChange={e => { setMhdInputMode('full'); setForm({...form, mhd:e.target.value}) }}
         onBlur={e => {
           const iso = normalizeMhdInput(e.target.value)
           if(iso) setForm({...form, mhd:iso})
@@ -2186,9 +2227,25 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
         min={todayISO()}
         aria-label="MHD per Kalender auswählen"
         value={normalizeMhdInput(form.mhd) || ''}
-        onChange={e => setForm({...form, mhd:e.target.value})}
+        onChange={e => { setMhdInputMode('full'); setForm({...form, mhd:e.target.value}) }}
       />
     </div>
+
+    <label>MHD nur Monat/Jahr</label>
+    <input
+      className="realInput"
+      type="text"
+      inputMode="numeric"
+      placeholder="MM.JJJJ, z. B. 12.2026"
+      value={mhdInputMode === 'month' ? mhdMonthYearInputValue(form.mhd || '') : ''}
+      onFocus={() => setMhdInputMode('month')}
+      onChange={e => { setMhdInputMode('month'); setForm({...form, mhd:e.target.value}) }}
+      onBlur={e => {
+        const iso = normalizeMhdInput(e.target.value)
+        if(iso) setForm({...form, mhd:iso})
+      }}
+    />
+    <div className="submitHint">Wenn auf dem Artikel nur Monat/Jahr steht, wird automatisch der letzte Tag des Monats gespeichert.</div>
 
     <InlineFeedback msg={inlineMsg?.erfassen}/>
     <button className="primary" onClick={addItem}>Speichern</button>

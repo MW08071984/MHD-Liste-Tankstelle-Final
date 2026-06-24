@@ -1,0 +1,1 @@
+Build geprüft: EAN/Artikelnummer getrennt, MHD Voll-Datum + Monat/Jahr getrennt, sonst nichts absichtlich geändert.
