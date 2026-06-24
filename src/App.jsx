@@ -79,6 +79,11 @@ function toGermanDate(value){
   const [y,m,d] = iso.split('-')
   return `${d}.${m}.${y}`
 }
+function mhdInputValue(value){
+  const raw = String(value || '')
+  if(/^\d{4}-\d{2}-\d{2}$/.test(raw)) return toGermanDate(raw)
+  return raw
+}
 const isAdmin = u => ['chef','chef_temp','stationsleitung'].includes(u?.rolle)
 const cleanCode = v => String(v || '').replace(/\D/g,'')
 const stripLeadingZeros = v => cleanCode(v).replace(/^0+/, '')
@@ -458,6 +463,7 @@ export default function App(){
       gemeldet_von: row?.gemeldet_von || user?.name || '',
       gemeldet_von_nummer: Number(row?.gemeldet_von_nummer || user?.nummer || 0),
       status: row?.status || 'offen',
+      bild_url: row?.bild_url || '',
       erledigt_am: row?.erledigt_am || null,
       erledigt_von: row?.erledigt_von || ''
     }
@@ -852,7 +858,7 @@ export default function App(){
     setUser(null)
   }
 
-  async function reportMissingArticle(barcode, hinweis='Artikel nicht in Artikelliste gefunden', artikelname=''){
+  async function reportMissingArticle(barcode, hinweis='Artikel nicht in Artikelliste gefunden', artikelname='', bildUrl=''){
     const clean = String(barcode || '').replace(/\D/g,'')
     if(!clean) return false
 
@@ -866,7 +872,8 @@ export default function App(){
       hinweis: finalHinweis,
       gemeldet_von: user?.name || '',
       gemeldet_von_nummer: Number(user?.nummer || 0),
-      status: 'offen'
+      status: 'offen',
+      bild_url: bildUrl || ''
     }
 
     if(!db){
@@ -893,8 +900,8 @@ export default function App(){
       if(findError){
         console.warn('Fehlende-Artikel-Tabelle nicht erreichbar, Ersatzliste wurde genutzt:', findError)
       }else if(existing){
-        if(cleanName && !String(existing.hinweis || '').includes(cleanName)){
-          await supabase.from('fehlende_artikel').update({ hinweis: finalHinweis }).eq('id', existing.id)
+        if((cleanName && !String(existing.hinweis || '').includes(cleanName)) || (bildUrl && !existing.bild_url)){
+          await supabase.from('fehlende_artikel').update({ hinweis: finalHinweis, bild_url: bildUrl || existing.bild_url || '' }).eq('id', existing.id)
         }
       }else{
         await supabase.from('fehlende_artikel').insert({
@@ -902,7 +909,8 @@ export default function App(){
           hinweis: finalHinweis,
           gemeldet_von: user?.name || '',
           gemeldet_von_nummer: Number(user?.nummer || 0),
-          status: 'offen'
+          status: 'offen',
+          bild_url: bildUrl || ''
         })
       }
     }catch(e){
@@ -1073,6 +1081,28 @@ export default function App(){
     if(!file) return
     const url = await fileToDataUrl(file)
     setForm(f => ({ ...f, bild_url:url }))
+
+    // Wenn Chef/Stationsleitung ein Bild bei einem bereits bekannten Artikel ergänzt,
+    // sofort dauerhaft speichern. Sonst sah es so aus, als wäre es gespeichert,
+    // war nach dem Neuladen aber wieder weg.
+    try{
+      if(db && isAdmin(user)){
+        const clean = String(form.barcode || '').replace(/\D/g,'')
+        if(clean){
+          await supabase.from('artikel_stammdaten').update({ bild_url:url, updated_at:nowISO() }).eq('barcode', clean)
+          setMasterArticles(prev => prev.map(a => codesEqual(a.barcode, clean) ? {...a, bild_url:url} : a))
+        }
+        if(form.id){
+          await supabase.from('mhd_artikel').update({ bild_url:url }).eq('id', form.id)
+          setItems(prev => prev.map(x => x.id === form.id ? {...x, bild_url:url} : x))
+        }
+      }
+      msgAt('erfassen','success','✓ Bild übernommen und gespeichert.')
+      appFeedback('success')
+    }catch(err){
+      console.warn('Bild konnte nicht sofort gespeichert werden:', err)
+      msgAt('erfassen','warning','Bild übernommen. Bitte mit Speichern sichern.')
+    }
   }
 
 
@@ -1894,7 +1924,8 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
     return true
   }
 
-  function suche(value){
+  function suche(value, options = {}){
+    const { openMissing = false } = options
     const term = String(value || '').trim()
     if(!term) return false
 
@@ -1905,27 +1936,34 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
 
     if(found) return übernehmen(found)
 
-    appFeedback('warning')
-    setMissingMode(true)
     const clean = term.replace(/\D/g,'')
     if(clean){
       setForm(f => ({...f, barcode:f.barcode || clean, artikelnummer:f.artikelnummer || clean}))
-      setMissingDialog({ open:true, ean:clean, artikelnummer:'', name:'', bild_url:'' })
     }
-    setSearchMsg({type:'warning', text:'Artikel nicht in Artikelliste gefunden. Bitte Namen eingeben und als fehlenden Artikel melden.'})
+
+    // Bei manueller Eingabe nicht nach wenigen Ziffern automatisch melden.
+    // Das Popup öffnet nur nach Barcode-Scan, Enter oder fertiger EAN-Länge.
+    if(openMissing && clean){
+      appFeedback('warning')
+      setMissingMode(true)
+      setMissingDialog({ open:true, ean:clean, artikelnummer:'', name:'', bild_url:'' })
+      setSearchMsg({type:'warning', text:'Artikel nicht in Artikelliste gefunden. Bitte Namen eingeben und als fehlenden Artikel melden.'})
+    }else{
+      setSearchMsg({type:'warning', text:'Noch kein Treffer. Weiter eingeben oder Enter drücken zum Melden.'})
+    }
     return false
   }
 
   function handleSearch(value){
     setSearchTerm(value)
     const term = String(value || '').trim()
-    if(term.length >= 3) suche(term)
+    if(term.length >= 3) suche(term, { openMissing:false })
   }
 
   function handleBarcode(value){
     const clean = String(value || '').replace(/\D/g,'')
     setForm(f => ({...f, barcode:clean, artikelnummer:f.artikelnummer || clean}))
-    if(clean.length >= 8) suche(clean)
+    if([8,12,13].includes(clean.length)) suche(clean, { openMissing:true })
   }
 
   useEffect(() => {
@@ -1934,7 +1972,7 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
       if(code){
         setSearchTerm(code)
         setForm(f => ({...f, barcode:code, artikelnummer:f.artikelnummer || code}))
-        setTimeout(() => suche(code), 50)
+        setTimeout(() => suche(code, { openMissing:true }), 50)
       }
     }
     window.addEventListener('mhd-scan-code', onScan)
@@ -1946,7 +1984,7 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
     const name = String(nameOverride || form.name || '').trim()
     if(!clean){ appFeedback('error'); setSearchMsg({type:'error', text:'Bitte erst EAN scannen oder eingeben.'}); return }
     if(!name){ appFeedback('error'); setSearchMsg({type:'error', text:'Bitte Artikelnamen eingeben.'}); return }
-    const ok = await reportMissingArticle?.(clean, 'EAN wurde beim Erfassen gescannt, aber nicht in der Artikelliste gefunden.', name)
+    const ok = await reportMissingArticle?.(clean, 'EAN wurde beim Erfassen gescannt, aber nicht in der Artikelliste gefunden.', name, missingDialog.bild_url || '')
     if(!ok){ appFeedback('error'); setSearchMsg({type:'error', text:'Fehlender Artikel konnte nicht gespeichert werden.'}); return }
     setSearchMsg({type:'success', text:'✓ Fehlender Artikel wurde an Chef/Stationsleitung gemeldet.'})
     setForm(f => ({...f, barcode:'', artikelnummer:'', name:''}))
@@ -2044,7 +2082,7 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
       placeholder="Artikelnummer oder EAN"
       value={searchTerm}
       onChange={e => handleSearch(e.target.value)}
-      onKeyDown={e => { if(e.key === 'Enter'){ e.preventDefault(); suche(searchTerm) } }}
+      onKeyDown={e => { if(e.key === 'Enter'){ e.preventDefault(); suche(searchTerm, { openMissing:true }) } }}
     />
     <InlineFeedback msg={searchMsg}/>
 
@@ -2099,7 +2137,7 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
         type="text"
         inputMode="numeric"
         placeholder="TT.MM.JJJJ oder MM.JJJJ"
-        value={toGermanDate(form.mhd || '')}
+        value={mhdInputValue(form.mhd || '')}
         onChange={e => setForm({...form, mhd:e.target.value})}
         onBlur={e => {
           const iso = normalizeMhdInput(e.target.value)
@@ -2115,10 +2153,10 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
       />
     </div>
 
-    {isAdmin(user) && <div className="captureRow"><label className="upload captureButton">📷 Bild aufnehmen<input type="file" accept="image/*" capture="environment" onChange={uploadFormImg}/></label><label className="upload captureButton">📁 Bild hochladen<input type="file" accept="image/*" onChange={uploadFormImg}/></label></div>}
-    {form.bild_url && <img className="preview" src={form.bild_url} loading="lazy" decoding="async"/>}
     <InlineFeedback msg={inlineMsg?.erfassen}/>
     <button className="primary" onClick={addItem}>Speichern</button>
+    {isAdmin(user) && <div className="captureRow"><label className="upload captureButton">📷 Bild aufnehmen<input type="file" accept="image/*" capture="environment" onChange={uploadFormImg}/></label><label className="upload captureButton">📁 Bild hochladen<input type="file" accept="image/*" onChange={uploadFormImg}/></label></div>}
+    {form.bild_url && <img className="preview" src={form.bild_url} loading="lazy" decoding="async"/>}
   </section>
 }
 
@@ -2402,8 +2440,15 @@ function MasterArticles({masterArticles,saveMasterArticle,deleteMasterArticle,se
   async function upload(e){
     const file = await compressImageFile(e.target.files?.[0])
     if(!file) return
-    setData({...data, bild_url:await fileToDataUrl(file)})
-    setMsg({type:'success', text:'✓ Bild übernommen. Speichern nicht vergessen.'})
+    const url = await fileToDataUrl(file)
+    const next = {...data, bild_url:url}
+    setData(next)
+    if(next.id && next.barcode && next.name){
+      const ok = await saveMasterArticle(next)
+      setMsg(ok === false ? {type:'error', text:'Bild konnte nicht gespeichert werden.'} : {type:'success', text:'✓ Bild übernommen und gespeichert.'})
+    }else{
+      setMsg({type:'success', text:'✓ Bild übernommen. Beim Artikel anlegen wird es mitgespeichert.'})
+    }
   }
 
   async function removeBg(){
