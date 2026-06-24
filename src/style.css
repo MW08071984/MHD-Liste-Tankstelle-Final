@@ -698,19 +698,7 @@ button.danger,.danger,.actions button.danger{
   .stats{grid-template-columns:1fr}
 }
 
-/* DESIGN-AUSWAHL PRO GERAET */
-.themeSelect{
-  width:auto;
-  min-width:112px;
-  max-width:140px;
-  border:2px solid #ffd900;
-  border-radius:14px;
-  padding:7px 8px;
-  background:#fffdf0;
-  color:#7b1018;
-  font-weight:1000;
-  min-height:38px;
-}
+/* DESIGN-AUSWAHL: nur in Einstellungen, nicht in der Kopfzeile */
 .topActions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
 
 /* Bildstatus statt Vorschaubild in der Artikelliste */
@@ -726,12 +714,18 @@ button.danger,.danger,.actions button.danger{
   background:linear-gradient(180deg,#ffe85a,#fff6bc 45%,#fff9da);
 }
 .app.theme-modern{
-  --red:#0f766e;--dark:#12343b;--yellow:#e7f7f4;--cream:#ffffff;--soft:#f1fbf9;--text:#102326;
-  background:linear-gradient(180deg,#e7f7f4,#ffffff 45%,#f7fafc);
+  --red:#2563eb;--dark:#0f172a;--yellow:#dbeafe;--cream:#f8fbff;--soft:#eaf2ff;--text:#0f172a;
+  background:linear-gradient(180deg,#dbeafe,#f8fbff 42%,#ffffff);
 }
-.app.theme-modern .topbar{background:linear-gradient(135deg,#12343b,#0f766e)!important;color:#ffffff!important;border-bottom:3px solid #14b8a6}
-.app.theme-modern .tabs button.active{background:#0f766e!important;color:#fff!important;border-color:#0f766e!important}
-.app.theme-modern button:not(.logout):not(.pushBtn){box-shadow:0 6px 14px rgba(15,118,110,.14)}
+.app.theme-modern .topbar{background:linear-gradient(135deg,#0f172a,#2563eb)!important;color:#ffffff!important;border-bottom:3px solid #93c5fd}
+.app.theme-modern .tabs button.active{background:#2563eb!important;color:#fff!important;border-color:#1d4ed8!important}
+.app.theme-modern button:not(.logout):not(.pushBtn){box-shadow:0 6px 14px rgba(37,99,235,.16)}
+.app.theme-light{
+  --red:#6b7280;--dark:#111827;--yellow:#f9fafb;--cream:#ffffff;--soft:#f3f4f6;--text:#111827;
+  background:linear-gradient(180deg,#ffffff,#f9fafb 55%,#f3f4f6);
+}
+.app.theme-light .topbar{background:linear-gradient(135deg,#ffffff,#f3f4f6)!important;color:#111827!important;border-bottom:3px solid #d1d5db!important}
+.app.theme-light .tabs button.active{background:#111827!important;color:#fff!important;border-color:#111827!important}
 .app.theme-blue{
   --red:#1f5f99;--dark:#06345f;--yellow:#d8ecff;--cream:#f3f9ff;--soft:#d7ecff;--text:#06192b;
   background:linear-gradient(180deg,#d8ecff,#f5fbff 45%,#ffffff);
@@ -740,30 +734,24 @@ button.danger,.danger,.actions button.danger{
   --red:#24823a;--dark:#0f4f22;--yellow:#e5ffd8;--cream:#f6fff2;--soft:#dff7d4;--text:#06260e;
   background:linear-gradient(180deg,#e5ffd8,#f8fff5 45%,#ffffff);
 }
-.app.theme-light{
-  --red:#374151;--dark:#111827;--yellow:#f3f4f6;--cream:#ffffff;--soft:#f9fafb;--text:#111827;
-  background:linear-gradient(180deg,#f3f4f6,#ffffff 45%,#ffffff);
-}
-.app.theme-light .topbar{background:linear-gradient(135deg,#111827,#374151)!important;color:#fff!important}
-.app.theme-light .tabs button.active{background:#374151!important;color:#fff!important;border-color:#111827!important}
 .app.theme-petrol{
   --red:#0f766e;--dark:#134e4a;--yellow:#ccfbf1;--cream:#f0fdfa;--soft:#d9fbf3;--text:#042f2e;
   background:linear-gradient(180deg,#99f6e4,#f0fdfa 48%,#ffffff);
 }
 .app.theme-petrol .topbar{background:linear-gradient(135deg,#042f2e,#0f766e)!important;color:#ccfbf1!important}
 .app.theme-petrol .tabs button.active{background:#0f766e!important;color:#fff!important;border-color:#134e4a!important}
-.app.theme-orange{
-  --red:#ea580c;--dark:#7c2d12;--yellow:#ffedd5;--cream:#fff7ed;--soft:#fed7aa;--text:#431407;
-  background:linear-gradient(180deg,#fed7aa,#fff7ed 45%,#ffffff);
+.app.theme-slate{
+  --red:#475569;--dark:#1e293b;--yellow:#e2e8f0;--cream:#f8fafc;--soft:#f1f5f9;--text:#0f172a;
+  background:linear-gradient(180deg,#e2e8f0,#f8fafc 45%,#ffffff);
 }
-.app.theme-orange .topbar{background:linear-gradient(135deg,#7c2d12,#ea580c)!important;color:#fff7ed!important}
-.app.theme-orange .tabs button.active{background:#ea580c!important;color:#fff!important;border-color:#7c2d12!important}
-.app.theme-violet{
-  --red:#7c3aed;--dark:#4c1d95;--yellow:#ede9fe;--cream:#faf5ff;--soft:#ddd6fe;--text:#2e1065;
-  background:linear-gradient(180deg,#ddd6fe,#faf5ff 45%,#ffffff);
+.app.theme-slate .topbar{background:linear-gradient(135deg,#0f172a,#475569)!important;color:#f8fafc!important;border-bottom:3px solid #94a3b8!important}
+.app.theme-slate .tabs button.active{background:#475569!important;color:#fff!important;border-color:#1e293b!important}
+.app.theme-berry{
+  --red:#be123c;--dark:#4c0519;--yellow:#ffe4e6;--cream:#fff7f8;--soft:#fecdd3;--text:#3f0715;
+  background:linear-gradient(180deg,#ffe4e6,#fff7f8 45%,#ffffff);
 }
-.app.theme-violet .topbar{background:linear-gradient(135deg,#4c1d95,#7c3aed)!important;color:#fff!important}
-.app.theme-violet .tabs button.active{background:#7c3aed!important;color:#fff!important;border-color:#4c1d95!important}
+.app.theme-berry .topbar{background:linear-gradient(135deg,#4c0519,#be123c)!important;color:#fff1f2!important;border-bottom:3px solid #fb7185!important}
+.app.theme-berry .tabs button.active{background:#be123c!important;color:#fff!important;border-color:#4c0519!important}
 
 .app.theme-dark{
   --red:#ffcc33;--dark:#111111;--yellow:#202020;--cream:#1b1b1b;--soft:#262626;--text:#f5f5f5;
@@ -792,6 +780,5 @@ button.danger,.danger,.actions button.danger{
 .app.theme-contrast input,.app.theme-contrast select{border:3px solid #000!important}
 
 @media(max-width:560px){
-  .themeSelect{min-width:96px;max-width:112px;font-size:12px;min-height:34px;padding:5px 6px}
   .topActions{gap:5px}
 }

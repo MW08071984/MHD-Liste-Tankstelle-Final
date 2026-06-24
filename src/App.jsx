@@ -1856,18 +1856,6 @@ export default function App(){
         <h1>Hallo {user.name}</h1>
       </div>
       <div className="topActions">
-        <select className="themeSelect" value={uiTheme} onChange={e => setUiTheme(e.target.value)} title="Design wählen">
-          <option value="classic">Klassisch</option>
-          <option value="modern">Modern</option>
-          <option value="light">Hell</option>
-          <option value="blue">Blau</option>
-          <option value="green">Grün</option>
-          <option value="petrol">Petrol</option>
-          <option value="orange">Orange</option>
-          <option value="violet">Violett</option>
-          <option value="dark">Dunkel</option>
-          <option value="contrast">Kontrast</option>
-        </select>
         <button className="pushBtn" onClick={enablePush} title="Push-Benachrichtigungen aktivieren/testen">🔔 Push</button>
         <button className="logout" onClick={logout}>Logout</button>
       </div>
@@ -3059,8 +3047,8 @@ function Settings({enablePush, settings = {}, saveSetting, uiTheme, setUiTheme})
         <option value="blue">Blau</option>
         <option value="green">Grün</option>
         <option value="petrol">Petrol</option>
-        <option value="orange">Orange</option>
-        <option value="violet">Violett</option>
+        <option value="slate">Schiefer</option>
+        <option value="berry">Beere</option>
         <option value="dark">Dunkel</option>
         <option value="contrast">Kontrastreich</option>
       </select>

@@ -1,0 +1,8 @@
+Build erfolgreich geprüft.
+Änderungen:
+- Design-Dropdown aus Kopfzeile entfernt.
+- Design-Auswahl bleibt nur in Einstellungen.
+- Orange und Violett entfernt.
+- Moderne/helle Designs deutlicher voneinander getrennt.
+- Zusätzliche Designs: Schiefer und Beere.
+- Keine Daten-/Funktionslogik absichtlich geändert.
