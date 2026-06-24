@@ -321,9 +321,10 @@ function mhdOpenAlarm(){
   }catch(e){ console.warn('Alarm konnte nicht abgespielt werden', e) }
 }
 
-function exportAbschriftenPDF(abschriften = [], title = 'Abschriftenliste', dateKey = ''){
+function exportAbschriftenPDF(abschriften = [], title = 'Abschriftenliste', dateKey = '', pdfPassword = ''){
   try{
-    const doc = new jsPDF()
+    const cleanPassword = String(pdfPassword || '').trim()
+    const doc = cleanPassword ? new jsPDF({ encryption: { userPassword: cleanPassword, ownerPassword: cleanPassword, userPermissions: ['print'] } }) : new jsPDF()
     const now = new Date().toLocaleDateString('de-DE')
     const listDate = dateKey ? formatDateDE(dateKey) : now
 
@@ -1265,12 +1266,14 @@ export default function App(){
 
     while(true){
       const mhd = prompt('MHD ' + round + ' für "' + articleName + '" eingeben (Format: JJJJ-MM-TT)')
-      if(!mhd || !/^\d{4}-\d{2}-\d{2}$/.test(mhd)){
+      const normalizedMhd = normalizeMhdInput(mhd)
+      if(!normalizedMhd){
         if(rows.length === 0) return setError('Kein gültiges MHD eingetragen. Es wurde kein Eintrag erstellt.')
         break
       }
+      if(isPastMhd(normalizedMhd)){ appFeedback('error'); return setError('MHD darf nicht in der Vergangenheit liegen.') }
 
-      rows.push({ mhd, menge:0 })
+      rows.push({ mhd:normalizedMhd, menge:0 })
 
       const more = confirm('Weiteres MHD für "' + articleName + '" hinzufügen?')
       if(!more) break
@@ -1426,6 +1429,7 @@ export default function App(){
 
   async function saveArticle(data){
     if(!isAdmin(user)) return setError('Keine Rechte.')
+    if(isPastMhd(data.mhd)){ appFeedback('error'); return setError('MHD darf nicht in der Vergangenheit liegen.') }
     const payload = {
       barcode:data.barcode || '',
       artikelnummer:data.artikelnummer || '',
@@ -1704,7 +1708,7 @@ export default function App(){
     </section>
 
     {isAdmin(user) && <section className="todayStats single">
-      <button className="pdfButton" onClick={() => exportAbschriftenPDF(writeoffs.filter(w => w.typ !== 'kontrolle' && entryDateKey(w) === todayISO()), 'Abschriftenliste', todayISO())}>📄 Abschriftenliste herunterladen</button>
+      <button className="pdfButton" onClick={() => exportAbschriftenPDF(writeoffs.filter(w => w.typ !== 'kontrolle' && entryDateKey(w) === todayISO()), 'Abschriftenliste', todayISO(), settings?.abschriften_pdf_passwort || '')}>📄 Abschriftenliste herunterladen</button>
     </section>}
 
     <nav className="tabs">
@@ -1718,12 +1722,12 @@ export default function App(){
     {tab === 'dashboard' && <Dashboard safeEditOverviewItem={safeEditOverviewItem} items={articleFilter === 'all' ? items : filteredItems} articleFilter={articleFilter} setTab={setTab} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} deleteMhdEntry={deleteMhdEntry} inlineMsg={inlineMsg}/>}
     {tab === 'erfassen' && <Erfassen form={form} setForm={setForm} setScannerOpen={setScannerOpen} lookupBarcode={lookupBarcode} uploadFormImg={uploadFormImg} addItem={addItem} user={user} inlineMsg={inlineMsg} masterArticles={masterArticles} reportMissingArticle={reportMissingArticle} saveMasterArticle={saveMasterArticle}/>}
     {tab === 'backwaren' && <Backwaren backwaren={backwaren} saveBackwarenList={saveBackwarenList} writeOff={writeOff} user={user}/>}
-    {tab === 'abschriften' && isAdmin(user) && <Abschriften writeoffs={writeoffs.filter(w => w.typ !== 'kontrolle')} user={user} setEditWriteoff={setEditWriteoff} deleteWriteoff={deleteWriteoff} deleteWriteoffsForDay={deleteWriteoffsForDay} undoWriteoff={undoWriteoff}/>}
+    {tab === 'abschriften' && isAdmin(user) && <Abschriften writeoffs={writeoffs.filter(w => w.typ !== 'kontrolle')} user={user} setEditWriteoff={setEditWriteoff} deleteWriteoff={deleteWriteoff} deleteWriteoffsForDay={deleteWriteoffsForDay} undoWriteoff={undoWriteoff} pdfPassword={settings?.abschriften_pdf_passwort || ''}/>}
     {tab === 'fehlende' && isAdmin(user) && <MissingArticles missingArticles={missingArticles} markMissingDone={markMissingDone} takeOverMissingArticle={takeOverMissingArticle} recheckMissingArticle={recheckMissingArticle}/>}    {tab === 'stammdaten' && isAdmin(user) && <MasterArticles prefillArticle={prefillMasterArticle} onPrefillUsed={() => setPrefillMasterArticle(null)} onMissingSaved={markMissingDone} quickMhdFromMaster={quickMhdFromMaster} masterArticles={masterArticles} saveMasterArticle={saveMasterArticle} deleteMasterArticle={deleteMasterArticle} setMasterScannerOpen={setMasterScannerOpen}/>}
     {tab === 'dienstplan' && <Dienstplan settings={settings} saveSetting={saveSetting} user={user}/>}
     {tab === 'online' && isAdmin(user) && <Online online={online}/>}
     {tab === 'verwaltung' && isAdmin(user) && <Verwaltung employees={employees} saveEmployee={saveEmployee} deleteEmployee={deleteEmployee} resetPassword={resetPassword}/>}
-    {tab === 'settings' && isAdmin(user) && <Settings enablePush={enablePush}/>}
+    {tab === 'settings' && isAdmin(user) && <Settings enablePush={enablePush} settings={settings} saveSetting={saveSetting}/>}
 
     {masterScannerOpen && <Scanner onClose={() => setMasterScannerOpen(false)} onDetected={(code) => { localStorage.setItem('mhd_master_scanned_ean', code); window.dispatchEvent(new CustomEvent('mhd-master-scan', {detail:code})); setMasterScannerOpen(false) }}/>} 
     {scannerOpen && <Scanner onClose={() => setScannerOpen(false)} onDetected={(code) => {
@@ -1777,6 +1781,38 @@ async function compressImageFile(file, maxSize = 360, quality = 0.68){
     if(url) URL.revokeObjectURL(url)
   }
 }
+
+
+
+async function compressPlanFile(file, maxSize = 1800, quality = 0.86){
+  if(!file || !file.type || !file.type.startsWith('image/')) return file
+  let url = ''
+  try{
+    const img = new Image()
+    url = URL.createObjectURL(file)
+    await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = url })
+    const scale = Math.min(1, maxSize / Math.max(img.width || maxSize, img.height || maxSize))
+    const w = Math.max(1, Math.round((img.width || maxSize) * scale))
+    const h = Math.max(1, Math.round((img.height || maxSize) * scale))
+    const canvas = document.createElement('canvas')
+    canvas.width = w
+    canvas.height = h
+    const ctx = canvas.getContext('2d')
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, w, h)
+    ctx.drawImage(img, 0, 0, w, h)
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', quality))
+    if(!blob) return file
+    return new File([blob], (file.name || 'dienstplan').replace(/\.[^.]+$/, '') + '.jpg', { type:'image/jpeg' })
+  }catch{
+    return file
+  }finally{
+    if(url) URL.revokeObjectURL(url)
+  }
+}
+
+const slugifyMonthLabel = (value) => String(value || '').trim().toLowerCase().replace(/ä/g,'ae').replace(/ö/g,'oe').replace(/ü/g,'ue').replace(/ß/g,'ss').replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'') || 'plan'
+const isPastMhd = (iso) => !!iso && iso < todayISO()
 
 function LazyArticleImage({src,alt='Artikelbild'}){
   const [show,setShow] = useState(false)
@@ -2147,6 +2183,7 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
       <input
         className="realInput calendarInput"
         type="date"
+        min={todayISO()}
         aria-label="MHD per Kalender auswählen"
         value={normalizeMhdInput(form.mhd) || ''}
         onChange={e => setForm({...form, mhd:e.target.value})}
@@ -2276,7 +2313,7 @@ function Backwaren({backwaren,saveBackwarenList,writeOff,user}){
   </section>
 }
 
-function Abschriften({writeoffs,user,setEditWriteoff,deleteWriteoff,deleteWriteoffsForDay,undoWriteoff}){
+function Abschriften({writeoffs,user,setEditWriteoff,deleteWriteoff,deleteWriteoffsForDay,undoWriteoff,pdfPassword=''}){
   const groups = groupByDay(writeoffs)
   const [openDay, setOpenDay] = useState(groups[0]?.[0] || '')
 
@@ -2293,7 +2330,7 @@ function Abschriften({writeoffs,user,setEditWriteoff,deleteWriteoff,deleteWriteo
           <b>❌ {entries.length} Abschriften</b>
         </button>
         <div className="dayHeaderActions">
-          <button className="dayPdfBtn" onClick={() => exportAbschriftenPDF(entries, 'Abschriften', day)}>📄 PDF</button>
+          <button className="dayPdfBtn" onClick={() => exportAbschriftenPDF(entries, 'Abschriften', day, pdfPassword)}>📄 PDF</button>
           {isAdmin(user) && <button className="dayDeleteBtn" onClick={() => deleteWriteoffsForDay(day, entries)}>🗑️ Löschen</button>}
         </div>
       </div>
@@ -2330,7 +2367,7 @@ function Kontrollen({controls,user,deleteWriteoff}){
       </button>
 
       {openDay === day && <div className="dayContent">
-        <button className="pdfButton" onClick={() => exportAbschriftenPDF(entries, 'Kontrollen', day)}>PDF-Liste speichern</button>
+        <button className="pdfButton" onClick={() => exportAbschriftenPDF(entries, 'Kontrollen', day, pdfPassword)}>PDF-Liste speichern</button>
         {entries.map(w => <div className="item kontrolleItem" key={w.id}>
           <div className="artikelnummer small">OK</div>
           <div className="grow"><b>✅ Kontrolliert – {w.name || w.artikel}</b><p>Bestand war 0 · keine Abschrift · {w.mitarbeiter} · {new Date(w.datum || w.created_at).toLocaleDateString('de-DE')}</p></div>
@@ -2603,18 +2640,90 @@ function Bilder({items,reload}){
 }
 
 function Dienstplan({settings,saveSetting,user}){
-  const [month, setMonth] = useState('juni')
-  const src = settings['dienstplan_' + month] || ''
-  async function upload(e){
-    const file = await compressImageFile(e.target.files?.[0])
-    if(file) saveSetting('dienstplan_' + month, await fileToDataUrl(file))
+  const labelsFromSettings = (() => {
+    try{
+      const parsed = JSON.parse(settings.dienstplan_monate || '[]')
+      return Array.isArray(parsed) && parsed.length ? parsed : ['Mai','Juni']
+    }catch{ return ['Mai','Juni'] }
+  })()
+  const [month, setMonth] = useState(labelsFromSettings[0] || 'Juni')
+  const [editName, setEditName] = useState(month)
+  const [fullOpen, setFullOpen] = useState(false)
+  useEffect(() => {
+    if(!labelsFromSettings.includes(month)) setMonth(labelsFromSettings[0] || 'Juni')
+  }, [settings.dienstplan_monate])
+  useEffect(() => { setEditName(month) }, [month])
+  const key = 'dienstplan_' + slugifyMonthLabel(month)
+  const src = settings[key] || ''
+  const isPdf = String(src || '').startsWith('data:application/pdf')
+
+  async function saveMonthLabels(next){
+    const cleaned = Array.from(new Set(next.map(x => String(x || '').trim()).filter(Boolean)))
+    await saveSetting('dienstplan_monate', JSON.stringify(cleaned.length ? cleaned : ['Juni']))
   }
+
+  async function upload(e){
+    const original = e.target.files?.[0]
+    const file = await compressPlanFile(original)
+    if(file){
+      await saveSetting(key, await fileToDataUrl(file))
+    }
+    try{ e.target.value = '' }catch{}
+  }
+
+  async function renameMonth(){
+    const nextName = String(editName || '').trim()
+    if(!nextName) return alert('Bitte Monatsnamen eingeben.')
+    const oldKey = key
+    const newKey = 'dienstplan_' + slugifyMonthLabel(nextName)
+    const nextLabels = labelsFromSettings.map(x => x === month ? nextName : x)
+    await saveMonthLabels(nextLabels)
+    if(src && newKey !== oldKey){
+      await saveSetting(newKey, src)
+      await saveSetting(oldKey, '')
+    }
+    setMonth(nextName)
+  }
+
+  async function addMonth(){
+    const name = prompt('Neuen Monat eingeben, z. B. Juli')
+    if(!name) return
+    const clean = String(name).trim()
+    if(!clean) return
+    await saveMonthLabels([...labelsFromSettings, clean])
+    setMonth(clean)
+  }
+
+  async function deletePlan(){
+    if(!src) return
+    if(!confirm('Dienstplan für ' + month + ' wirklich löschen?')) return
+    await saveSetting(key, '')
+  }
+
   return <section className="formCard">
     <h2>Dienstplan</h2>
-    <div className="planSwitch"><button className={month === 'mai' ? 'active' : ''} onClick={() => setMonth('mai')}>Mai</button><button className={month === 'juni' ? 'active' : ''} onClick={() => setMonth('juni')}>Juni</button></div>
-    {src ? <div className="dienstplanBox"><img src={src}/></div> : <div className="empty">Noch kein Dienstplan hinterlegt.</div>}
-    {src && <a className="downloadBtn" href={src} target="_blank">Plan groß öffnen</a>}
+    <div className="planSwitch">
+      {labelsFromSettings.map(label => <button key={label} className={month === label ? 'active' : ''} onClick={() => setMonth(label)}>{label}</button>)}
+      {isAdmin(user) && <button type="button" onClick={addMonth}>+ Monat</button>}
+    </div>
+
+    {isAdmin(user) && <div className="adminBox dienstplanEditBox">
+      <label>Monatsname</label>
+      <input value={editName} onChange={e => setEditName(e.target.value)} placeholder="z. B. Juli" />
+      <button type="button" onClick={renameMonth}>Monatsname speichern</button>
+    </div>}
+
+    {src ? <div className="dienstplanBox">{isPdf ? <iframe title="Dienstplan" src={src}></iframe> : <img src={src}/>}</div> : <div className="empty">Noch kein Dienstplan hinterlegt.</div>}
+
+    {src && <button type="button" className="downloadBtn" onClick={() => setFullOpen(true)}>Plan groß öffnen</button>}
     {isAdmin(user) && <label className="upload">Plan hochladen/ersetzen<input type="file" accept="image/*,application/pdf" onChange={upload}/></label>}
+    {isAdmin(user) && src && <button type="button" className="danger" onClick={deletePlan}>Plan löschen</button>}
+
+    {fullOpen && <div className="modalOverlay"><div className="modalCard planFullModal">
+      <h2>Dienstplan {month}</h2>
+      <div className="planFullView">{isPdf ? <iframe title="Dienstplan groß" src={src}></iframe> : <img src={src} alt={'Dienstplan ' + month}/>}</div>
+      <div className="modalActions"><button onClick={() => setFullOpen(false)}>Schließen</button><a className="downloadBtn" href={src} target="_blank" rel="noreferrer">In neuem Fenster öffnen</a></div>
+    </div></div>}
   </section>
 }
 
@@ -2648,10 +2757,18 @@ function Verwaltung({employees,saveEmployee,deleteEmployee,resetPassword}){
   </section>
 }
 
-function Settings({enablePush}){
+function Settings({enablePush, settings = {}, saveSetting}){
+  const [pdfPass, setPdfPass] = useState(settings.abschriften_pdf_passwort || '')
+  useEffect(() => { setPdfPass(settings.abschriften_pdf_passwort || '') }, [settings.abschriften_pdf_passwort])
   return <section className="formCard">
     <h2>Einstellungen</h2>
     <button onClick={enablePush}>🔔 Push aktivieren/testen</button>
+    <div className="adminBox">
+      <b>PDF-Schutz Abschriften</b>
+      <p>Optionales Passwort für die Abschriften-PDF. Leer lassen = PDF ohne Passwort.</p>
+      <input type="text" placeholder="PDF Passwort" value={pdfPass} onChange={e => setPdfPass(e.target.value)} />
+      <button type="button" onClick={() => saveSetting?.('abschriften_pdf_passwort', pdfPass.trim())}>PDF-Passwort speichern</button>
+    </div>
     <div className="adminBox"><b>Verwaltung</b><p>Backwaren, Mitarbeiter, Bilder und Artikel sind nur für Chef/Stationsleitung/Michael vollständig bearbeitbar.</p></div>
   </section>
 }
@@ -2691,6 +2808,10 @@ function ArticleModal({item,close,save}){
       setLocalMsg({type:'error', text:'MHD fehlt.'})
       return
     }
+    if(isPastMhd(data.mhd)){
+      setLocalMsg({type:'error', text:'MHD darf nicht in der Vergangenheit liegen.'})
+      return
+    }
     save(data)
   }
 
@@ -2707,7 +2828,7 @@ function ArticleModal({item,close,save}){
     
 
     <label>MHD</label>
-    <input type="date" value={data.mhd || todayISO()} onChange={e => setData({...data, mhd:e.target.value})}/>
+    <input type="date" min={todayISO()} value={data.mhd || todayISO()} onChange={e => setData({...data, mhd:e.target.value})}/>
 
     <label>EAN / Barcode</label>
     <input placeholder="EAN / Barcode" value={data.barcode || ''} onChange={e => setData({...data, barcode:e.target.value.replace(/\D/g,'')})}/>

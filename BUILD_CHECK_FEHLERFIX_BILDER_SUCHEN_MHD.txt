@@ -1,0 +1,2 @@
+Build erfolgreich geprüft.
+Fixes: Bilder dauerhaft speichern, Suche öffnet Popup nicht mehr nach wenigen Ziffern, MHD-Feld bearbeitbar/löschbar, Speichern-Button vor Bildbuttons.

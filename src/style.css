@@ -439,3 +439,12 @@ button.danger{
 .missingArticleDialog .modalActions{display:grid;gap:10px}
 .missingArticleDialog .modalActions .primary{width:100%}
 @media (max-width:520px){.captureRow{grid-template-columns:1fr}}
+
+/* Dienstplan-Fix: lesbare Vorschau, Vollbild und Bearbeitung */
+.dienstplanBox iframe, .planFullView iframe { width:100%; min-height:75vh; border:0; border-radius:18px; background:#fff; }
+.dienstplanBox img { width:100%; height:auto; max-height:none; object-fit:contain; }
+.planFullModal { max-width:96vw; width:96vw; max-height:92vh; overflow:auto; }
+.planFullView { max-height:72vh; overflow:auto; border:4px solid var(--red); border-radius:18px; background:#fff; padding:8px; }
+.planFullView img { width:100%; height:auto; display:block; }
+.dienstplanEditBox input { width:100%; margin:8px 0; }
+.dienstplanEditBox button { width:100%; }
