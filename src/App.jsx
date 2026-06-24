@@ -2565,6 +2565,17 @@ function MasterArticles({masterArticles, mhdItems=[], saveMasterArticle,deleteMa
     return masterArticles.filter(a => `${a.name || ''} ${a.artikelnummer || ''} ${a.barcode || ''}`.toLowerCase().includes(term) || String(a.name || '').toLowerCase().startsWith(term))
   }, [masterArticles, articleSearch])
 
+  function articleCardImage(article){
+    if(!article) return ''
+    if(article.bild_url) return article.bild_url
+    const match = (mhdItems || []).find(item => {
+      const sameEan = article.barcode && item.barcode && codesEqual(item.barcode, article.barcode)
+      const sameArtNr = article.artikelnummer && item.artikelnummer && String(item.artikelnummer || '').trim() === String(article.artikelnummer || '').trim()
+      return (sameEan || sameArtNr) && item.bild_url
+    })
+    return match?.bild_url || ''
+  }
+
   function findExistingMaster(ean = data.barcode, artNr = data.artikelnummer){
     const cleanEan = String(ean || '').replace(/\D/g,'')
     const cleanArtNr = String(artNr || '').trim()
