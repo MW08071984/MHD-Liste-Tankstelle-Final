@@ -1859,8 +1859,12 @@ export default function App(){
         <select className="themeSelect" value={uiTheme} onChange={e => setUiTheme(e.target.value)} title="Design wählen">
           <option value="classic">Klassisch</option>
           <option value="modern">Modern</option>
+          <option value="light">Hell</option>
           <option value="blue">Blau</option>
           <option value="green">Grün</option>
+          <option value="petrol">Petrol</option>
+          <option value="orange">Orange</option>
+          <option value="violet">Violett</option>
           <option value="dark">Dunkel</option>
           <option value="contrast">Kontrast</option>
         </select>
@@ -3049,10 +3053,14 @@ function Settings({enablePush, settings = {}, saveSetting, uiTheme, setUiTheme})
       <b>Design wählen</b>
       <p>Jeder Mitarbeiter kann hier sein eigenes Design auf diesem Gerät auswählen.</p>
       <select value={uiTheme || 'modern'} onChange={e => setUiTheme?.(e.target.value)}>
-        <option value="classic">Klassisch / altes Design</option>
+        <option value="classic">Klassisch</option>
         <option value="modern">Modern</option>
+        <option value="light">Hell</option>
         <option value="blue">Blau</option>
         <option value="green">Grün</option>
+        <option value="petrol">Petrol</option>
+        <option value="orange">Orange</option>
+        <option value="violet">Violett</option>
         <option value="dark">Dunkel</option>
         <option value="contrast">Kontrastreich</option>
       </select>

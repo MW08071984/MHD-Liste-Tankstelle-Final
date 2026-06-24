@@ -1,0 +1,3 @@
+Build geprüft: Mehr Farbauswahl ergänzt. Keine Datenbank-/Logikänderungen.
+Designs: Klassisch, Modern, Hell, Blau, Grün, Petrol, Orange, Violett, Dunkel, Kontrast.
+Classic/Modern wurden stärker voneinander getrennt. Keine Shell-Bezeichnung verwendet.
