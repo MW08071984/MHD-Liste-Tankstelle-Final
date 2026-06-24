@@ -1,0 +1,7 @@
+Build geprüft: npm run build erfolgreich.
+Änderung:
+- Artikelbilder bleiben klein/komprimiert (compressImageFile 360x360 JPG 68%).
+- Listen laden weiterhin keine Base64-Bilder direkt.
+- Bild wird erst beim Klick auf "Bild anzeigen" aus der DB nachgeladen.
+- Beim Bearbeiten eines MHD-Artikels wird ein neues Bild zusätzlich in die Stammdaten gespiegelt, damit andere Geräte es sehen.
+- Bildaufnahme/Bildupload bleibt überall vorhanden.
