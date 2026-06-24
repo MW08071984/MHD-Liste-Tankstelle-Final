@@ -501,3 +501,27 @@ button.danger{
   .masterArticleActions{min-width:0;width:100%;}
   .masterArticleActions button{flex:1;}
 }
+
+/* Final Artikelliste: ohne Paket-Symbol, kompakte Karten, Bild direkt am Artikel */
+.masterArticleCard{display:grid!important;grid-template-columns:minmax(0,1fr);align-items:start!important;gap:12px!important;padding:18px!important;}
+.masterArticleInfo{min-width:0;display:grid;gap:4px;}
+.masterArticleTitle{font-size:24px!important;line-height:1.12!important;font-weight:1000!important;color:#240b00!important;word-break:break-word;}
+.masterArticleInfo p{font-size:17px;margin:2px 0!important;}
+.masterArticleInfo p span{min-width:70px;display:inline-block;color:#8b1016;font-weight:1000;}
+.masterArticleActions{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px!important;width:100%;min-width:0!important;}
+.masterArticleActions button,.masterArticleActions .miniUpload{width:100%;min-height:48px;border-radius:18px;font-size:16px;display:flex!important;align-items:center;justify-content:center;text-align:center;box-sizing:border-box;}
+.masterArticleActions button:first-child{grid-column:auto;}
+.cardImageButton{margin:0!important;}
+.imageStatus{width:max-content;max-width:100%;border-radius:999px;padding:5px 10px;font-weight:1000!important;margin-top:5px!important;}
+@media(min-width:700px){.masterArticleCard{grid-template-columns:minmax(0,1fr) 250px!important}.masterArticleActions{grid-template-columns:1fr!important}.masterArticleTitle{font-size:26px!important}}
+
+
+/* Kleine Info-Hilfe statt großer Hinweisboxen */
+.pageTitleRow,.pageTitleInline{display:flex;align-items:center;gap:10px;justify-content:space-between}
+.pageTitleRow h2,.pageTitleInline h2{margin:6px 0!important}
+.infoButton{width:44px!important;min-width:44px!important;height:44px!important;border-radius:999px!important;padding:0!important;background:#fffdf0!important;color:#8b1016!important;border:3px solid #d71920!important;font-size:20px!important;display:inline-grid!important;place-items:center!important}
+.infoModal{max-width:520px;text-align:left}
+.infoText{font-weight:900;line-height:1.35;color:#240b00;background:#fff7d6;border:2px dashed #c22;border-radius:16px;padding:12px}
+.sectionTopInfo{display:flex;justify-content:flex-end;margin-bottom:6px}
+/* Alte große Hinweise in der Artikelliste werden nicht mehr dauerhaft angezeigt */
+.formCard > .hint{display:none!important}

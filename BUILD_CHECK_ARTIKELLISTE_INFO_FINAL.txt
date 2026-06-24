@@ -1,0 +1,7 @@
+Build erfolgreich geprüft.
+Änderungen:
+- Große Hinweistexte in Artikelliste/Fehlende Artikel durch Info-Button ersetzt.
+- Info-Button-System für Seiten ergänzt.
+- Artikelliste lädt/erkennt Bildstatus auch aus Artikelstammdaten und MHD-Einträgen.
+- Bild aufnehmen / Bild hochladen direkt am gespeicherten Artikel vorhanden.
+- Kartenlayout ohne Paket-Symbol bleibt erhalten.

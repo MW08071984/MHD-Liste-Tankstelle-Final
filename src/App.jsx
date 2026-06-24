@@ -185,6 +185,23 @@ function removeImageBackground(src){
 }
 
 
+
+function InfoButton({title='Hinweis', children}){
+  const [open,setOpen] = useState(false)
+  return <>
+    <button type="button" className="infoButton" onClick={() => setOpen(true)} title={title}>ℹ️</button>
+    {open && <div className="modalOverlay"><div className="modalCard infoModal">
+      <h2>{title}</h2>
+      <div className="infoText">{children}</div>
+      <button type="button" onClick={() => setOpen(false)}>Schließen</button>
+    </div></div>}
+  </>
+}
+
+function PageTitle({title, info}){
+  return <div className="pageTitleRow"><h2>{title}</h2>{info && <InfoButton title={title}>{info}</InfoButton>}</div>
+}
+
 function InlineFeedback({msg}){
   if(!msg) return null
   return <div className={'inlineFeedback ' + msg.type}>{msg.text}</div>
@@ -406,6 +423,13 @@ export default function App(){
   const [masterArticles, setMasterArticles] = useState([])
   const [missingArticles, setMissingArticles] = useState([])
   const [prefillMasterArticle, setPrefillMasterArticle] = useState(null)
+  const [globalImage, setGlobalImage] = useState(null)
+
+  useEffect(() => {
+    function showImage(e){ setGlobalImage(e.detail || null) }
+    window.addEventListener('mhd-show-image', showImage)
+    return () => window.removeEventListener('mhd-show-image', showImage)
+  }, [])
 
   const missingStorageKey = 'mhd_fehlende_artikel_lokal'
   function readMissingLocal(){
@@ -734,7 +758,7 @@ export default function App(){
     // Bilder/Base64 machen die Liste auf Handys langsam. Für Suche/Erfassung reichen diese Felder.
     const { data, error } = await supabase
       .from('artikel_stammdaten')
-      .select('id,barcode,artikelnummer,name,kategorie,updated_at')
+      .select('id,barcode,artikelnummer,name,kategorie,bild_url,updated_at')
       .order('name')
     if(error){
       console.warn('Artikelliste konnte nicht geladen werden:', error)
@@ -1764,11 +1788,13 @@ export default function App(){
     {tab === 'erfassen' && <Erfassen form={form} setForm={setForm} setScannerOpen={setScannerOpen} lookupBarcode={lookupBarcode} uploadFormImg={uploadFormImg} addItem={addItem} user={user} inlineMsg={inlineMsg} masterArticles={masterArticles} reportMissingArticle={reportMissingArticle} saveMasterArticle={saveMasterArticle}/>}
     {tab === 'backwaren' && <Backwaren backwaren={backwaren} saveBackwarenList={saveBackwarenList} writeOff={writeOff} user={user}/>}
     {tab === 'abschriften' && isAdmin(user) && <Abschriften writeoffs={writeoffs.filter(w => w.typ !== 'kontrolle')} user={user} setEditWriteoff={setEditWriteoff} deleteWriteoff={deleteWriteoff} deleteWriteoffsForDay={deleteWriteoffsForDay} undoWriteoff={undoWriteoff} pdfPassword={settings?.abschriften_pdf_passwort || ''}/>}
-    {tab === 'fehlende' && isAdmin(user) && <MissingArticles missingArticles={missingArticles} markMissingDone={markMissingDone} takeOverMissingArticle={takeOverMissingArticle} recheckMissingArticle={recheckMissingArticle}/>}    {tab === 'stammdaten' && isAdmin(user) && <MasterArticles prefillArticle={prefillMasterArticle} onPrefillUsed={() => setPrefillMasterArticle(null)} onMissingSaved={markMissingDone} quickMhdFromMaster={quickMhdFromMaster} masterArticles={masterArticles} saveMasterArticle={saveMasterArticle} deleteMasterArticle={deleteMasterArticle} setMasterScannerOpen={setMasterScannerOpen}/>}
+    {tab === 'fehlende' && isAdmin(user) && <MissingArticles missingArticles={missingArticles} markMissingDone={markMissingDone} takeOverMissingArticle={takeOverMissingArticle} recheckMissingArticle={recheckMissingArticle}/>}    {tab === 'stammdaten' && isAdmin(user) && <MasterArticles prefillArticle={prefillMasterArticle} onPrefillUsed={() => setPrefillMasterArticle(null)} onMissingSaved={markMissingDone} quickMhdFromMaster={quickMhdFromMaster} masterArticles={masterArticles} mhdItems={items} saveMasterArticle={saveMasterArticle} deleteMasterArticle={deleteMasterArticle} setMasterScannerOpen={setMasterScannerOpen}/>}
     {tab === 'dienstplan' && <Dienstplan settings={settings} saveSetting={saveSetting} user={user}/>}
     {tab === 'online' && isAdmin(user) && <Online online={online}/>}
     {tab === 'verwaltung' && isAdmin(user) && <Verwaltung employees={employees} saveEmployee={saveEmployee} deleteEmployee={deleteEmployee} resetPassword={resetPassword}/>}
     {tab === 'settings' && isAdmin(user) && <Settings enablePush={enablePush} settings={settings} saveSetting={saveSetting}/>}
+
+    {globalImage && <div className="modalOverlay"><div className="modalCard imageOnlyModal"><h2>{globalImage.title || 'Bild anzeigen'}</h2><img className="smallProductImage" src={globalImage.src}/><button onClick={() => setGlobalImage(null)}>Schließen</button></div></div>}
 
     {masterScannerOpen && <Scanner onClose={() => setMasterScannerOpen(false)} onDetected={(code) => { localStorage.setItem('mhd_master_scanned_ean', code); window.dispatchEvent(new CustomEvent('mhd-master-scan', {detail:code})); setMasterScannerOpen(false) }}/>} 
     {scannerOpen && <Scanner onClose={() => setScannerOpen(false)} onDetected={(code) => {
@@ -1887,7 +1913,8 @@ function Dashboard({items,articleFilter='all',setTab,user,writeOffArticle,markAr
   const title = articleFilter === 'expired' ? 'Abgelaufene Artikel' : articleFilter === 'week' ? 'Nächste 7 Tage' : ''
   const shownItems = articleFilter === 'all' ? items.slice(0,8) : items
   return <section className="list">
-    {title && <div className="sectionHeader"><div><h2>{title}</h2><p className="filterInfo">{shownItems.length} Artikel angezeigt</p></div></div>}
+    {!title && <div className="sectionTopInfo"><InfoButton title="Übersicht">Hier siehst du die wichtigsten MHD-Artikel und kannst schnell zur Erfassung springen.</InfoButton></div>}
+    {title && <div className="sectionHeader"><div><div className="pageTitleInline"><h2>{title}</h2><InfoButton title={title}>Diese Liste zeigt nur die Artikel des ausgewählten Zeitraums.</InfoButton></div><p className="filterInfo">{shownItems.length} Artikel angezeigt</p></div></div>}
     <button className="primary" onClick={() => { setTab('erfassen'); window.scrollTo({top:0, behavior:'smooth'}) }}>+ Schnell erfassen</button>
     {shownItems.length === 0 && articleFilter !== 'all' && <div className="empty">Keine passenden Artikel vorhanden.</div>}
     {shownItems.map(item => <Article key={item.id} item={item} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} deleteMhdEntry={deleteMhdEntry} getArticleImage={getArticleImage}/>)}
@@ -1905,7 +1932,7 @@ function ArticleList({items,allCount,articleFilter,setArticleFilter,itemsLimited
   return <section className="list">
     <div className="sectionHeader">
       <div>
-        <h2>{title}</h2>
+        <div className="pageTitleInline"><h2>{title}</h2><InfoButton title={title}>Hier stehen die MHD-Einträge. Chef/Stationsleitung kann Einträge bearbeiten, löschen oder Abschriften speichern.</InfoButton></div>
         <p className="filterInfo">{shownItems.length} von {items.length} angezeigt · {allCount} Artikeln · Chef/Stationsleitung kann hier Einträge bearbeiten oder löschen.</p>
       </div>
       {itemsLimited && <button className="ghostSmall" onClick={loadAllItems}>Alle MHD laden</button>}
@@ -2135,7 +2162,7 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
   const nameReadOnly = !isAdmin(user) && !missingMode
 
   return <section className="formCard">
-    <h2>Artikel erfassen</h2>
+    <PageTitle title="Artikel erfassen" info="Hier wird ein Artikel gescannt oder per EAN/Artikelnummer gesucht und anschließend mit MHD gespeichert." />
 
     {missingDialog.open && <div className="modalOverlay">
       <div className="modalCard missingArticleDialog">
@@ -2368,12 +2395,11 @@ function Backwaren({backwaren,saveBackwarenList,writeOff,user}){
   }
 
   return <section className="list backwarenPage">
+    <div className="sectionTopInfo"><InfoButton title="Backwaren">Tagesende ist die normale Backwaren-Abschrift. MHD und Bruch findest du unter Sonderabschrift.</InfoButton></div>
     <div className="stickySubmit">
       <div><h2>Backwaren Tagesende</h2><p>{entries.length} Positionen · {total} Stück</p></div>
       <button disabled={!entries.length || sending} onClick={submit}>{sending ? 'Speichern...' : 'Alles absenden'}</button>
     </div>
-    <div className="submitHint">Tagesende ist die normale Backwaren-Abschrift. MHD und Bruch findest du unter „Sonderabschrift“.</div>
-
     <button className="ghostSmall" onClick={() => setSpecialOpen(!specialOpen)}>{specialOpen ? 'Sonderabschrift schließen' : '➕ Sonderabschrift MHD / Bruch'}</button>
 
     {specialOpen && <div className="adminBox specialBox">
@@ -2420,7 +2446,7 @@ function Abschriften({writeoffs,user,setEditWriteoff,deleteWriteoff,deleteWriteo
 
   return <section className="list">
     <div className="sectionHeader">
-      <h2>Abschriften</h2>
+      <PageTitle title="Abschriften" info="Hier werden Tages-Abschriften angezeigt, als PDF gespeichert oder tagesweise gelöscht." />
     </div>
     {groups.length === 0 && <div className="empty">Keine Abschriften vorhanden.</div>}
 
@@ -2492,8 +2518,7 @@ function MissingArticles({missingArticles,markMissingDone,takeOverMissingArticle
     return (m?.[1] || '').trim() || 'Ohne Namen'
   }
   return <section className="formCard">
-    <h2>Fehlende Artikel</h2>
-    <p className="hint">Hier landen EANs, die Mitarbeiter gescannt haben, aber nicht in der Artikelliste vorhanden sind. Chef/Stationsleitung kann sie danach in der Artikelliste einpflegen oder den Vorschlag löschen.</p>
+    <PageTitle title="Fehlende Artikel" info="Hier landen EANs, die Mitarbeiter gescannt haben, aber nicht in der Artikelliste vorhanden sind. Chef/Stationsleitung kann sie direkt übernehmen, abgleichen oder löschen." />
     {open.length === 0 && <div className="empty">Keine fehlenden Artikel vorhanden.</div>}
     {open.map(row => {
       const name = getMissingName(row)
@@ -2516,7 +2541,7 @@ function MissingArticles({missingArticles,markMissingDone,takeOverMissingArticle
   </section>
 }
 
-function MasterArticles({masterArticles,saveMasterArticle,deleteMasterArticle,setMasterScannerOpen,quickMhdFromMaster,prefillArticle,onPrefillUsed,onMissingSaved}){
+function MasterArticles({masterArticles, mhdItems=[], saveMasterArticle,deleteMasterArticle,setMasterScannerOpen,quickMhdFromMaster,prefillArticle,onPrefillUsed,onMissingSaved}){
   const empty = { barcode:'', artikelnummer:'', name:'', kategorie:'Sonstiges', bild_url:'' }
   const [data,setData] = useState(empty)
   const [msg,setMsg] = useState(null)
@@ -2656,6 +2681,15 @@ function MasterArticles({masterArticles,saveMasterArticle,deleteMasterArticle,se
     window.scrollTo({top:0, behavior:'smooth'})
   }
 
+  async function uploadArticleImageDirect(article, e){
+    const file = await compressImageFile(e.target.files?.[0])
+    e.target.value = ''
+    if(!file) return
+    const url = await fileToDataUrl(file)
+    const ok = await saveMasterArticle({...article, bild_url:url})
+    setMsg(ok === false ? {type:'error', text:'Bild konnte nicht gespeichert werden.'} : {type:'success', text:'✓ Bild bei Artikel gespeichert.'})
+  }
+
   async function save(){
     const existing = findExistingMaster(data.barcode, data.artikelnummer)
     if(existing){
@@ -2680,8 +2714,7 @@ function MasterArticles({masterArticles,saveMasterArticle,deleteMasterArticle,se
   }
 
   return <section className={prefillArticle ? "formCard takeoverForm" : "formCard"}>
-    <h2>{prefillArticle ? "Fehlenden Artikel übernehmen" : "Artikelliste"}</h2><div className="hint"><b>MHD direkt aus der Artikelliste:</b> Artikel scannen oder auswählen, dann bei Chef/Stationsleitung über „MHD erfassen“ MHD eintragen. Über „Weiteres MHD hinzufügen“ können mehrere MHD-Datensätze für denselben Artikel erstellt werden. Ohne MHD wird kein Eintrag erstellt.</div>
-    <p className="hint">Chef/Stationsleitung pflegt hier die festen Artikeldaten. Mitarbeiter müssen beim Erfassen danach nur MHD eingeben.</p>
+    <PageTitle title={prefillArticle ? "Fehlenden Artikel übernehmen" : "Artikelliste"} info={prefillArticle ? "Hier kann Chef/Stationsleitung einen gemeldeten Artikel direkt in die Artikelliste übernehmen." : "Hier pflegt Chef/Stationsleitung die festen Artikeldaten. Bilder können direkt am Artikel aufgenommen oder hochgeladen werden. Mitarbeiter erfassen später nur das MHD."} />
 
     <button className="scannerButton" type="button" onClick={() => setMasterScannerOpen(true)}>📷 EAN scannen</button>
 
@@ -2710,18 +2743,25 @@ function MasterArticles({masterArticles,saveMasterArticle,deleteMasterArticle,se
     <h3>Gespeicherte Artikel</h3>
     {masterArticles.length === 0 && <div className="empty">Noch keine Artikel in der Artikelliste.</div>}
     <input className="realInput" placeholder="Artikel suchen: Name, Artikelnummer oder EAN" value={articleSearch} onChange={e => setArticleSearch(e.target.value)} />
-    {filteredMasterArticles.map(a => <div className="item masterArticleCard" key={a.id || a.barcode}>
-      <div className="grow masterArticleInfo">
-        <b className="masterArticleTitle">{a.name}</b>
-        <p><span>Art.-Nr.</span> {a.artikelnummer || '-'}</p>
-        <p><span>EAN</span> {a.barcode || '-'}</p>
-        <p className={a.bild_url ? 'imageStatus ok' : 'imageStatus missing'}>{a.bild_url ? '✓ Bild vorhanden' : 'Kein Bild hinterlegt'}</p>
+    {filteredMasterArticles.map(a => {
+      const cardImg = articleCardImage(a)
+      return <div className="item masterArticleCard" key={a.id || a.barcode}>
+        <div className="grow masterArticleInfo">
+          <b className="masterArticleTitle">{a.name || 'Unbenannter Artikel'}</b>
+          <p><span>Art.-Nr.</span> {a.artikelnummer || '-'}</p>
+          <p><span>EAN</span> {a.barcode || '-'}</p>
+          <p className={cardImg ? 'imageStatus ok' : 'imageStatus missing'}>{cardImg ? '✓ Bild vorhanden' : 'Kein Bild hinterlegt'}</p>
+        </div>
+        <div className="actions masterArticleActions">
+          <button onClick={() => edit({...a, bild_url: cardImg || a.bild_url || ''})}>Bearbeiten</button>
+          <button type="button" onClick={() => quickMhdFromMaster?.({...a, bild_url: cardImg || a.bild_url || ''})}>MHD erfassen</button>
+          {cardImg && <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('mhd-show-image', {detail:{src:cardImg, title:a.name || 'Artikelbild'}}))}>Bild anzeigen</button>}
+          <label className="miniUpload cardImageButton">📷 Bild aufnehmen<input type="file" accept="image/*" capture="environment" onChange={e => uploadArticleImageDirect(a,e)}/></label>
+          <label className="miniUpload cardImageButton">📁 Bild hochladen<input type="file" accept="image/*" onChange={e => uploadArticleImageDirect(a,e)}/></label>
+          <button onClick={() => deleteMasterArticle(a)}>Löschen</button>
+        </div>
       </div>
-      <div className="actions masterArticleActions">
-        <button onClick={() => edit(a)}>Bearbeiten</button><button type="button" onClick={() => quickMhdFromMaster?.(a)}>MHD erfassen</button>
-        <button onClick={() => deleteMasterArticle(a)}>Löschen</button>
-      </div>
-    </div>)}
+    })}
   </section>
 }
 
@@ -2806,7 +2846,7 @@ function Dienstplan({settings,saveSetting,user}){
   }
 
   return <section className="formCard">
-    <h2>Dienstplan</h2>
+    <PageTitle title="Dienstplan" info="Hier kann der aktuelle Dienstplan angesehen, groß geöffnet und von Chef/Stationsleitung verwaltet werden." />
     <div className="planSwitch">
       {labelsFromSettings.map(label => <button key={label} className={month === label ? 'active' : ''} onClick={() => setMonth(label)}>{label}</button>)}
       {isAdmin(user) && <button type="button" onClick={addMonth}>+ Monat</button>}
@@ -2834,7 +2874,7 @@ function Dienstplan({settings,saveSetting,user}){
 
 function Online({online}){
   return <section className="formCard">
-    <h2>Mitarbeiter online</h2>
+    <PageTitle title="Mitarbeiter online" info="Zeigt die zuletzt aktiven Mitarbeiter in der App." />
     {online.map(o => <div className="onlineItem" key={o.nummer}><span className="dot online"></span><div><b>{o.name}</b><p>{roleLabel(o.rolle)}</p></div></div>)}
   </section>
 }
@@ -2842,7 +2882,7 @@ function Online({online}){
 function Verwaltung({employees,saveEmployee,deleteEmployee,resetPassword}){
   const [emp, setEmp] = useState({ nummer:'', name:'', rolle:'mitarbeiter' })
   return <section className="formCard">
-    <h2>Mitarbeiter verwalten</h2>
+    <PageTitle title="Mitarbeiter verwalten" info="Hier verwaltet Chef/Stationsleitung Mitarbeiter, Rollen und Passwort-Reset." />
     <div className="adminBox">
       <input placeholder="Nummer" value={emp.nummer} onChange={e => setEmp({...emp, nummer:e.target.value.replace(/\D/g,'')})}/>
       <input placeholder="Name" value={emp.name} onChange={e => setEmp({...emp, name:e.target.value})}/>
@@ -2866,7 +2906,7 @@ function Settings({enablePush, settings = {}, saveSetting}){
   const [pdfPass, setPdfPass] = useState(settings.abschriften_pdf_passwort || '')
   useEffect(() => { setPdfPass(settings.abschriften_pdf_passwort || '') }, [settings.abschriften_pdf_passwort])
   return <section className="formCard">
-    <h2>Einstellungen</h2>
+    <PageTitle title="Einstellungen" info="Hier werden Push und weitere App-Einstellungen verwaltet." />
     <button onClick={enablePush}>🔔 Push aktivieren/testen</button>
     <div className="adminBox">
       <b>PDF-Schutz Abschriften</b>

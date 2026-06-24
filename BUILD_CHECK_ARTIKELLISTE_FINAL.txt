@@ -1,0 +1,7 @@
+Build geprüft: Artikelliste Design final
+- Infofelder in Artikelliste entfernt
+- Paket/Bildsymbol in gespeicherten Artikeln entfernt
+- Artikelkarte aufgeräumt: Name groß, Art.-Nr., EAN, Bildstatus
+- Bild aufnehmen und Bild hochladen direkt pro gespeicherten Artikel ergänzt
+- Bearbeiten, MHD erfassen, Löschen bleiben erhalten
+- keine gespeicherten Artikel/Daten verändert
