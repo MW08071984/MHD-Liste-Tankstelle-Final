@@ -620,6 +620,12 @@ export default function App(){
 
   const [writeoffs, setWriteoffs] = useState([])
   const [settings, setSettings] = useState({})
+  const [uiTheme, setUiThemeState] = useState(() => localStorage.getItem('mhd_design_theme') || 'modern')
+  function setUiTheme(value){
+    const clean = ['classic','modern','blue','green','dark','contrast'].includes(value) ? value : 'modern'
+    setUiThemeState(clean)
+    localStorage.setItem('mhd_design_theme', clean)
+  }
   const [online, setOnline] = useState([])
   const [backwaren, setBackwaren] = useState(DEFAULT_BACKWAREN)
   const [tab, setTab] = useState(() => localStorage.getItem('mhd_aktiver_reiter') || 'dashboard')
@@ -1843,13 +1849,21 @@ export default function App(){
     ...(can(user, settings, 'einstellungen') ? [['settings','Einstellungen']] : [])
   ]
 
-  return <main className="app" onClickCapture={handleGlobalActionFeedback}>
+  return <main className={`app theme-${uiTheme}`} onClickCapture={handleGlobalActionFeedback}>
     <header className="topbar">
       <div>
         <p>MHD Kontrolle · {roleLabel(user.rolle)}</p>
         <h1>Hallo {user.name}</h1>
       </div>
       <div className="topActions">
+        <select className="themeSelect" value={uiTheme} onChange={e => setUiTheme(e.target.value)} title="Design wählen">
+          <option value="classic">Klassisch</option>
+          <option value="modern">Modern</option>
+          <option value="blue">Blau</option>
+          <option value="green">Grün</option>
+          <option value="dark">Dunkel</option>
+          <option value="contrast">Kontrast</option>
+        </select>
         <button className="pushBtn" onClick={enablePush} title="Push-Benachrichtigungen aktivieren/testen">🔔 Push</button>
         <button className="logout" onClick={logout}>Logout</button>
       </div>
@@ -1883,7 +1897,7 @@ export default function App(){
     {tab === 'dienstplan' && <Dienstplan settings={settings} saveSetting={saveSetting} user={user}/>}
     {tab === 'online' && can(user, settings, 'online_ansehen') && <Online online={online}/>}
     {tab === 'verwaltung' && can(user, settings, 'mitarbeiter_verwalten') && <Verwaltung employees={employees} settings={settings} saveEmployee={saveEmployee} deleteEmployee={deleteEmployee} resetPassword={resetPassword} saveEmployeeRights={saveEmployeeRights}/>}
-    {tab === 'settings' && can(user, settings, 'einstellungen') && <Settings enablePush={enablePush} settings={settings} saveSetting={saveSetting}/>}
+    {tab === 'settings' && can(user, settings, 'einstellungen') && <Settings enablePush={enablePush} settings={settings} saveSetting={saveSetting} uiTheme={uiTheme} setUiTheme={setUiTheme}/>}
 
     {globalImage && <div className="modalOverlay"><div className="modalCard imageOnlyModal"><h2>{globalImage.title || 'Bild anzeigen'}</h2><img className="smallProductImage" src={globalImage.src}/><button onClick={() => setGlobalImage(null)}>Schließen</button></div></div>}
 
@@ -2846,12 +2860,13 @@ function MasterArticles({masterArticles, mhdItems=[], saveMasterArticle,deleteMa
     <input className="realInput" placeholder="Artikel suchen: Name, Artikelnummer oder EAN" value={articleSearch} onChange={e => setArticleSearch(e.target.value)} />
     {filteredMasterArticles.map(a => {
       const cardImg = articleCardImage(a)
+      const hasImage = !!cardImg
       return <div className="item masterArticleCard" key={a.id || a.barcode}>
-        {cardImg && <button type="button" className="masterThumbButton" onClick={() => window.dispatchEvent(new CustomEvent('mhd-show-image', {detail:{src:cardImg, title:a.name || 'Artikelbild'}}))} title="Bild anzeigen"><img className="masterThumbImg" src={cardImg} alt={a.name || 'Artikelbild'} loading="lazy" decoding="async"/></button>}
         <div className="grow masterArticleInfo">
           <b className="masterArticleTitle">{a.name || 'Unbenannter Artikel'}</b>
           <p><span>Art.-Nr.</span> {a.artikelnummer || '-'}</p>
           <p><span>EAN</span> {a.barcode || '-'}</p>
+          <p className={hasImage ? 'imageStatus ok' : 'imageStatus missing'}>{hasImage ? '✓ Bild hinterlegt' : '✕ Kein Bild hinterlegt'}</p>
         </div>
         <div className="actions masterArticleActions">
           <button className="editBtn" onClick={() => edit({...a, bild_url: cardImg || a.bild_url || ''})}>Bearbeiten</button>
@@ -3024,12 +3039,24 @@ function Verwaltung({employees, settings = {}, saveEmployee, deleteEmployee, res
   </section>
 }
 
-function Settings({enablePush, settings = {}, saveSetting}){
+function Settings({enablePush, settings = {}, saveSetting, uiTheme, setUiTheme}){
   const [pdfPass, setPdfPass] = useState(settings.abschriften_pdf_passwort || '')
   useEffect(() => { setPdfPass(settings.abschriften_pdf_passwort || '') }, [settings.abschriften_pdf_passwort])
   return <section className="formCard">
     <PageTitle title="Einstellungen" info="Hier werden Push und weitere App-Einstellungen verwaltet." />
     <button onClick={enablePush}>🔔 Push aktivieren/testen</button>
+    <div className="adminBox">
+      <b>Design wählen</b>
+      <p>Jeder Mitarbeiter kann hier sein eigenes Design auf diesem Gerät auswählen.</p>
+      <select value={uiTheme || 'modern'} onChange={e => setUiTheme?.(e.target.value)}>
+        <option value="classic">Klassisch / altes Design</option>
+        <option value="modern">Modern</option>
+        <option value="blue">Blau</option>
+        <option value="green">Grün</option>
+        <option value="dark">Dunkel</option>
+        <option value="contrast">Kontrastreich</option>
+      </select>
+    </div>
     <div className="adminBox">
       <b>PDF-Schutz Abschriften</b>
       <p>Optionales Passwort für die Abschriften-PDF. Leer lassen = PDF ohne Passwort.</p>

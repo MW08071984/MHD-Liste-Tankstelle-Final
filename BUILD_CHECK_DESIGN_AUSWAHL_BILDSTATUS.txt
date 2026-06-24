@@ -1,0 +1,9 @@
+Build erfolgreich geprüft.
+Änderungen:
+- Designauswahl pro Gerät/Mitarbeiter: Klassisch, Modern, Blau, Grün, Dunkel, Kontrast.
+- Designauswahl oben im Kopfbereich und zusätzlich in Einstellungen.
+- Auswahl wird lokal auf dem Gerät gespeichert und ändert keine Datenbankdaten.
+- Artikelliste lädt kein Vorschaubild mehr direkt in der Karte.
+- Stattdessen nur Status: Bild hinterlegt (grün) / Kein Bild hinterlegt (rot).
+- Bild anzeigen bleibt per Button möglich, wenn Bild vorhanden ist.
+- Keine Änderung an Supabase-Daten, Artikeln, MHD, Abschriften, Scanner oder Rechteverwaltung.
