@@ -1791,9 +1791,10 @@ export default function App(){
       urgentText: urgentItems.length === 1 ? '1 Artikel in 1-3 Tagen' : `${urgentItems.length} Artikel in 1-3 Tagen`,
       weekText: nextDue ? `${weekItems.length} Artikel · nächster in ${daysUntil(nextDue.mhd)} Tagen` : '0 Artikel',
       todayWriteoffs: writeoffs.filter(w => entryDateKey(w) === todayISO() && w.typ !== 'kontrolle').length,
-      todayControls: writeoffs.filter(w => entryDateKey(w) === todayISO() && w.typ === 'kontrolle').length
+      todayControls: writeoffs.filter(w => entryDateKey(w) === todayISO() && w.typ === 'kontrolle').length,
+      missingOpen: missingArticles.filter(x => x.status !== 'erledigt').length
     }
-  }, [items, writeoffs])
+  }, [items, writeoffs, missingArticles])
 
   function openArticleFilter(filter){
     setArticleFilter(filter)
@@ -1858,6 +1859,8 @@ export default function App(){
       {can(user, settings, 'mhd_alle_ansehen') && <Stat label="Artikel" value={stats.totalText} tone="normal" onClick={() => openArticleFilter('all')}/>}
       <Stat label="Abgelaufen" value={stats.expiredText} tone="expired" onClick={() => openArticleFilter('expired')}/>
       <Stat label="7 Tage" value={stats.weekText} tone="week" onClick={() => openArticleFilter('week')}/>
+      {can(user, settings, 'fehlende_bearbeiten') && <Stat label="Fehlende Artikel" value={stats.missingOpen === 1 ? '1 offen' : `${stats.missingOpen} offen`} tone="missing" onClick={() => setTab('fehlende')}/>}
+      {can(user, settings, 'abschriften_ansehen') && <Stat label="Abschriften" value={stats.todayWriteoffs === 1 ? '1 heute' : `${stats.todayWriteoffs} heute`} tone="writeoffs" onClick={() => setTab('abschriften')}/>}
     </section>
 
     {can(user, settings, 'abschriften_download') && <section className="todayStats single">
@@ -2087,9 +2090,9 @@ function Article({item,user,writeOffArticle,markArticleCheckedZero,setEditArticl
         <button onClick={() => step(1)}>+</button>
       </div>
       <div className="actions">
-        {isAdmin(user) && <button onClick={() => setEditArticle(item)}>Bearbeiten</button>}
+        {isAdmin(user) && <button className="editBtn" onClick={() => setEditArticle(item)}>Bearbeiten</button>}
         {isAdmin(user) && <button className="danger" onClick={() => deleteMhdEntry(item)}>Löschen</button>}
-        <button onClick={() => writeOffArticle(item, qty, 'MHD')} title="Kontrolle speichern: Menge 0 entfernt nur den Eintrag, Menge größer 0 erstellt eine MHD-Abschrift">Kontrolle speichern</button>
+        <button className="successBtn" onClick={() => writeOffArticle(item, qty, 'MHD')} title="Kontrolle speichern: Menge 0 entfernt nur den Eintrag, Menge größer 0 erstellt eine MHD-Abschrift">Kontrolle speichern</button>
       </div>
     </div>
     {showImage && <div className="modalOverlay" onClick={() => setShowImage(false)}>
@@ -2844,19 +2847,19 @@ function MasterArticles({masterArticles, mhdItems=[], saveMasterArticle,deleteMa
     {filteredMasterArticles.map(a => {
       const cardImg = articleCardImage(a)
       return <div className="item masterArticleCard" key={a.id || a.barcode}>
+        {cardImg && <button type="button" className="masterThumbButton" onClick={() => window.dispatchEvent(new CustomEvent('mhd-show-image', {detail:{src:cardImg, title:a.name || 'Artikelbild'}}))} title="Bild anzeigen"><img className="masterThumbImg" src={cardImg} alt={a.name || 'Artikelbild'} loading="lazy" decoding="async"/></button>}
         <div className="grow masterArticleInfo">
           <b className="masterArticleTitle">{a.name || 'Unbenannter Artikel'}</b>
           <p><span>Art.-Nr.</span> {a.artikelnummer || '-'}</p>
           <p><span>EAN</span> {a.barcode || '-'}</p>
-          <p className={cardImg ? 'imageStatus ok' : 'imageStatus missing'}>{cardImg ? '✓ Bild vorhanden' : 'Kein Bild hinterlegt'}</p>
         </div>
         <div className="actions masterArticleActions">
-          <button onClick={() => edit({...a, bild_url: cardImg || a.bild_url || ''})}>Bearbeiten</button>
-          <button type="button" onClick={() => quickMhdFromMaster?.({...a, bild_url: cardImg || a.bild_url || ''})}>MHD erfassen</button>
-          {cardImg && <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('mhd-show-image', {detail:{src:cardImg, title:a.name || 'Artikelbild'}}))}>Bild anzeigen</button>}
+          <button className="editBtn" onClick={() => edit({...a, bild_url: cardImg || a.bild_url || ''})}>Bearbeiten</button>
+          <button className="successBtn" type="button" onClick={() => quickMhdFromMaster?.({...a, bild_url: cardImg || a.bild_url || ''})}>MHD erfassen</button>
+          {cardImg && <button className="ghostSmall" type="button" onClick={() => window.dispatchEvent(new CustomEvent('mhd-show-image', {detail:{src:cardImg, title:a.name || 'Artikelbild'}}))}>Bild anzeigen</button>}
           <label className="miniUpload cardImageButton">📷 Bild aufnehmen<input type="file" accept="image/*" capture="environment" onChange={e => uploadArticleImageDirect(a,e)}/></label>
           <label className="miniUpload cardImageButton">📁 Bild hochladen<input type="file" accept="image/*" onChange={e => uploadArticleImageDirect(a,e)}/></label>
-          <button onClick={() => deleteMasterArticle(a)}>Löschen</button>
+          <button className="danger" onClick={() => deleteMasterArticle(a)}>Löschen</button>
         </div>
       </div>
     })}

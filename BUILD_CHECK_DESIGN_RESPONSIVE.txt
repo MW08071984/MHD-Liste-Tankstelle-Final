@@ -1,0 +1,3 @@
+Build erfolgreich: Design-Responsive-Version.
+Geändert: kompakte Kopfzeile, Raster-Menü ohne horizontales Scrollen, Buttonfarben nach Bedeutung, Dashboard-Kacheln Fehlende Artikel/Abschriften, Artikelliste mit kleinem Vorschaubild nur wenn vorhanden, keine Anzeige 'Kein Bild hinterlegt'.
+Nicht geändert: Datenbankstruktur, Supabase-Tabellen, MHD-Logik, Abschriften-Logik, Scanner-Logik, Rechteverwaltung, Bildspeicherung.

@@ -534,3 +534,166 @@ button.danger{
 .rightsGroup h4{margin:0 0 8px;color:#7a1116;font-size:1.05rem}
 .rightCheck{display:flex;gap:10px;align-items:center;margin:7px 0;font-weight:800;color:#2b0d05}
 .rightCheck input{width:22px;height:22px;accent-color:#d71920}
+
+/* DESIGN-TESTVERSION RESPONSIVE FINAL
+   Nur Optik/Bedienung: keine Datenbank-, Scanner-, MHD- oder Speicherlogik geändert. */
+:root{
+  --ok:#168a35;
+  --ok-dark:#0d5e24;
+  --warn:#ffbf00;
+  --warn-dark:#684500;
+  --muted:#6b4c00;
+}
+html{padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
+body{font-size:16px;-webkit-text-size-adjust:100%}
+button,label.upload,label.miniUpload{box-shadow:0 3px 10px #00000016;transition:transform .05s ease,filter .12s ease}
+button:active,label.upload:active,label.miniUpload:active{transform:scale(.985)}
+
+/* Kopfzeile kompakter */
+.topbar{
+  padding:10px 12px 12px;
+  border-radius:0 0 20px 20px;
+  align-items:flex-start;
+}
+.topbar p{font-size:13px;line-height:1.2;opacity:.95}
+.topbar h1{font-size:23px;line-height:1.05;margin:2px 0 0}
+.topActions{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}
+.topActions button{min-height:38px;padding:8px 10px;border-radius:13px;font-size:14px}
+
+/* Menü: kein horizontales Scrollen, gut auf Android/iPhone/PC */
+.tabs{
+  position:static;
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:8px;
+  overflow:visible;
+  padding:8px 0 12px;
+  background:transparent;
+}
+.tabs button{
+  white-space:normal;
+  min-height:48px;
+  padding:10px 8px;
+  border-radius:16px;
+  font-size:14px;
+  line-height:1.1;
+}
+.tabs button.active{box-shadow:0 0 0 3px #ffd900 inset}
+
+/* Buttonfarben nach Bedeutung */
+button.primary,.primary,.fixedSubmit,.successBtn,.scannerButton,.pdfButton{
+  background:linear-gradient(135deg,var(--ok),var(--ok-dark))!important;
+  color:#fff!important;
+  border:3px solid #b8ffbf!important;
+}
+.editBtn{
+  background:linear-gradient(135deg,#ffd95a,var(--warn))!important;
+  color:#3a2100!important;
+  border:3px solid #9a6900!important;
+}
+button.danger,.danger,.actions button.danger{
+  background:linear-gradient(135deg,#d71920,#8b1016)!important;
+  color:#ffd900!important;
+  border:3px solid #ffd900!important;
+}
+.ghostSmall,.downloadBtn{
+  background:#fffdf0!important;
+  color:#7b1018!important;
+  border:3px solid #d71920!important;
+}
+.upload,.miniUpload{
+  background:linear-gradient(135deg,#fffdf0,#ffe66d)!important;
+  color:#7b1018!important;
+  border:3px solid #d71920!important;
+}
+
+/* Übersicht: größere, saubere Kacheln */
+.stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.stat{min-height:92px;border-radius:22px;padding:12px;text-align:center;display:flex;flex-direction:column;justify-content:center;align-items:center}
+.stat span{font-size:14px;line-height:1.1}
+.stat b{font-size:18px!important;line-height:1.15;margin-top:7px;text-align:center}
+.stat.missing{background:linear-gradient(145deg,#eef5ff,#bcdcff)!important;border-color:#1e5b99!important}
+.stat.missing b,.stat.missing span{color:#07345f!important}
+.stat.writeoffs{background:linear-gradient(145deg,#efe6ff,#d2b7ff)!important;border-color:#6f3cb7!important}
+.stat.writeoffs b,.stat.writeoffs span{color:#3d176f!important}
+.todayStats.single{margin:8px 0 10px}
+.todayStats.single .pdfButton{min-height:52px;font-size:16px}
+
+/* Karten optisch ruhiger */
+.item,.formCard,.adminBox,.dayGroup{box-shadow:0 6px 18px #7b101812}
+.item{align-items:flex-start;border-radius:22px;padding:13px;background:linear-gradient(145deg,#fffdf4,#fff6c3)}
+.item b{font-size:21px;line-height:1.17;color:#471600}
+.item p{font-size:14px;line-height:1.2;color:#6a3a00;margin:3px 0}
+.actions{gap:7px;margin-top:6px}
+.actions button,.actions .miniUpload{font-size:14px;padding:9px 11px;min-height:42px;border-radius:13px}
+
+/* MHD-Karten: Name vor Nummer */
+.articleItem .artikelnummer{order:2;width:auto;min-width:0;height:auto;max-width:100%;padding:8px 10px;font-size:14px;border-radius:14px;align-self:flex-start}
+.articleItem .grow{order:1}
+.articleItem .writeBox{order:3}
+.articleItem .grow b{font-size:22px}
+.articleItem .grow p{font-size:14px}
+.imageButton{margin-top:8px}
+
+/* Artikelliste Chef/Stationsleitung: keine großen Platzhalter, nur Bild wenn vorhanden */
+.masterArticleCard{display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:start}
+.masterArticleCard .masterArticleInfo{min-width:0}
+.masterArticleTitle{display:block;font-size:23px!important;line-height:1.12;margin-bottom:7px;color:#3d1200!important}
+.masterArticleInfo p{font-size:14px;margin:3px 0;color:#5a2d00}
+.masterArticleInfo p span{font-weight:1000;color:#7b1018;margin-right:4px}
+.imageStatus,.imageStatus.missing{display:none!important}
+.masterThumbButton{width:58px;height:58px;border-radius:16px;padding:0;overflow:hidden;background:#fff!important;border:3px solid #d71920!important;grid-row:1 / span 2;align-self:start}
+.masterThumbImg{width:100%;height:100%;object-fit:cover;display:block}
+.masterArticleActions{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;width:100%}
+.masterArticleActions button,.masterArticleActions .miniUpload{width:100%;text-align:center}
+
+/* Dienstplan und Infobuttons dezenter */
+.sectionTopInfo{display:flex;justify-content:flex-end;margin:0 0 6px}
+.infoIcon{border-radius:50%!important;width:38px!important;height:38px!important;padding:0!important;background:#fffdf0!important;color:#7b1018!important;border:3px solid #d71920!important}
+.pageTitleRow,.pageTitleInline{display:flex;gap:8px;align-items:center;justify-content:space-between}
+.formCard h2,.list h2{font-size:26px;line-height:1.1}
+.formCard h3{font-size:24px}
+
+/* PC/Laptop: breiter, mehrere Spalten wo sinnvoll */
+@media(min-width:900px){
+  .app{max-width:1180px;padding-left:18px;padding-right:18px}
+  .topbar{margin-left:-18px;margin-right:-18px;align-items:center}
+  .topbar h1{font-size:26px}
+  .tabs{grid-template-columns:repeat(6,minmax(0,1fr))}
+  .stats{grid-template-columns:repeat(5,minmax(0,1fr))}
+  .stat{min-height:104px}
+  .formCard,.list{max-width:100%}
+  .masterArticleCard{grid-template-columns:auto 1fr;}
+  .masterArticleActions{grid-template-columns:repeat(6,minmax(0,1fr))}
+  .list .articleItem{display:grid;grid-template-columns:1fr minmax(290px,auto);gap:14px}
+  .articleItem .artikelnummer{grid-column:1/2;order:1;width:max-content;margin-top:6px}
+  .articleItem .grow{grid-column:1/2}
+  .articleItem .writeBox{grid-column:2/3;grid-row:1 / span 2;min-width:290px}
+}
+
+/* kleine Smartphones */
+@media(max-width:560px){
+  .app{padding:8px 9px 100px}
+  .topbar{margin:-8px -9px 10px;padding:9px 10px 10px}
+  .topbar h1{font-size:21px}
+  .topbar p{font-size:12px}
+  .topActions button{font-size:13px;min-height:36px;padding:7px 9px}
+  .tabs{grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+  .tabs button{min-height:44px;font-size:13px;padding:8px 5px}
+  .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .stat{min-height:82px;padding:10px 8px}
+  .stat b{font-size:16px!important}
+  .item{padding:12px;border-radius:20px}
+  .masterArticleCard{grid-template-columns:auto 1fr}
+  .masterArticleTitle{font-size:21px!important}
+  .masterArticleActions{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .articleItem{display:grid!important;grid-template-columns:1fr!important}
+  .articleItem .artikelnummer,.articleItem .grow,.articleItem .writeBox{grid-column:1/-1;order:initial;width:100%}
+  .writeBox{align-items:stretch}
+}
+
+@media(max-width:380px){
+  .tabs{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .masterArticleActions{grid-template-columns:1fr}
+  .stats{grid-template-columns:1fr}
+}
