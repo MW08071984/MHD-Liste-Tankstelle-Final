@@ -270,6 +270,44 @@ function PageTitle({title, info}){
   return <div className="pageTitleRow"><h2>{title}</h2>{info && <InfoButton title={title}>{info}</InfoButton>}</div>
 }
 
+
+
+const UI_THEMES = [
+  ['classic','Klassisch'],
+  ['modern','Modern'],
+  ['light','Hell'],
+  ['blue','Blau'],
+  ['green','Grün'],
+  ['petrol','Petrol'],
+  ['slate','Schiefer'],
+  ['berry','Beere'],
+  ['dark','Dunkel'],
+  ['contrast','Kontrast'],
+  ['ocean','Ozean'],
+  ['forest','Wald'],
+  ['sand','Sand'],
+  ['coffee','Kaffee'],
+  ['graphite','Graphit']
+]
+const UI_THEME_KEYS = UI_THEMES.map(t => t[0])
+function DesignButton({uiTheme, setUiTheme}){
+  const [open,setOpen] = useState(false)
+  const label = UI_THEMES.find(t => t[0] === uiTheme)?.[1] || 'Design'
+  return <>
+    <button type="button" className="designMiniBtn" onClick={() => setOpen(true)} title="Design auswählen">⚙️ Design</button>
+    {open && <div className="modalOverlay"><div className="modalCard designModal">
+      <h2>Design wählen</h2>
+      <p>Aktuell: <b>{label}</b>. Die Auswahl gilt nur für dieses Gerät.</p>
+      <div className="themeGrid">
+        {UI_THEMES.map(([key,name]) => <button key={key} type="button" className={`themeChoice themePreview-${key} ${uiTheme === key ? 'active' : ''}`} onClick={() => { setUiTheme?.(key); setOpen(false) }}>
+          <span>{name}</span>
+        </button>)}
+      </div>
+      <button type="button" className="ghostSmall" onClick={() => setOpen(false)}>Schließen</button>
+    </div></div>}
+  </>
+}
+
 function InlineFeedback({msg}){
   if(!msg) return null
   return <div className={'inlineFeedback ' + msg.type}>{msg.text}</div>
@@ -622,7 +660,7 @@ export default function App(){
   const [settings, setSettings] = useState({})
   const [uiTheme, setUiThemeState] = useState(() => localStorage.getItem('mhd_design_theme') || 'modern')
   function setUiTheme(value){
-    const clean = ['classic','modern','blue','green','dark','contrast'].includes(value) ? value : 'modern'
+    const clean = UI_THEME_KEYS.includes(value) ? value : 'modern'
     setUiThemeState(clean)
     localStorage.setItem('mhd_design_theme', clean)
   }
@@ -1853,7 +1891,7 @@ export default function App(){
     <header className="topbar">
       <div>
         <p>MHD Kontrolle · {roleLabel(user.rolle)}</p>
-        <h1>Hallo {user.name}</h1>
+        <div className="helloRow"><h1>Hallo {user.name}</h1><DesignButton uiTheme={uiTheme} setUiTheme={setUiTheme}/></div>
       </div>
       <div className="topActions">
         <button className="pushBtn" onClick={enablePush} title="Push-Benachrichtigungen aktivieren/testen">🔔 Push</button>
@@ -3038,20 +3076,8 @@ function Settings({enablePush, settings = {}, saveSetting, uiTheme, setUiTheme})
     <PageTitle title="Einstellungen" info="Hier werden Push und weitere App-Einstellungen verwaltet." />
     <button onClick={enablePush}>🔔 Push aktivieren/testen</button>
     <div className="adminBox">
-      <b>Design wählen</b>
-      <p>Jeder Mitarbeiter kann hier sein eigenes Design auf diesem Gerät auswählen.</p>
-      <select value={uiTheme || 'modern'} onChange={e => setUiTheme?.(e.target.value)}>
-        <option value="classic">Klassisch</option>
-        <option value="modern">Modern</option>
-        <option value="light">Hell</option>
-        <option value="blue">Blau</option>
-        <option value="green">Grün</option>
-        <option value="petrol">Petrol</option>
-        <option value="slate">Schiefer</option>
-        <option value="berry">Beere</option>
-        <option value="dark">Dunkel</option>
-        <option value="contrast">Kontrastreich</option>
-      </select>
+      <b>Design</b>
+      <p>Das Design wird oben neben deinem Namen über <b>⚙️ Design</b> gewählt. Jeder Mitarbeiter kann sein eigenes Design auf diesem Gerät speichern.</p>
     </div>
     <div className="adminBox">
       <b>PDF-Schutz Abschriften</b>

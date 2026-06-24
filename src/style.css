@@ -782,3 +782,46 @@ button.danger,.danger,.actions button.danger{
 @media(max-width:560px){
   .topActions{gap:5px}
 }
+
+/* DESIGN-AUSWAHL FINAL: Zahnrad neben Name, 15 Designs */
+.helloRow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.helloRow h1{margin:4px 0 0!important}
+.designMiniBtn{padding:8px 11px!important;border-radius:14px!important;background:#fffdf0!important;color:#7b1018!important;border:2px solid #ffd900!important;font-size:13px!important;line-height:1!important;box-shadow:none!important;white-space:nowrap}
+.designModal{width:min(620px,100%)}
+.themeGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.themeChoice{min-height:68px;border-radius:18px!important;border:3px solid rgba(0,0,0,.25)!important;padding:8px!important;display:flex;align-items:flex-end;justify-content:center;color:#111!important;background:#fff;font-weight:1000!important;box-shadow:none!important}
+.themeChoice.active{outline:4px solid #111;outline-offset:2px}
+.themeChoice span{background:rgba(255,255,255,.82);padding:5px 8px;border-radius:999px;color:#111!important}
+.themePreview-classic{background:linear-gradient(135deg,#d71920 0 42%,#ffd900 42% 100%)!important}
+.themePreview-modern{background:linear-gradient(135deg,#0f172a 0 40%,#2563eb 40% 75%,#dbeafe 75%)!important}
+.themePreview-light{background:linear-gradient(135deg,#fff,#e5e7eb)!important}
+.themePreview-blue{background:linear-gradient(135deg,#06345f,#1f5f99,#d8ecff)!important}
+.themePreview-green{background:linear-gradient(135deg,#0f4f22,#24823a,#e5ffd8)!important}
+.themePreview-petrol{background:linear-gradient(135deg,#042f2e,#0f766e,#ccfbf1)!important}
+.themePreview-slate{background:linear-gradient(135deg,#0f172a,#475569,#e2e8f0)!important}
+.themePreview-berry{background:linear-gradient(135deg,#4c0519,#be123c,#ffe4e6)!important}
+.themePreview-dark{background:linear-gradient(135deg,#000,#222,#ffcc33)!important}
+.themePreview-contrast{background:linear-gradient(135deg,#000 0 20%,#fff200 20% 65%,#fff 65%)!important}
+.themePreview-ocean{background:linear-gradient(135deg,#082f49,#0284c7,#e0f2fe)!important}
+.themePreview-forest{background:linear-gradient(135deg,#052e16,#16a34a,#dcfce7)!important}
+.themePreview-sand{background:linear-gradient(135deg,#92400e,#f59e0b,#fffbeb)!important}
+.themePreview-coffee{background:linear-gradient(135deg,#3b1f12,#92400e,#fef3c7)!important}
+.themePreview-graphite{background:linear-gradient(135deg,#111827,#374151,#f3f4f6)!important}
+@media(max-width:560px){.themeGrid{grid-template-columns:repeat(2,minmax(0,1fr))}.designMiniBtn{font-size:12px!important;padding:7px 9px!important}.topbar{align-items:flex-start}.helloRow{gap:7px}}
+
+/* zusätzliche Designprofile */
+.app.theme-ocean{--red:#0284c7;--dark:#082f49;--yellow:#e0f2fe;--cream:#f0f9ff;--soft:#dff3ff;--text:#082f49;background:linear-gradient(180deg,#bae6fd,#f0f9ff 48%,#ffffff)}
+.app.theme-ocean .topbar{background:linear-gradient(135deg,#082f49,#0284c7)!important;color:#e0f2fe!important;border-bottom:3px solid #7dd3fc!important}
+.app.theme-ocean .tabs button.active{background:#0284c7!important;color:#fff!important;border-color:#075985!important}
+.app.theme-forest{--red:#16a34a;--dark:#052e16;--yellow:#dcfce7;--cream:#f0fdf4;--soft:#dcfce7;--text:#052e16;background:linear-gradient(180deg,#bbf7d0,#f0fdf4 48%,#ffffff)}
+.app.theme-forest .topbar{background:linear-gradient(135deg,#052e16,#16a34a)!important;color:#dcfce7!important;border-bottom:3px solid #86efac!important}
+.app.theme-forest .tabs button.active{background:#16a34a!important;color:#fff!important;border-color:#166534!important}
+.app.theme-sand{--red:#b45309;--dark:#78350f;--yellow:#fef3c7;--cream:#fffbeb;--soft:#fde68a;--text:#451a03;background:linear-gradient(180deg,#fde68a,#fffbeb 50%,#fff7ed)}
+.app.theme-sand .topbar{background:linear-gradient(135deg,#78350f,#b45309)!important;color:#fef3c7!important;border-bottom:3px solid #f59e0b!important}
+.app.theme-sand .tabs button.active{background:#b45309!important;color:#fff!important;border-color:#78350f!important}
+.app.theme-coffee{--red:#92400e;--dark:#3b1f12;--yellow:#fef3c7;--cream:#fff7ed;--soft:#fed7aa;--text:#2b1408;background:linear-gradient(180deg,#fed7aa,#fff7ed 50%,#ffffff)}
+.app.theme-coffee .topbar{background:linear-gradient(135deg,#3b1f12,#92400e)!important;color:#fef3c7!important;border-bottom:3px solid #fdba74!important}
+.app.theme-coffee .tabs button.active{background:#92400e!important;color:#fff!important;border-color:#3b1f12!important}
+.app.theme-graphite{--red:#374151;--dark:#111827;--yellow:#f3f4f6;--cream:#ffffff;--soft:#f3f4f6;--text:#111827;background:linear-gradient(180deg,#e5e7eb,#ffffff 48%,#f9fafb)}
+.app.theme-graphite .topbar{background:linear-gradient(135deg,#111827,#374151)!important;color:#f9fafb!important;border-bottom:3px solid #9ca3af!important}
+.app.theme-graphite .tabs button.active{background:#374151!important;color:#fff!important;border-color:#111827!important}
