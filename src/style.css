@@ -800,6 +800,7 @@ button.danger,.danger,.actions button.danger{
 .themePreview-petrol{background:linear-gradient(135deg,#042f2e,#0f766e,#ccfbf1)!important}
 .themePreview-slate{background:linear-gradient(135deg,#0f172a,#475569,#e2e8f0)!important}
 .themePreview-berry{background:linear-gradient(135deg,#4c0519,#be123c,#ffe4e6)!important}
+.themePreview-lila{background:linear-gradient(135deg,#3b0764,#7c3aed,#ede9fe)!important}
 .themePreview-dark{background:linear-gradient(135deg,#000,#222,#ffcc33)!important}
 .themePreview-contrast{background:linear-gradient(135deg,#000 0 20%,#fff200 20% 65%,#fff 65%)!important}
 .themePreview-ocean{background:linear-gradient(135deg,#082f49,#0284c7,#e0f2fe)!important}
@@ -1075,3 +1076,12 @@ button.danger,.danger,.actions button.danger{
   .topbarFinal .topbarButtonRow button,
   .topbarFinal .topbarButtonRow .designMiniBtn{font-size:11px!important;padding:7px 5px!important}
 }
+
+
+.app.theme-lila{--red:#7c3aed;--dark:#3b0764;--yellow:#ede9fe;--cream:#faf5ff;--soft:#f3e8ff;--text:#2e1065;background:linear-gradient(180deg,#ddd6fe,#faf5ff 48%,#ffffff)}
+.app.theme-lila .topbar{background:linear-gradient(135deg,#3b0764,#7c3aed)!important;color:#fff!important;border-bottom:3px solid #c4b5fd!important}
+.app.theme-lila .tabs button.active,.app.theme-lila .primary,.app.theme-lila .downloadBtn,.app.theme-lila .quickBtn,.app.theme-lila .scannerBtn{background:linear-gradient(135deg,#6d28d9,#8b5cf6)!important;color:#fff!important;border-color:#4c1d95!important}
+.app.theme-lila .card,.app.theme-lila .panel,.app.theme-lila .articleCard,.app.theme-lila .monthCard{border-color:#7c3aed!important;background:linear-gradient(180deg,#ffffff,#faf5ff)!important}
+.app.theme-lila input,.app.theme-lila select,.app.theme-lila textarea{border-color:#7c3aed!important}
+.app.theme-lila .articleBadge,.app.theme-lila .cardTitle{background:linear-gradient(135deg,#6d28d9,#8b5cf6)!important;color:#fff!important}
+

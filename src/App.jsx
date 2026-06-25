@@ -297,6 +297,7 @@ const UI_THEMES = [
   ['petrol','Petrol'],
   ['slate','Schiefer'],
   ['berry','Beere'],
+  ['lila','Lila'],
   ['dark','Dunkel'],
   ['contrast','Kontrast'],
   ['ocean','Ozean'],
@@ -2399,37 +2400,6 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
       {masterArticles.map(a => <option key={a.id || a.barcode} value={a.barcode}>{a.name || a.barcode} · {a.artikelnummer || a.barcode}</option>)}
     </select>
 
-    <label>EAN / Barcode</label>
-    <input
-      className="realInput"
-      type="text"
-      inputMode="numeric"
-      autoComplete="off"
-      placeholder="EAN / Barcode"
-      value={form.barcode || ''}
-      onChange={e => handleBarcode(e.target.value)}
-    />
-
-    <label>Artikelnummer</label>
-    <input
-      className="realInput"
-      placeholder="wird aus Artikelliste übernommen"
-      value={form.artikelnummer || ''}
-      readOnly={!isAdmin(user)}
-      onChange={e => setForm({...form, artikelnummer:e.target.value})}
-    />
-
-    <label>Artikelname</label>
-    <input
-      className="realInput"
-      placeholder={missingMode ? 'Name für fehlenden Artikel eingeben' : 'wird aus Artikelliste übernommen'}
-      value={form.name || ''}
-      readOnly={nameReadOnly}
-      onChange={e => setForm({...form, name:e.target.value})}
-    />
-
-
-
     <div className="labelInfoRow"><label>MHD vollständiges Datum</label><InfoButton title="MHD-Eingabe"><p>Wenn auf dem Artikel Tag / Monat / Jahr steht, bei <b>MHD vollständiges Datum</b> eintragen.</p><p>Wenn auf dem Artikel nur Monat / Jahr steht, bei <b>MHD nur Monat/Jahr</b> eintragen.</p></InfoButton></div>
     <div className="mhdInputRow">
       <input
@@ -2469,6 +2439,38 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
         if(iso) setForm({...form, mhd:iso})
       }}
     />
+
+
+    <label>EAN / Barcode</label>
+    <input
+      className="realInput"
+      type="text"
+      inputMode="numeric"
+      autoComplete="off"
+      placeholder="EAN / Barcode"
+      value={form.barcode || ''}
+      onChange={e => handleBarcode(e.target.value)}
+    />
+
+    <label>Artikelnummer</label>
+    <input
+      className="realInput"
+      placeholder="wird aus Artikelliste übernommen"
+      value={form.artikelnummer || ''}
+      readOnly={!isAdmin(user)}
+      onChange={e => setForm({...form, artikelnummer:e.target.value})}
+    />
+
+    <label>Artikelname</label>
+    <input
+      className="realInput"
+      placeholder={missingMode ? 'Name für fehlenden Artikel eingeben' : 'wird aus Artikelliste übernommen'}
+      value={form.name || ''}
+      readOnly={nameReadOnly}
+      onChange={e => setForm({...form, name:e.target.value})}
+    />
+
+
 
     <InlineFeedback msg={inlineMsg?.erfassen}/>
     <button className="primary" onClick={addItem}>Speichern</button>

@@ -1,0 +1,1 @@
+Build erfolgreich: MHD-Datumsfelder wurden direkt unter Artikel aus Artikelliste verschoben. Neues Design Lila ergänzt. Keine Funktionslogik oder Datenbank geändert.
