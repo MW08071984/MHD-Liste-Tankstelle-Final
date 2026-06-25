@@ -50,27 +50,43 @@ function normalizeMhdInput(value){
   if(!raw) return ''
   if(/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw
 
-  // Wenn auf der Packung nur Monat/Jahr steht (z. B. 12.2026), gilt automatisch der Monatsletzte.
-  const monthYear = raw.match(/^(\d{1,2})[.\-/\s]+(\d{2}|\d{4})$/)
-  if(monthYear){
-    const monthNum = Number(monthYear[1])
-    const yearNum = Number(monthYear[2].length === 2 ? '20' + monthYear[2] : monthYear[2])
+  const buildIso = (dayRaw, monthRaw, yearRaw) => {
+    const day = String(dayRaw || '').padStart(2,'0')
+    const month = String(monthRaw || '').padStart(2,'0')
+    const year = String(yearRaw || '').length === 2 ? '20' + String(yearRaw || '') : String(yearRaw || '')
+    const iso = `${year}-${month}-${day}`
+    const d = new Date(iso + 'T00:00:00')
+    if(Number.isNaN(d.getTime())) return ''
+    if(d.getFullYear() !== Number(year) || d.getMonth()+1 !== Number(month) || d.getDate() !== Number(day)) return ''
+    return iso
+  }
+
+  const buildMonthYearIso = (monthRaw, yearRaw) => {
+    const monthNum = Number(monthRaw)
+    const yearNum = Number(String(yearRaw || '').length === 2 ? '20' + String(yearRaw || '') : yearRaw)
     if(monthNum >= 1 && monthNum <= 12 && yearNum >= 2000){
       const lastDay = new Date(yearNum, monthNum, 0).getDate()
       return `${yearNum}-${String(monthNum).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`
     }
+    return ''
   }
 
-  const match = raw.match(/^(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{2}|\d{4})$/)
+  // iPhone-/Android-freundlich: Eingaben ohne Punkt/Slash erlauben.
+  // 30062026 -> 30.06.2026, 300626 -> 30.06.2026, 062026 -> 06.2026.
+  const digits = raw.replace(/\D/g,'')
+  if(digits.length === 8) return buildIso(digits.slice(0,2), digits.slice(2,4), digits.slice(4))
+  if(digits.length === 6){
+    const first = Number(digits.slice(0,2))
+    if(first > 12) return buildIso(digits.slice(0,2), digits.slice(2,4), digits.slice(4))
+    return buildMonthYearIso(digits.slice(0,2), digits.slice(2))
+  }
+
+  const monthYear = raw.match(/^(\d{1,2})[.\-/\s]+(\d{2}|\d{4})$/)
+  if(monthYear) return buildMonthYearIso(monthYear[1], monthYear[2])
+
+  const match = raw.match(/^(\d{1,2})[.\-/\s]+(\d{1,2})[.\-/\s]+(\d{2}|\d{4})$/)
   if(!match) return ''
-  const day = match[1].padStart(2,'0')
-  const month = match[2].padStart(2,'0')
-  const year = match[3].length === 2 ? '20' + match[3] : match[3]
-  const iso = `${year}-${month}-${day}`
-  const d = new Date(iso + 'T00:00:00')
-  if(Number.isNaN(d.getTime())) return ''
-  if(d.getFullYear() !== Number(year) || d.getMonth()+1 !== Number(month) || d.getDate() !== Number(day)) return ''
-  return iso
+  return buildIso(match[1], match[2], match[3])
 }
 
 function toGermanDate(value){
@@ -3185,70 +3201,74 @@ function Scanner({onClose,onDetected}){
   const videoRef = useRef(null)
   const streamRef = useRef(null)
   const rafRef = useRef(null)
+  const zxingReaderRef = useRef(null)
+  const detectedRef = useRef(false)
   const [manual, setManual] = useState('')
   const [message, setMessage] = useState('Kamera wird gestartet...')
   const [scanMsg, setScanMsg] = useState(null)
 
   function stopCamera(){
     try{ cancelAnimationFrame(rafRef.current) }catch{}
+    try{ zxingReaderRef.current?.reset?.() }catch{}
+    zxingReaderRef.current = null
     try{ streamRef.current?.getTracks()?.forEach(t => t.stop()) }catch{}
+  }
+
+  function finishDetected(code){
+    const clean = String(code || '').replace(/\D/g,'')
+    if(!clean || detectedRef.current) return
+    detectedRef.current = true
+    setScanMsg({type:'success', text:'✓ Barcode erkannt: ' + clean})
+    stopCamera()
+    setTimeout(() => onDetected(clean), 250)
   }
 
   useEffect(() => {
     let stopped = false
+    let zxingStarted = false
 
-    async function startNative(){
+    async function startCamera(){
       try{
         if(!navigator.mediaDevices?.getUserMedia){
           throw new Error('Keine Kamerafunktion im Browser.')
         }
 
-        const stream = await navigator.mediaDevices.getUserMedia({
+        const constraints = {
+          audio: false,
           video: {
             facingMode: { ideal: 'environment' },
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
-          },
-          audio: false
-        })
+            width: { ideal: 1920, min: 640 },
+            height: { ideal: 1080, min: 480 },
+            advanced: [{ focusMode: 'continuous' }]
+          }
+        }
+
+        let stream
+        try{
+          stream = await navigator.mediaDevices.getUserMedia(constraints)
+        }catch{
+          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio:false })
+        }
 
         streamRef.current = stream
         if(videoRef.current){
           videoRef.current.srcObject = stream
+          videoRef.current.setAttribute('playsinline','true')
+          videoRef.current.setAttribute('webkit-playsinline','true')
           await videoRef.current.play()
         }
 
-        setMessage('Barcode ruhig und hell vor die Kamera halten.')
-        setScanMsg({type:'success', text:'✓ Kamera bereit.'})
+        try{
+          const track = stream.getVideoTracks?.()[0]
+          await track?.applyConstraints?.({ advanced:[{ focusMode:'continuous' }] })
+        }catch{}
 
-        if('BarcodeDetector' in window){
-          const detector = new window.BarcodeDetector({
-            formats: ['ean_13','ean_8','code_128','code_39','upc_a','upc_e','itf']
-          })
+        setMessage('Barcode ruhig, hell und nah vor die Kamera halten.')
+        setScanMsg({type:'success', text:'✓ Kamera bereit. iPhone: bei Bedarf etwas näher ran oder manuell eingeben.'})
 
-          const scan = async () => {
-            if(stopped) return
-            try{
-              if(videoRef.current && videoRef.current.readyState >= 2){
-                const codes = await detector.detect(videoRef.current)
-                if(codes && codes.length){
-                  const code = codes[0].rawValue || codes[0].rawValueText
-                  if(code){
-                    setScanMsg({type:'success', text:'✓ Barcode erkannt: ' + code})
-                    stopCamera()
-                    setTimeout(() => onDetected(String(code).replace(/\D/g,'')), 350)
-                    return
-                  }
-                }
-              }
-            }catch{}
-            rafRef.current = requestAnimationFrame(scan)
-          }
-          scan()
-          return
-        }
-
-        await startZXing()
+        startNativeBarcodeDetector()
+        setTimeout(() => { if(!stopped && !detectedRef.current) startZXing() }, 900)
+        setTimeout(() => { if(!stopped && !detectedRef.current) setScanMsg({type:'warning', text:'Wenn der iPhone-Scan nicht erkennt: EAN unten manuell eingeben.'}) }, 8000)
       }catch(e){
         console.warn(e)
         setMessage('Kamera konnte nicht scannen. Bitte Berechtigung erlauben oder Code manuell eingeben.')
@@ -3256,11 +3276,39 @@ function Scanner({onClose,onDetected}){
       }
     }
 
+    function startNativeBarcodeDetector(){
+      if(!('BarcodeDetector' in window)) return
+      let detector
+      try{
+        detector = new window.BarcodeDetector({
+          formats: ['ean_13','ean_8','code_128','code_39','upc_a','upc_e','itf']
+        })
+      }catch{ return }
+
+      const scan = async () => {
+        if(stopped || detectedRef.current) return
+        try{
+          if(videoRef.current && videoRef.current.readyState >= 2){
+            const codes = await detector.detect(videoRef.current)
+            const code = codes?.[0]?.rawValue || codes?.[0]?.rawValueText
+            if(code) return finishDetected(code)
+          }
+        }catch{}
+        rafRef.current = requestAnimationFrame(scan)
+      }
+      scan()
+    }
+
     async function startZXing(){
+      if(zxingStarted || stopped || detectedRef.current) return
+      zxingStarted = true
       try{
         if(!window.ZXing){
           await new Promise((resolve,reject) => {
+            const existing = document.querySelector('script[data-zxing="true"]')
+            if(existing){ existing.addEventListener('load', resolve, {once:true}); existing.addEventListener('error', reject, {once:true}); return }
             const script = document.createElement('script')
+            script.dataset.zxing = 'true'
             script.src = 'https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js'
             script.onload = resolve
             script.onerror = reject
@@ -3268,29 +3316,37 @@ function Scanner({onClose,onDetected}){
           })
         }
 
-        const reader = new window.ZXing.BrowserMultiFormatReader()
+        const hints = new Map()
+        try{
+          const BarcodeFormat = window.ZXing.BarcodeFormat
+          const DecodeHintType = window.ZXing.DecodeHintType
+          hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+            BarcodeFormat.EAN_13, BarcodeFormat.EAN_8, BarcodeFormat.UPC_A, BarcodeFormat.UPC_E,
+            BarcodeFormat.CODE_128, BarcodeFormat.CODE_39, BarcodeFormat.ITF
+          ])
+          hints.set(DecodeHintType.TRY_HARDER, true)
+        }catch{}
+
+        const reader = new window.ZXing.BrowserMultiFormatReader(hints, 450)
+        zxingReaderRef.current = reader
         const devices = await window.ZXing.BrowserCodeReader.listVideoInputDevices()
-        const backCam = devices.find(d => /back|rear|environment|rück/i.test(d.label))
-        const deviceId = backCam?.deviceId || devices[devices.length - 1]?.deviceId
+        const backCam = devices.find(d => /back|rear|environment|rück|kamera 0/i.test(d.label))
+        const deviceId = backCam?.deviceId || devices[devices.length - 1]?.deviceId || undefined
 
         setMessage('Scanner bereit. Barcode ruhig vor die Kamera halten.')
         await reader.decodeFromVideoDevice(deviceId, videoRef.current, (result) => {
-          if(result){
-            const code = result.getText()
-            setScanMsg({type:'success', text:'✓ Barcode erkannt: ' + code})
-            try{ reader.reset() }catch{}
-            stopCamera()
-            setTimeout(() => onDetected(String(code).replace(/\D/g,'')), 350)
-          }
+          if(result) finishDetected(result.getText())
         })
       }catch(e){
         console.warn(e)
-        setMessage('Scanner konnte nicht automatisch lesen. Bitte Barcode manuell eingeben.')
-        setScanMsg({type:'warning', text:'Manuelle Eingabe ist möglich.'})
+        if(!detectedRef.current){
+          setMessage('Scanner konnte nicht automatisch lesen. Bitte Barcode manuell eingeben.')
+          setScanMsg({type:'warning', text:'Manuelle Eingabe ist möglich.'})
+        }
       }
     }
 
-    startNative()
+    startCamera()
     return () => { stopped = true; stopCamera() }
   }, [])
 
@@ -3300,8 +3356,8 @@ function Scanner({onClose,onDetected}){
     <InlineFeedback msg={scanMsg}/>
     <video ref={videoRef} className="scannerVideo" autoPlay muted playsInline></video>
     <label>Barcode manuell eingeben</label>
-    <input inputMode="numeric" placeholder="EAN / Barcode" value={manual} onChange={e => setManual(e.target.value.replace(/\D/g,''))} onKeyDown={e => { if(e.key === 'Enter' && manual){ e.preventDefault(); onDetected(manual) } }}/>
-    <button disabled={!manual} onClick={() => onDetected(manual)}>Übernehmen</button>
+    <input inputMode="numeric" pattern="[0-9]*" placeholder="EAN / Barcode" value={manual} onChange={e => setManual(e.target.value.replace(/\D/g,''))} onKeyDown={e => { if(e.key === 'Enter' && manual){ e.preventDefault(); finishDetected(manual) } }}/>
+    <button disabled={!manual} onClick={() => finishDetected(manual)}>Übernehmen</button>
     <button onClick={() => { stopCamera(); onClose() }}>Schließen</button>
   </div></div>
 }

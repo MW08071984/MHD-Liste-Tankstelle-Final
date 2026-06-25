@@ -1,0 +1,1 @@
+Build erfolgreich geprüft: Scanner iPhone-Fallback + Datumseingabe ohne Punkt.
