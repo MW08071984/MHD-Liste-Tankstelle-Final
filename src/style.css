@@ -988,3 +988,90 @@ button.danger,.danger,.actions button.danger{
   .masterArticleCardFinal .masterArticleMetaRow{grid-template-columns:1fr;}
   .masterArticleCardFinal .masterArticleActions{grid-template-columns:1fr!important;}
 }
+
+/* FINAL KOPFZEILE KOMPAKT:
+   MHD Kontrolle • Rolle / Hallo Name / Design + Push + Logout in einer Reihe.
+   Nur Layout, keine Funktionsänderung. */
+.topbar.topbarFinal{
+  display:block!important;
+  padding:10px 14px 13px!important;
+  border-radius:0 0 22px 22px!important;
+  min-height:0!important;
+}
+.topbarFinal .topbarInner{
+  width:100%;
+  display:grid;
+  grid-template-columns:1fr;
+  gap:5px;
+}
+.topbarFinal .topbarRole{
+  margin:0!important;
+  font-size:clamp(12px,2.7vw,15px)!important;
+  line-height:1.15!important;
+  font-weight:900!important;
+  opacity:.96;
+}
+.topbarFinal .topbarHello{
+  margin:0!important;
+  font-size:clamp(25px,7vw,36px)!important;
+  line-height:1.04!important;
+  font-weight:1000!important;
+  color:#fff4c8!important;
+}
+.topbarFinal .topbarButtonRow{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:8px;
+  margin-top:4px;
+  width:100%;
+}
+.topbarFinal .topbarButtonRow button,
+.topbarFinal .topbarButtonRow .designMiniBtn{
+  width:100%!important;
+  min-height:40px!important;
+  padding:8px 8px!important;
+  border-radius:15px!important;
+  font-size:clamp(12px,3.4vw,15px)!important;
+  line-height:1.05!important;
+  font-weight:1000!important;
+  white-space:nowrap!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  text-align:center!important;
+}
+.topbarFinal .designMiniBtn{
+  background:#fffdf0!important;
+  color:#7b1018!important;
+  border:3px solid #ffd900!important;
+}
+.topbarFinal .pushBtn{
+  background:#fffdf0!important;
+  color:#7b1018!important;
+  border:3px solid #ffd900!important;
+}
+.topbarFinal .logout{
+  background:#eaf3ff!important;
+  color:#0f172a!important;
+  border:3px solid rgba(255,255,255,.75)!important;
+}
+@media(min-width:760px){
+  .topbarFinal .topbarInner{
+    grid-template-columns:1fr auto;
+    align-items:center;
+    column-gap:18px;
+  }
+  .topbarFinal .topbarRole,
+  .topbarFinal .topbarHello{grid-column:1}
+  .topbarFinal .topbarButtonRow{
+    grid-column:2;
+    grid-row:1 / span 2;
+    width:360px;
+    margin-top:0;
+  }
+}
+@media(max-width:360px){
+  .topbarFinal .topbarButtonRow{gap:6px}
+  .topbarFinal .topbarButtonRow button,
+  .topbarFinal .topbarButtonRow .designMiniBtn{font-size:11px!important;padding:7px 5px!important}
+}

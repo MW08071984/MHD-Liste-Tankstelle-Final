@@ -1888,14 +1888,15 @@ export default function App(){
   ]
 
   return <main className={`app theme-${uiTheme}`} onClickCapture={handleGlobalActionFeedback}>
-    <header className="topbar">
-      <div>
-        <p>MHD Kontrolle · {roleLabel(user.rolle)}</p>
-        <div className="helloRow"><h1>Hallo {user.name}</h1><DesignButton uiTheme={uiTheme} setUiTheme={setUiTheme}/></div>
-      </div>
-      <div className="topActions">
-        <button className="pushBtn" onClick={enablePush} title="Push-Benachrichtigungen aktivieren/testen">🔔 Push</button>
-        <button className="logout" onClick={logout}>Logout</button>
+    <header className="topbar topbarFinal">
+      <div className="topbarInner">
+        <p className="topbarRole">MHD Kontrolle · {roleLabel(user.rolle)}</p>
+        <h1 className="topbarHello">Hallo {user.name}</h1>
+        <div className="topbarButtonRow">
+          <DesignButton uiTheme={uiTheme} setUiTheme={setUiTheme}/>
+          <button className="pushBtn" onClick={enablePush} title="Push-Benachrichtigungen aktivieren/testen">🔔 Push</button>
+          <button className="logout" onClick={logout}>🚪 Logout</button>
+        </div>
       </div>
     </header>
 
