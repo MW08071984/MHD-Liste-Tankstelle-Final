@@ -2892,11 +2892,13 @@ function MasterArticles({masterArticles, mhdItems=[], saveMasterArticle,deleteMa
     {filteredMasterArticles.map(a => {
       const cardImg = articleCardImage(a)
       const hasImage = !!cardImg
-      return <div className="item masterArticleCard" key={a.id || a.barcode}>
+      return <div className="item masterArticleCard masterArticleCardFinal" key={a.id || a.barcode}>
+        <div className="masterArticleNameBar">{a.name || 'Unbenannter Artikel'}</div>
         <div className="grow masterArticleInfo">
-          <b className="masterArticleTitle">{a.name || 'Unbenannter Artikel'}</b>
-          <p><span>Art.-Nr.</span> {a.artikelnummer || '-'}</p>
-          <p><span>EAN</span> {a.barcode || '-'}</p>
+          <div className="masterArticleMetaRow">
+            <p><span>EAN:</span> {a.barcode || '-'}</p>
+            <p><span>Art.-Nr.:</span> {a.artikelnummer || '-'}</p>
+          </div>
           <p className={hasImage ? 'imageStatus ok' : 'imageStatus missing'}>{hasImage ? '✓ Bild hinterlegt' : '✕ Kein Bild hinterlegt'}</p>
         </div>
         <div className="actions masterArticleActions">
