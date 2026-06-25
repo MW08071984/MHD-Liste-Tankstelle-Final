@@ -2112,7 +2112,6 @@ function Article({item,user,writeOffArticle,markArticleCheckedZero,setEditArticl
   return <div className={'item articleItem ' + stateClass}>
     <div className="artikelnummer small">{displayNo}</div>
     <div className="grow">
-      <b>{item.name || item.artikel}</b>
       <p>{item.barcode ? `EAN ${item.barcode}` : 'EAN -'}</p>
       <p>{item.artikelnummer ? `Art.-Nr. ${item.artikelnummer}` : ''}</p>
       <p>MHD {item.mhd ? new Date(item.mhd).toLocaleDateString('de-DE') : '-'} · {days <= 0 ? (days === 0 ? 'heute fällig' : `${Math.abs(days)} Tage drüber`) : `${days} Tage`}</p>
