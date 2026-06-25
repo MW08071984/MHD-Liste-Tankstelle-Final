@@ -2443,14 +2443,16 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
           if(iso) setForm({...form, mhd:iso})
         }}
       />
-      <input
-        className="realInput calendarInput"
-        type="date"
-        min={todayISO()}
-        aria-label="MHD per Kalender auswählen"
-        value={normalizeMhdInput(form.mhd) || ''}
-        onChange={e => { setMhdInputMode('full'); setForm({...form, mhd:e.target.value}) }}
-      />
+      <label className="calendarPickerButton">
+        <span>📅 Kalender</span>
+        <input
+          type="date"
+          min={todayISO()}
+          aria-label="MHD per Kalender auswählen"
+          value={normalizeMhdInput(form.mhd) || ''}
+          onChange={e => { setMhdInputMode('full'); setForm({...form, mhd:e.target.value}) }}
+        />
+      </label>
     </div>
 
     <label>MHD nur Monat/Jahr</label>
@@ -2468,6 +2470,9 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
       }}
     />
 
+
+    <InlineFeedback msg={inlineMsg?.erfassen}/>
+    <button className="primary" onClick={addItem}>Speichern</button>
 
     <label>EAN / Barcode</label>
     <input
@@ -2500,8 +2505,6 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
 
 
 
-    <InlineFeedback msg={inlineMsg?.erfassen}/>
-    <button className="primary" onClick={addItem}>Speichern</button>
     {isAdmin(user) && <div className="captureRow"><label className="upload captureButton">📷 Bild aufnehmen<input type="file" accept="image/*" capture="environment" onChange={uploadFormImg}/></label><label className="upload captureButton">📁 Bild hochladen<input type="file" accept="image/*" onChange={uploadFormImg}/></label></div>}
     {form.bild_url && <img className="preview" src={form.bild_url} loading="lazy" decoding="async"/>}
   </section>

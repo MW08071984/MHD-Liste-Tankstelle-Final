@@ -1085,3 +1085,42 @@ button.danger,.danger,.actions button.danger{
 .app.theme-lila input,.app.theme-lila select,.app.theme-lila textarea{border-color:#7c3aed!important}
 .app.theme-lila .articleBadge,.app.theme-lila .cardTitle{background:linear-gradient(135deg,#6d28d9,#8b5cf6)!important;color:#fff!important}
 
+
+/* FINAL Praxis-Fix: Kalender-Schaltfläche verständlich beschriften */
+.calendarPickerButton{
+  position:relative;
+  min-width:112px;
+  min-height:62px;
+  border:4px solid var(--border);
+  border-radius:18px;
+  background:#fffef8;
+  color:var(--red);
+  font-weight:900;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+  box-sizing:border-box;
+  overflow:hidden;
+  cursor:pointer;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.75);
+}
+.calendarPickerButton span{
+  pointer-events:none;
+  font-size:14px;
+  line-height:1.1;
+  white-space:nowrap;
+}
+.calendarPickerButton input[type="date"]{
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  opacity:0;
+  cursor:pointer;
+}
+@media(max-width:420px){
+  .mhdInputRow{ grid-template-columns:1fr 112px; }
+  .calendarPickerButton{ min-width:112px; }
+  .calendarPickerButton span{ font-size:13px; }
+}

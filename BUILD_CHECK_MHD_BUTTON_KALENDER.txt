@@ -1,0 +1,4 @@
+Build geprüft: MHD-Felder bleiben oben unter Artikel aus Artikelliste.
+Speichern-Button wurde auf der Erfassen-Seite direkt unter die Datumseingabe verschoben.
+Der Kalender-Auslöser ist nun als „📅 Kalender“ beschriftet statt nur als kleines Datumsfeld/Pfeil.
+Sonst keine beabsichtigten Funktions- oder Datenänderungen.
