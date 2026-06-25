@@ -825,3 +825,77 @@ button.danger,.danger,.actions button.danger{
 .app.theme-graphite{--red:#374151;--dark:#111827;--yellow:#f3f4f6;--cream:#ffffff;--soft:#f3f4f6;--text:#111827;background:linear-gradient(180deg,#e5e7eb,#ffffff 48%,#f9fafb)}
 .app.theme-graphite .topbar{background:linear-gradient(135deg,#111827,#374151)!important;color:#f9fafb!important;border-bottom:3px solid #9ca3af!important}
 .app.theme-graphite .tabs button.active{background:#374151!important;color:#fff!important;border-color:#111827!important}
+
+/* FINALER FEINSCHLIFF ARTIKELKARTEN:
+   Artikelname steht groß im farbigen Balken, EAN/Art.-Nr. kleiner darunter,
+   MHD mittig hervorgehoben. Keine Daten- oder Funktionsänderung. */
+.articleItem .articleTitleBar{
+  width:100%!important;
+  min-width:0!important;
+  height:auto!important;
+  padding:13px 16px!important;
+  border-radius:16px!important;
+  font-size:clamp(22px, 4.6vw, 31px)!important;
+  line-height:1.12!important;
+  font-weight:1000!important;
+  text-align:center!important;
+  color:#fff!important;
+  border:0!important;
+  background:linear-gradient(135deg,var(--accent,#1767e8),var(--accent2,#0b51d8))!important;
+  box-shadow:inset 0 0 0 3px rgba(255,255,255,.18), 0 8px 16px rgba(0,0,0,.10)!important;
+  margin:0 0 10px 0!important;
+}
+.articleItem .articleCardBody{width:100%!important;}
+.articleItem .articleMetaRow{
+  display:grid!important;
+  grid-template-columns:1fr 1fr!important;
+  gap:8px 16px!important;
+  align-items:center!important;
+  margin:4px 0 8px!important;
+}
+.articleItem .articleMetaRow p{
+  margin:0!important;
+  font-size:clamp(14px,3.3vw,18px)!important;
+  line-height:1.22!important;
+  color:#444!important;
+  font-weight:800!important;
+}
+.articleItem .articleMetaRow span,
+.articleItem .articleMhdLine span{
+  font-weight:1000!important;
+  color:#8b1016!important;
+}
+.articleItem .articleMhdLine{
+  position:relative!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:7px!important;
+  margin:8px 0 12px!important;
+  padding:0 36px!important;
+  text-align:center!important;
+  font-size:clamp(18px,4.0vw,23px)!important;
+  line-height:1.15!important;
+  color:#4a1f00!important;
+  font-weight:950!important;
+}
+.articleItem .articleMhdLine::before,
+.articleItem .articleMhdLine::after{
+  content:"";
+  flex:1 1 auto;
+  height:2px;
+  background:rgba(0,0,0,.12);
+  max-width:90px;
+}
+.articleItem .imageButton{
+  width:100%!important;
+  justify-content:center!important;
+  text-align:center!important;
+  font-size:clamp(18px,4vw,22px)!important;
+  padding:13px 16px!important;
+}
+@media(max-width:430px){
+  .articleItem .articleMetaRow{grid-template-columns:1fr!important;gap:3px!important;}
+  .articleItem .articleMhdLine{padding:0!important;}
+  .articleItem .articleMhdLine::before,.articleItem .articleMhdLine::after{display:none!important;}
+}

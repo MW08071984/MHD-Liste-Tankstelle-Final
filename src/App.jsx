@@ -2110,11 +2110,13 @@ function Article({item,user,writeOffArticle,markArticleCheckedZero,setEditArticl
   const stateClass = days <= 0 ? 'expiredArticle' : (days >= 1 && days <= 3 ? 'urgentArticle' : '')
   const displayNo = item.name || item.artikel || item.artikelnummer || item.barcode || 'Artikel'
   return <div className={'item articleItem ' + stateClass}>
-    <div className="artikelnummer small">{displayNo}</div>
-    <div className="grow">
-      <p>{item.barcode ? `EAN ${item.barcode}` : 'EAN -'}</p>
-      <p>{item.artikelnummer ? `Art.-Nr. ${item.artikelnummer}` : ''}</p>
-      <p>MHD {item.mhd ? new Date(item.mhd).toLocaleDateString('de-DE') : '-'} · {days <= 0 ? (days === 0 ? 'heute fällig' : `${Math.abs(days)} Tage drüber`) : `${days} Tage`}</p>
+    <div className="artikelnummer small articleTitleBar">{displayNo}</div>
+    <div className="grow articleCardBody">
+      <div className="articleMetaRow">
+        <p><span>EAN:</span> {item.barcode || '-'}</p>
+        <p><span>Art.-Nr.:</span> {item.artikelnummer || '-'}</p>
+      </div>
+      <p className="articleMhdLine"><span>MHD:</span> {item.mhd ? new Date(item.mhd).toLocaleDateString('de-DE') : '-'} · {days <= 0 ? (days === 0 ? 'heute fällig' : `${Math.abs(days)} Tage drüber`) : `${days} Tage`}</p>
       <button className="ghostSmall imageButton" type="button" onClick={openImage}>Bild anzeigen</button>
     </div>
     <div className="writeBox">
