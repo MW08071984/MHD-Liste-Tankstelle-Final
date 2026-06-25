@@ -71,22 +71,50 @@ function normalizeMhdInput(value){
     return ''
   }
 
-  // iPhone-/Android-freundlich: Eingaben ohne Punkt/Slash erlauben.
-  // 30062026 -> 30.06.2026, 300626 -> 30.06.2026, 062026 -> 06.2026.
+  const validFull = (...parts) => {
+    for(const p of parts){
+      const iso = buildIso(p[0], p[1], p[2])
+      if(iso) return iso
+    }
+    return ''
+  }
+
+  // iPhone-/Android-freundlich: Punkt, Komma, Slash, Minus oder nur Zahlen erlauben.
+  // Beispiele: 23626, 23,6,26, 2362026, 23062026, 23/06/2026.
+  const separated = raw.match(/^(\d{1,2})[.,\-/\s]+(\d{1,2})[.,\-/\s]+(\d{2}|\d{4})$/)
+  if(separated) return buildIso(separated[1], separated[2], separated[3])
+
+  const monthYear = raw.match(/^(\d{1,2})[.,\-/\s]+(\d{2}|\d{4})$/)
+  if(monthYear) return buildMonthYearIso(monthYear[1], monthYear[2])
+
   const digits = raw.replace(/\D/g,'')
   if(digits.length === 8) return buildIso(digits.slice(0,2), digits.slice(2,4), digits.slice(4))
+  if(digits.length === 7){
+    // 2362026 -> 23.06.2026 oder 3062026 -> 03.06.2026
+    return validFull(
+      [digits.slice(0,2), digits.slice(2,3), digits.slice(3)],
+      [digits.slice(0,1), digits.slice(1,3), digits.slice(3)]
+    )
+  }
   if(digits.length === 6){
-    const first = Number(digits.slice(0,2))
-    if(first > 12) return buildIso(digits.slice(0,2), digits.slice(2,4), digits.slice(4))
+    // 230626 -> 23.06.2026; 062026 im Monat/Jahr-Feld bleibt 06.2026.
+    const full = buildIso(digits.slice(0,2), digits.slice(2,4), digits.slice(4))
+    if(full) return full
+    const monthYearIso = buildMonthYearIso(digits.slice(0,2), digits.slice(2))
+    if(monthYearIso) return monthYearIso
+  }
+  if(digits.length === 5){
+    // 23626 -> 23.06.2026; 3626 -> 03.06.2026 wäre vierstellig, daher hier nur 5 Stellen.
+    return validFull(
+      [digits.slice(0,2), digits.slice(2,3), digits.slice(3)],
+      [digits.slice(0,1), digits.slice(1,3), digits.slice(3)]
+    )
+  }
+  if(digits.length === 4){
     return buildMonthYearIso(digits.slice(0,2), digits.slice(2))
   }
 
-  const monthYear = raw.match(/^(\d{1,2})[.\-/\s]+(\d{2}|\d{4})$/)
-  if(monthYear) return buildMonthYearIso(monthYear[1], monthYear[2])
-
-  const match = raw.match(/^(\d{1,2})[.\-/\s]+(\d{1,2})[.\-/\s]+(\d{2}|\d{4})$/)
-  if(!match) return ''
-  return buildIso(match[1], match[2], match[3])
+  return ''
 }
 
 function toGermanDate(value){

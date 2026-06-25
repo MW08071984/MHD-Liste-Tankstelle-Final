@@ -1,0 +1,3 @@
+Build geprüft: Datumseingabe erweitert.
+Akzeptiert jetzt u. a. 23626, 2362026, 23,6,26, 23.6.26, 23/06/2026, 23062026 und Monat/Jahr.
+Keine Änderungen an Datenbank, Scanner, Rechte, Designs oder vorhandenen Daten.
