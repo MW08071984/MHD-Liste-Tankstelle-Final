@@ -2108,7 +2108,7 @@ function Article({item,user,writeOffArticle,markArticleCheckedZero,setEditArticl
 
   const qty = Number(amount || 0)
   const stateClass = days <= 0 ? 'expiredArticle' : (days >= 1 && days <= 3 ? 'urgentArticle' : '')
-  const displayNo = item.artikelnummer || item.barcode || 'EAN'
+  const displayNo = item.name || item.artikel || item.artikelnummer || item.barcode || 'Artikel'
   return <div className={'item articleItem ' + stateClass}>
     <div className="artikelnummer small">{displayNo}</div>
     <div className="grow">
