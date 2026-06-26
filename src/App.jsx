@@ -3428,7 +3428,7 @@ function MasterArticles({masterArticles, mhdItems=[], saveMasterArticle,deleteMa
       <button type="button" className="ghostSmall" onClick={() => window.dispatchEvent(new CustomEvent('mhd-show-image', {detail:{src:data.bild_url, title:data.name || 'Artikelbild'}}))}>Bild anzeigen</button>
       <label className="upload captureButton">🔄 Bild ändern<input type="file" accept="image/*" onChange={upload}/></label>
     </div> : <div className="captureRow"><label className="upload captureButton">📷 Bild aufnehmen<input type="file" accept="image/*" capture="environment" onChange={upload}/></label><label className="upload captureButton">📁 Bild hochladen<input type="file" accept="image/*" onChange={upload}/></label></div>}
-    {data.bild_url && <button type="button" onClick={removeArticleBg}>✂️ Bild freistellen</button>}
+    {data.bild_url && <button type="button" onClick={removeBg}>✂️ Bild freistellen</button>}
     {data.bild_url && <img className="preview transparentPreview" src={data.bild_url}/>}    
     <InlineFeedback msg={msg}/>
     <button className="primary" onClick={save}>{data.id ? 'Änderung speichern' : 'Artikel anlegen'}</button>
