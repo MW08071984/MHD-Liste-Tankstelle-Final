@@ -1,0 +1,16 @@
+Final Stable 1.0 Umbau geprüft
+
+Build: npm run build erfolgreich.
+
+Enthaltene Änderungen ohne Datenbank-/Datenlöschung:
+- Intelligenter Abgleich fehlender Artikel über EAN, interne Artikelnummer und Artikelname.
+- Mögliche Treffer werden angezeigt.
+- Vorhandenen Artikel übernehmen, neuen Artikel anlegen oder Vorschlag löschen.
+- Abschrift-Bestätigung ohne Grund vor dem Speichern.
+- MHD-Popup mit Bildanzeige bleibt enthalten.
+- Dashboard-Statistik für Chef/Stationsleitung.
+- Rahmenlogik: 7-6 Tage gelb, 5-2 Tage orange, 1-0 Tage rot, abgelaufen rot hinterlegt.
+- Bildstatus bleibt direkt sichtbar.
+- Artikelliste erhält Fallback aus vorhandenen MHD-Artikeln, falls Stammdaten-Abfrage fehlschlägt.
+
+Keine bestehenden MHD-Einträge, Artikel, Bilder, Benutzer, Rollen oder Abschriften werden durch den Umbau gelöscht.

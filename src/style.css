@@ -1167,3 +1167,62 @@ button.danger,.danger,.actions button.danger{
   .mhdModeSwitch{grid-template-columns:1fr;gap:7px}
   .mhdInputRowNoSelect{grid-template-columns:minmax(0,1fr) 104px!important;gap:8px!important}
 }
+
+/* FINAL STABLE 1.0: Dashboard-Statistik, Fehlende-Artikel-Abgleich, Abschrift-Bestätigung */
+.mhdDashboardStats{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(135px,1fr));
+  gap:8px;
+  margin:10px 0 14px;
+}
+.mhdDashboardStats span{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:5px;
+  padding:10px 8px;
+  border:3px solid var(--border);
+  border-radius:16px;
+  background:#fffdf2;
+  color:var(--text);
+  font-weight:900;
+  text-align:center;
+}
+.mhdDashboardStats b{font-size:18px;color:var(--red)}
+.missingMatches{
+  display:grid;
+  gap:8px;
+  width:100%;
+  margin:10px 0;
+  padding:10px;
+  border:3px solid #ffd400;
+  border-radius:18px;
+  background:#fff9ce;
+  box-sizing:border-box;
+}
+.missingMatch{
+  display:grid;
+  grid-template-columns:1fr auto;
+  gap:10px;
+  align-items:center;
+  padding:10px;
+  border:2px solid rgba(0,0,0,.12);
+  border-radius:14px;
+  background:#fff;
+}
+.missingMatch strong{display:block;font-size:17px;color:var(--red);font-weight:1000}
+.missingMatch p{margin:3px 0;font-weight:800;color:#333}
+.missingMatch span{font-size:13px;font-weight:900;color:#6b4e00}
+.writeoffConfirmModal{max-width:500px;border:4px solid var(--red)}
+.confirmDetails{
+  display:grid;
+  gap:8px;
+  text-align:left;
+  padding:12px;
+  margin:10px 0;
+  border:3px solid var(--border);
+  border-radius:16px;
+  background:#fff8d8;
+}
+.confirmDetails p{margin:0;font-size:17px;font-weight:800;color:var(--text)}
+@media(max-width:520px){.missingMatch{grid-template-columns:1fr}.missingMatch button{width:100%}.mhdDashboardStats{grid-template-columns:1fr 1fr}.mhdDashboardStats span{font-size:13px}}

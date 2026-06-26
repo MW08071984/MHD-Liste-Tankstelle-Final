@@ -652,6 +652,8 @@ export default function App(){
   const [duePopupIndex, setDuePopupIndex] = useState(0)
   const [duePopupOpen, setDuePopupOpen] = useState(false)
   const [duePopupAmount, setDuePopupAmount] = useState('')
+  const [writeoffConfirm, setWriteoffConfirm] = useState(null)
+  const writeoffConfirmResolver = useRef(null)
 
   useEffect(() => {
     function showImage(e){ setGlobalImage(e.detail || null) }
@@ -1138,10 +1140,29 @@ export default function App(){
       .order('name')
     if(error){
       console.warn('Artikelliste konnte nicht geladen werden:', error)
+      const fallbackMap = new Map()
+      ;(items || []).forEach(item => {
+        const key = cleanCode(item?.barcode) || String(item?.artikelnummer || item?.name || item?.artikel || '').trim().toLowerCase()
+        if(key && !fallbackMap.has(key)) fallbackMap.set(key, {
+          id:item?.id,
+          barcode:item?.barcode || '',
+          artikelnummer:item?.artikelnummer || '',
+          name:item?.name || item?.artikel || '',
+          kategorie:item?.kategorie || 'Sonstiges',
+          bild_url:item?.bild_url || ''
+        })
+      })
+      const fallback = Array.from(fallbackMap.values()).filter(x => x.name || x.barcode || x.artikelnummer)
+      if(fallback.length){
+        setMasterArticles(fallback.sort((a,b) => String(a.name || '').localeCompare(String(b.name || ''))))
+        setLoadedTabs(prev => ({...prev, master:true}))
+        setError('Artikelliste konnte nicht direkt geladen werden. Ersatzliste aus vorhandenen MHD-Artikeln wurde genutzt.')
+        return
+      }
       setLoadedTabs(prev => ({...prev, master:true}))
       return setError('Artikelliste konnte nicht geladen werden: ' + error.message)
     }
-    setMasterArticles(data || [])
+    setMasterArticles((data || []).sort((a,b) => String(a.name || '').localeCompare(String(b.name || ''))))
     setLoadedTabs(prev => ({...prev, master:true}))
   }
 
@@ -1358,6 +1379,13 @@ export default function App(){
     return (m?.[1] || '').trim()
   }
 
+  function useExistingForMissing(row, article){
+    if(!isAdmin(user)) return setError('Keine Rechte.')
+    if(!article) return setError('Kein vorhandener Artikel ausgewählt.')
+    markMissingDone(row)
+    setSuccess('Vorhandener Artikel übernommen: ' + (article.name || article.artikelnummer || article.barcode || 'Artikel') + '. Der Vorschlag wurde entfernt.')
+  }
+
   function takeOverMissingArticle(row){
     if(!isAdmin(user)) return setError('Keine Rechte.')
     const barcode = String(row?.barcode || '').replace(/\D/g,'')
@@ -1395,39 +1423,26 @@ export default function App(){
 
   async function recheckMissingArticle(row){
     if(!isAdmin(user)) return setError('Keine Rechte.')
-    const clean = cleanCode(row?.barcode)
-    if(!clean){ appFeedback('error'); return setError('EAN fehlt.') }
-
     let list = masterArticles || []
     if(db){
       const { data, error } = await supabase
         .from('artikel_stammdaten')
-        .select('id,barcode,artikelnummer,name')
+        .select('id,barcode,artikelnummer,name,kategorie,bild_url')
         .order('name')
-      if(error){ appFeedback('error'); return setError('EAN-Prüfung nicht möglich: ' + error.message) }
+      if(error){ appFeedback('error'); return setError('Abgleich nicht möglich: ' + error.message) }
       list = data || []
       setMasterArticles(list)
     }
-
-    const found = list.find(a => codesEqual(a?.barcode, clean))
-    if(found){
-      if(db){
-        await removeMissingFromSettings(clean)
-        try{
-          if(row?.id) await supabase.from('fehlende_artikel').delete().eq('id', row.id)
-          await supabase.from('fehlende_artikel').delete().eq('barcode', clean)
-        }catch(e){ console.warn('Fehlende Artikel Tabelle konnte beim EAN-Check nicht bereinigt werden:', e) }
-      }
-      setMissingArticles(prev => prev.filter(x => !codesEqual(x.barcode, clean) && x.id !== row.id))
-      writeMissingLocal(readMissingLocal().filter(x => !codesEqual(x.barcode, clean) && x.id !== row.id))
+    const matches = findMissingMatches(row, list)
+    if(matches.length){
       appFeedback('success')
-      setSuccess('EAN gefunden: ' + (found.name || found.artikelnummer || found.barcode) + '. Vorschlag wurde entfernt.')
+      setSuccess(matches.length === 1 ? '1 möglicher Treffer gefunden. Bitte vergleichen und übernehmen oder neu anlegen.' : matches.length + ' mögliche Treffer gefunden. Bitte vergleichen und übernehmen oder neu anlegen.')
       return
     }
-
     appFeedback('error')
-    setError('EAN weiterhin nicht in der Artikelliste gefunden.')
+    setError('Kein passender Artikel über EAN, interne Artikelnummer oder Namen gefunden.')
   }
+
 
   async function lookupBarcode(){
     setError('')
@@ -1620,6 +1635,26 @@ export default function App(){
     appFeedback('success')
   }
 
+  function requestWriteoffConfirm(payload){
+    return new Promise(resolve => {
+      writeoffConfirmResolver.current = resolve
+      setWriteoffConfirm(payload)
+    })
+  }
+
+  function resolveWriteoffConfirm(ok){
+    const resolver = writeoffConfirmResolver.current
+    writeoffConfirmResolver.current = null
+    setWriteoffConfirm(null)
+    resolver?.(!!ok)
+  }
+
+  async function writeOffWithConfirm(payload){
+    const ok = await requestWriteoffConfirm(payload)
+    if(!ok){ appFeedback('error'); return false }
+    return writeOff(payload)
+  }
+
   async function writeOff(payload){
     const finalPayload = {
       artikel_id: payload.artikel_id || null,
@@ -1654,9 +1689,13 @@ export default function App(){
     const qty = Math.max(0, Number(amount || 0))
     const cleanReason = 'MHD'
 
+    const confirmPayload = { ...item, artikel_id:item.id, menge:qty, grund:cleanReason }
+    const confirmed = await requestWriteoffConfirm(confirmPayload)
+    if(!confirmed){ appFeedback('error'); return false }
+
     let ok = true
     if(qty > 0){
-      ok = await writeOff({ ...item, artikel_id:item.id, menge:qty, grund:cleanReason })
+      ok = await writeOff(confirmPayload)
     }
 
     if(ok && db && item.id){
@@ -1674,7 +1713,6 @@ export default function App(){
   }
 
   async function markArticleCheckedZero(item){
-    if(!confirm('Artikel kontrolliert mit Menge 0? Der Eintrag verschwindet aus der Übersicht und es wird keine Abschrift erstellt.')) return
     return writeOffArticle(item, 0, 'MHD')
   }
 
@@ -2147,13 +2185,19 @@ export default function App(){
   }
 
   const stats = useMemo(() => {
-    const expiredItems = items.filter(i => daysUntil(i.mhd) <= 0)
+    const expiredItems = items.filter(i => daysUntil(i.mhd) < 0)
+    const redItems = items.filter(i => daysUntil(i.mhd) >= 0 && daysUntil(i.mhd) <= 1)
+    const orangeItems = items.filter(i => daysUntil(i.mhd) >= 2 && daysUntil(i.mhd) <= 5)
+    const yellowItems = items.filter(i => daysUntil(i.mhd) >= 6 && daysUntil(i.mhd) <= 7)
     const urgentItems = items.filter(i => daysUntil(i.mhd) >= 1 && daysUntil(i.mhd) <= 3)
-    const weekItems = items.filter(i => daysUntil(i.mhd) >= 1 && daysUntil(i.mhd) <= 7)
+    const weekItems = items.filter(i => daysUntil(i.mhd) >= 0 && daysUntil(i.mhd) <= 7)
     const nextDue = [...weekItems].sort((a,b) => daysUntil(a.mhd) - daysUntil(b.mhd))[0]
     return {
       total:items.length,
       expired:expiredItems.length,
+      red:redItems.length,
+      orange:orangeItems.length,
+      yellow:yellowItems.length,
       urgent:urgentItems.length,
       week:weekItems.length,
       totalText: items.length === 1 ? '1 Artikel gesamt' : `${items.length} Artikel gesamt`,
@@ -2234,6 +2278,14 @@ export default function App(){
       {can(user, settings, 'abschriften_ansehen') && <Stat label="Abschriften" value={stats.todayWriteoffs === 1 ? '1 heute' : `${stats.todayWriteoffs} heute`} tone="writeoffs" onClick={() => setTab('abschriften')}/>}
     </section>
 
+    {isAdmin(user) && <section className="mhdDashboardStats" aria-label="MHD Statistik">
+      <span>📦 Artikel gesamt: <b>{stats.total}</b></span>
+      <span>🟡 7 Tage: <b>{stats.yellow}</b></span>
+      <span>🟠 5–2 Tage: <b>{stats.orange}</b></span>
+      <span>🔴 1–0 Tage: <b>{stats.red}</b></span>
+      <span>🟥 Abgelaufen: <b>{stats.expired}</b></span>
+    </section>}
+
     {can(user, settings, 'abschriften_download') && <section className="todayStats single">
       <button className="pdfButton" onClick={() => exportAbschriftenPDF(writeoffs.filter(w => w.typ !== 'kontrolle' && entryDateKey(w) === todayISO()), 'Abschriftenliste', todayISO(), settings?.abschriften_pdf_passwort || '')}>📄 Abschriftenliste herunterladen</button>
     </section>}
@@ -2248,9 +2300,9 @@ export default function App(){
     {tab === 'artikel' && can(user, settings, 'mhd_alle_ansehen') && <ArticleList items={filteredItems} allCount={items.length} articleFilter={articleFilter} setArticleFilter={setArticleFilter} itemsLimited={itemsLimited} allMhdLoaded={allMhdLoaded} loadAllItems={() => loadItems({all:true})} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} deleteMhdEntry={deleteMhdEntry} inlineMsg={inlineMsg} safeEditOverviewItem={safeEditOverviewItem} getArticleImage={getArticleImage} settings={settings} uploadArticleImageFromMhd={uploadArticleImageFromMhd}/>}
     {tab === 'dashboard' && <Dashboard safeEditOverviewItem={safeEditOverviewItem} items={articleFilter === 'all' ? items : filteredItems} articleFilter={articleFilter} setTab={setTab} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} deleteMhdEntry={deleteMhdEntry} inlineMsg={inlineMsg} getArticleImage={getArticleImage} settings={settings} uploadArticleImageFromMhd={uploadArticleImageFromMhd}/>}
     {tab === 'erfassen' && <Erfassen form={form} setForm={setForm} setScannerOpen={setScannerOpen} lookupBarcode={lookupBarcode} uploadFormImg={uploadFormImg} addItem={addItem} user={user} inlineMsg={inlineMsg} masterArticles={masterArticles} reportMissingArticle={reportMissingArticle} saveMasterArticle={saveMasterArticle}/>}
-    {tab === 'backwaren' && <Backwaren backwaren={backwaren} saveBackwarenList={saveBackwarenList} writeOff={writeOff} user={user}/>}
+    {tab === 'backwaren' && <Backwaren backwaren={backwaren} saveBackwarenList={saveBackwarenList} writeOff={writeOffWithConfirm} user={user}/>}
     {tab === 'abschriften' && can(user, settings, 'abschriften_ansehen') && <Abschriften writeoffs={writeoffs.filter(w => w.typ !== 'kontrolle')} user={user} setEditWriteoff={setEditWriteoff} deleteWriteoff={deleteWriteoff} deleteWriteoffsForDay={deleteWriteoffsForDay} undoWriteoff={undoWriteoff} pdfPassword={settings?.abschriften_pdf_passwort || ''}/>}
-    {tab === 'fehlende' && can(user, settings, 'fehlende_bearbeiten') && <MissingArticles missingArticles={missingArticles} markMissingDone={markMissingDone} takeOverMissingArticle={takeOverMissingArticle} recheckMissingArticle={recheckMissingArticle}/>}    {tab === 'stammdaten' && can(user, settings, 'artikel_ansehen') && <MasterArticles prefillArticle={prefillMasterArticle} onPrefillUsed={() => setPrefillMasterArticle(null)} onMissingSaved={markMissingDone} quickMhdFromMaster={quickMhdFromMaster} masterArticles={masterArticles} mhdItems={items} saveMasterArticle={saveMasterArticle} deleteMasterArticle={deleteMasterArticle} setMasterScannerOpen={setMasterScannerOpen}/>}
+    {tab === 'fehlende' && can(user, settings, 'fehlende_bearbeiten') && <MissingArticles missingArticles={missingArticles} masterArticles={masterArticles} markMissingDone={markMissingDone} takeOverMissingArticle={takeOverMissingArticle} useExistingForMissing={useExistingForMissing} recheckMissingArticle={recheckMissingArticle}/>}    {tab === 'stammdaten' && can(user, settings, 'artikel_ansehen') && <MasterArticles prefillArticle={prefillMasterArticle} onPrefillUsed={() => setPrefillMasterArticle(null)} onMissingSaved={markMissingDone} quickMhdFromMaster={quickMhdFromMaster} masterArticles={masterArticles} mhdItems={items} saveMasterArticle={saveMasterArticle} deleteMasterArticle={deleteMasterArticle} setMasterScannerOpen={setMasterScannerOpen}/>}
     {tab === 'dienstplan' && <Dienstplan settings={settings} saveSetting={saveSetting} user={user}/>}
     {tab === 'online' && can(user, settings, 'online_ansehen') && <Online online={online}/>}
     {tab === 'verwaltung' && can(user, settings, 'mitarbeiter_verwalten') && <Verwaltung employees={employees} settings={settings} saveEmployee={saveEmployee} deleteEmployee={deleteEmployee} resetPassword={resetPassword} saveEmployeeRights={saveEmployeeRights}/>}
@@ -2269,6 +2321,8 @@ export default function App(){
       stopAlarm={stopMhdOpenAlarm}
     />}
 
+    {writeoffConfirm && <WriteoffConfirmPopup payload={writeoffConfirm} onCancel={() => resolveWriteoffConfirm(false)} onConfirm={() => resolveWriteoffConfirm(true)} />}
+
     {masterScannerOpen && <Scanner onClose={() => setMasterScannerOpen(false)} onDetected={(code) => { localStorage.setItem('mhd_master_scanned_ean', code); window.dispatchEvent(new CustomEvent('mhd-master-scan', {detail:code})); setMasterScannerOpen(false) }}/>} 
     {scannerOpen && <Scanner onClose={() => setScannerOpen(false)} onDetected={(code) => {
       const clean = String(code || '').replace(/\D/g,'')
@@ -2286,6 +2340,26 @@ export default function App(){
 
 
 
+
+function WriteoffConfirmPopup({payload,onCancel,onConfirm}){
+  const title = payload?.name || payload?.artikel || payload?.artikelnummer || payload?.barcode || 'Artikel'
+  const qty = Number(payload?.menge || 0)
+  return <div className="modalOverlay">
+    <div className="modalCard writeoffConfirmModal">
+      <h2>🗑️ Abschrift bestätigen</h2>
+      <div className="confirmDetails">
+        <p><b>Artikel:</b> {title}</p>
+        <p><b>MHD:</b> {payload?.mhd ? new Date(payload.mhd).toLocaleDateString('de-DE') : '-'}</p>
+        <p><b>Anzahl:</b> {qty}</p>
+      </div>
+      <p className="dueMhdHint">Soll die Abschrift wirklich gespeichert werden?</p>
+      <div className="modalActions dueMhdActions">
+        <button type="button" className="ghostSmall" onClick={onCancel}>🔴 Abbrechen</button>
+        <button type="button" className="successBtn" onClick={onConfirm}>🟢 Ja, speichern</button>
+      </div>
+    </div>
+  </div>
+}
 
 function DueMhdPopup({item, index, total, amount, setAmount, save, later, stopAlarm}){
   const days = daysUntil(item?.mhd)
@@ -2435,8 +2509,8 @@ function Dashboard({items,articleFilter='all',setTab,user,settings,writeOffArtic
   const title = articleFilter === 'expired' ? 'Abgelaufene Artikel' : articleFilter === 'week' ? 'Nächste 7 Tage' : ''
   const shownItems = articleFilter === 'all' ? items.slice(0,8) : items
   return <section className="list">
-    {!title && <div className="sectionTopInfo"><InfoButton title="Übersicht">Hier siehst du die wichtigsten MHD-Artikel. Rahmenfarben gelten in jedem Design: 7 Tage gelb, 5 Tage orange, 1 Tag rot. Abgelaufene Artikel sind rot hinterlegt.</InfoButton></div>}
-    {title && <div className="sectionHeader"><div><div className="pageTitleInline"><h2>{title}</h2><InfoButton title={title}>Diese Liste zeigt nur die Artikel des ausgewählten Zeitraums. Rahmenfarben: 7 Tage gelb, 5 Tage orange, 1 Tag rot. Abgelaufene Artikel sind rot hinterlegt.</InfoButton></div><p className="filterInfo">{shownItems.length} Artikel angezeigt</p></div></div>}
+    {!title && <div className="sectionTopInfo"><InfoButton title="Übersicht">Hier siehst du die wichtigsten MHD-Artikel. Rahmenfarben gelten in jedem Design: 7–6 Tage gelb, 5–2 Tage orange, 1–0 Tage rot. Abgelaufene Artikel sind rot hinterlegt.</InfoButton></div>}
+    {title && <div className="sectionHeader"><div><div className="pageTitleInline"><h2>{title}</h2><InfoButton title={title}>Diese Liste zeigt nur die Artikel des ausgewählten Zeitraums. Rahmenfarben: 7–6 Tage gelb, 5–2 Tage orange, 1–0 Tage rot. Abgelaufene Artikel sind rot hinterlegt.</InfoButton></div><p className="filterInfo">{shownItems.length} Artikel angezeigt</p></div></div>}
     <button className="primary" onClick={() => { setTab('erfassen'); window.scrollTo({top:0, behavior:'smooth'}) }}>+ Schnell erfassen</button>
     {shownItems.length === 0 && articleFilter !== 'all' && <div className="empty">Keine passenden Artikel vorhanden.</div>}
     {shownItems.map(item => <Article key={item.id} item={item} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} deleteMhdEntry={deleteMhdEntry} getArticleImage={getArticleImage} settings={settings} uploadArticleImageFromMhd={uploadArticleImageFromMhd}/>)}
@@ -2454,7 +2528,7 @@ function ArticleList({items,allCount,articleFilter,setArticleFilter,itemsLimited
   return <section className="list">
     <div className="sectionHeader">
       <div>
-        <div className="pageTitleInline"><h2>{title}</h2><InfoButton title={title}>Hier stehen die MHD-Einträge. Chef/Stationsleitung kann Einträge bearbeiten, löschen oder Abschriften speichern. Rahmenfarben gelten in jedem Design: 7 Tage gelb, 5 Tage orange, 1 Tag rot. Abgelaufene Artikel sind rot hinterlegt. Fällige MHD-Artikel ploppen beim Öffnen einzeln auf. Ohne Menge oder 0 bleibt der Artikel in der Liste und die Erinnerung kommt später erneut.</InfoButton></div>
+        <div className="pageTitleInline"><h2>{title}</h2><InfoButton title={title}>Hier stehen die MHD-Einträge. Chef/Stationsleitung kann Einträge bearbeiten, löschen oder Abschriften speichern. Rahmenfarben gelten in jedem Design: 7–6 Tage gelb, 5–2 Tage orange, 1–0 Tage rot. Abgelaufene Artikel sind rot hinterlegt. Fällige MHD-Artikel ploppen beim Öffnen einzeln auf. Ohne Menge oder 0 bleibt der Artikel in der Liste und die Erinnerung kommt später erneut.</InfoButton></div>
         <p className="filterInfo">{shownItems.length} von {items.length} angezeigt · {allCount} Artikeln · Chef/Stationsleitung kann hier Einträge bearbeiten oder löschen.</p>
       </div>
       {itemsLimited && <button className="ghostSmall" onClick={loadAllItems}>Alle MHD laden</button>}
@@ -2506,7 +2580,7 @@ function Article({item,user,settings,writeOffArticle,markArticleCheckedZero,setE
   }
 
   const qty = Number(amount || 0)
-  const stateClass = days <= 0 ? 'expiredArticle' : (days <= 1 ? 'dueRedFrame' : (days <= 5 ? 'dueOrangeFrame' : (days <= 7 ? 'dueYellowFrame' : '')))
+  const stateClass = days < 0 ? 'expiredArticle' : (days <= 1 ? 'dueRedFrame' : (days <= 5 ? 'dueOrangeFrame' : (days <= 7 ? 'dueYellowFrame' : '')))
   const displayNo = item.name || item.artikel || item.artikelnummer || item.barcode || 'Artikel'
   const canAddImage = !imageSrc && (can(user, settings, 'artikel_bearbeiten') || can(user, settings, 'artikel_anlegen'))
   return <div className={'item articleItem ' + stateClass}>
@@ -3045,38 +3119,88 @@ function Kontrollen({controls,user,deleteWriteoff}){
 }
 
 
-function MissingArticles({missingArticles,markMissingDone,takeOverMissingArticle,recheckMissingArticle}){
+function normalizeCompareText(value){
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/ä/g,'ae').replace(/ö/g,'oe').replace(/ü/g,'ue').replace(/ß/g,'ss')
+    .replace(/[^a-z0-9]+/g,' ')
+    .trim()
+}
+
+function extractMissingName(row){
+  const direct = String(row?.artikelname || row?.name || '').trim()
+  if(direct) return direct
+  const hint = String(row?.hinweis || '')
+  const m = hint.match(/Artikelname:\s*(.*?)\s*(?:·|$)/i)
+  return (m?.[1] || '').trim()
+}
+
+function extractMissingArtNr(row){
+  return String(row?.artikelnummer || row?.interne_artikelnummer || row?.artnr || '').trim()
+}
+
+function findMissingMatches(row, masterArticles=[]){
+  const ean = cleanCode(row?.barcode)
+  const artNr = extractMissingArtNr(row)
+  const name = extractMissingName(row)
+  const nameNorm = normalizeCompareText(name)
+  const nameWords = nameNorm.split(' ').filter(w => w.length >= 3)
+  const scored = (masterArticles || []).map(article => {
+    const reasons = []
+    if(ean && codesEqual(article?.barcode, ean)) reasons.push('EAN')
+    if(artNr && String(article?.artikelnummer || '').trim() === artNr) reasons.push('Art.-Nr.')
+    const articleNameNorm = normalizeCompareText(article?.name || article?.artikel || '')
+    if(nameNorm && articleNameNorm){
+      if(articleNameNorm === nameNorm) reasons.push('Name exakt')
+      else if(articleNameNorm.includes(nameNorm) || nameNorm.includes(articleNameNorm)) reasons.push('Name ähnlich')
+      else if(nameWords.length && nameWords.filter(w => articleNameNorm.includes(w)).length >= Math.min(2, nameWords.length)) reasons.push('Name ähnlich')
+    }
+    return reasons.length ? {article, reasons} : null
+  }).filter(Boolean)
+  return scored.slice(0,5)
+}
+
+function MissingArticles({missingArticles,masterArticles=[],markMissingDone,takeOverMissingArticle,useExistingForMissing,recheckMissingArticle}){
   const open = missingArticles.filter(x => x.status !== 'erledigt')
-  const getMissingName = (row) => {
-    const direct = String(row?.artikelname || row?.name || '').trim()
-    if(direct) return direct
-    const hint = String(row?.hinweis || '')
-    const m = hint.match(/Artikelname:\s*(.*?)\s*(?:·|$)/i)
-    return (m?.[1] || '').trim() || 'Ohne Namen'
-  }
+  const getMissingName = (row) => extractMissingName(row) || 'Ohne Namen'
   return <section className="formCard">
-    <PageTitle title="Fehlende Artikel" info="Hier landen EANs, die Mitarbeiter gescannt haben, aber nicht in der Artikelliste vorhanden sind. Chef/Stationsleitung kann sie direkt übernehmen, abgleichen oder löschen." />
+    <PageTitle title="Fehlende Artikel" info="Hier landen EANs, die Mitarbeiter gescannt haben, aber nicht in der Artikelliste vorhanden sind. Chef/Stationsleitung kann über EAN, interne Artikelnummer und Name vergleichen, vorhandene Artikel übernehmen, neu anlegen oder Vorschläge löschen." />
     {open.length === 0 && <div className="empty">Keine fehlenden Artikel vorhanden.</div>}
     {open.map(row => {
       const name = getMissingName(row)
+      const matches = findMissingMatches(row, masterArticles)
       return <div className="missingCard" key={row.id || row.barcode}>
         <div className="missingInfo">
           <div className="missingEanLabel">EAN</div>
-          <div className="missingEan">{row.barcode}</div>
+          <div className="missingEan">{row.barcode || '-'}</div>
           <div className="missingNameLabel">Artikelname</div>
           <div className="missingName">{name}</div>
+          {extractMissingArtNr(row) && <><div className="missingNameLabel">Art.-Nr.</div><div className="missingName">{extractMissingArtNr(row)}</div></>}
           <div className="missingMeta">{row.gemeldet_von || '-'} · {row.created_at ? new Date(row.created_at).toLocaleDateString('de-DE') : ''}</div>
         </div>
+        {matches.length > 0 && <div className="missingMatches">
+          <b>Mögliche Treffer aus der Artikelliste</b>
+          {matches.map(({article,reasons}) => <div className="missingMatch" key={article.id || article.barcode || article.artikelnummer}>
+            <div>
+              <strong>{article.name || article.artikel || 'Artikel ohne Namen'}</strong>
+              <p>EAN: {article.barcode || '-'} · Art.-Nr.: {article.artikelnummer || '-'}</p>
+              <span>Treffer über: {reasons.join(', ')}</span>
+            </div>
+            <button type="button" className="successBtn" onClick={() => useExistingForMissing?.(row, article)}>Vorhandenen Artikel übernehmen</button>
+          </div>)}
+        </div>}
         <div className="missingActions">
-          <button onClick={() => takeOverMissingArticle?.(row)}>In Artikelliste übernehmen</button>
           <button onClick={() => recheckMissingArticle?.(row)}>Abgleich starten</button>
-          <button onClick={() => navigator.clipboard?.writeText(row.barcode)}>EAN kopieren</button>
+          <button onClick={() => takeOverMissingArticle?.(row)}>Neuen Artikel anlegen</button>
+          <button onClick={() => navigator.clipboard?.writeText(row.barcode || '')}>EAN kopieren</button>
           <button onClick={() => markMissingDone(row)}>Vorschlag löschen</button>
         </div>
       </div>
     })}
   </section>
 }
+
 
 function MasterArticles({masterArticles, mhdItems=[], saveMasterArticle,deleteMasterArticle,setMasterScannerOpen,quickMhdFromMaster,prefillArticle,onPrefillUsed,onMissingSaved}){
   const empty = { barcode:'', artikelnummer:'', name:'', kategorie:'Sonstiges', bild_url:'' }
