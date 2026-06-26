@@ -2185,12 +2185,12 @@ export default function App(){
   }
 
   const stats = useMemo(() => {
-    const expiredItems = items.filter(i => daysUntil(i.mhd) < 0)
-    const redItems = items.filter(i => daysUntil(i.mhd) >= 0 && daysUntil(i.mhd) <= 1)
+    const expiredItems = items.filter(i => daysUntil(i.mhd) <= 0)
+    const redItems = items.filter(i => daysUntil(i.mhd) === 1)
     const orangeItems = items.filter(i => daysUntil(i.mhd) >= 2 && daysUntil(i.mhd) <= 5)
     const yellowItems = items.filter(i => daysUntil(i.mhd) >= 6 && daysUntil(i.mhd) <= 7)
     const urgentItems = items.filter(i => daysUntil(i.mhd) >= 1 && daysUntil(i.mhd) <= 3)
-    const weekItems = items.filter(i => daysUntil(i.mhd) >= 0 && daysUntil(i.mhd) <= 7)
+    const weekItems = items.filter(i => daysUntil(i.mhd) >= 1 && daysUntil(i.mhd) <= 7)
     const nextDue = [...weekItems].sort((a,b) => daysUntil(a.mhd) - daysUntil(b.mhd))[0]
     return {
       total:items.length,
@@ -2259,6 +2259,22 @@ export default function App(){
 
   const hasWriteoffsToday = stats.todayWriteoffs > 0
 
+  function handleTabClick(key){
+    setError('')
+    // Stabilitäts-Fix: Beim direkten Menüwechsel dürfen alte Filter
+    // (z. B. nach Klick auf "Abgelaufen") nicht in "Alle MHD"
+    // oder "Übersicht" hängen bleiben.
+    if(key === 'artikel'){
+      setArticleFilter('all')
+      if(itemsLimited) loadItems({all:true}).catch(err => {
+        console.warn('Alle MHD konnten nicht sofort geladen werden:', err)
+        setError('MHD-Liste konnte nicht vollständig geladen werden. Vorhandene Daten bleiben erhalten.')
+      })
+    }
+    if(key === 'dashboard') setArticleFilter('all')
+    setTab(key)
+  }
+
   return <main className={`app theme-${uiTheme}`} onClickCapture={handleGlobalActionFeedback}>
     <header className="topbar topbarFinal">
       <div className="topbarInner">
@@ -2283,7 +2299,7 @@ export default function App(){
     </section>}
 
     <nav className="tabs menuTiles">
-      {tabs.map(([key,label,icon,badge]) => <button key={key} className={tab === key ? 'active' : ''} onClick={() => { setError(''); setTab(key) }}>
+      {tabs.map(([key,label,icon,badge]) => <button key={key} className={tab === key ? 'active' : ''} onClick={() => handleTabClick(key)}>
         <span className="tabIcon" aria-hidden="true">{icon}</span>
         <span className="tabLabel">{label}</span>
         {Number(badge) > 0 && <span className="tabBadge" aria-label={`${badge} offen`}>{badge}</span>}
@@ -2576,7 +2592,7 @@ function Article({item,user,settings,writeOffArticle,markArticleCheckedZero,setE
   }
 
   const qty = Number(amount || 0)
-  const stateClass = days < 0 ? 'expiredArticle' : (days <= 1 ? 'dueRedFrame' : (days <= 5 ? 'dueOrangeFrame' : (days <= 7 ? 'dueYellowFrame' : '')))
+  const stateClass = days <= 0 ? 'expiredArticle' : (days === 1 ? 'dueRedFrame' : (days <= 5 ? 'dueOrangeFrame' : (days <= 7 ? 'dueYellowFrame' : '')))
   const displayNo = item.name || item.artikel || item.artikelnummer || item.barcode || 'Artikel'
   const canAddImage = !imageSrc && (can(user, settings, 'artikel_bearbeiten') || can(user, settings, 'artikel_anlegen'))
   return <div className={'item articleItem ' + stateClass}>

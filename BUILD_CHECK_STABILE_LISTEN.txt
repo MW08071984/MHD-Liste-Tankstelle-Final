@@ -1,0 +1,8 @@
+Build geprüft: npm run build erfolgreich.
+Fix enthalten:
+- Direkter Klick auf Menü „Alle MHD“ setzt alten Filter zurück und lädt vollständige MHD-Liste.
+- Direkter Klick auf „Übersicht“ setzt alten Filter zurück.
+- Alte Filter von „Abgelaufen“ oder „7 Tage“ bleiben nicht mehr versehentlich aktiv.
+- Heute fällige Artikel werden wie fällig/abgelaufen rot hinterlegt.
+- Bestehende Datenbankdaten werden nicht verändert oder gelöscht.
+- Bei Ladefehler bleiben vorhandene Daten erhalten; es wird nur eine Meldung angezeigt.
