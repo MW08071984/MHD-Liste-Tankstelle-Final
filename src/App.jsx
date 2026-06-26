@@ -2506,7 +2506,7 @@ function Article({item,user,settings,writeOffArticle,markArticleCheckedZero,setE
   }
 
   const qty = Number(amount || 0)
-  const stateClass = days < 0 ? 'expiredArticle' : (days <= 1 ? 'dueRedFrame' : (days <= 5 ? 'dueOrangeFrame' : (days <= 7 ? 'dueYellowFrame' : '')))
+  const stateClass = days <= 0 ? 'expiredArticle' : (days <= 1 ? 'dueRedFrame' : (days <= 5 ? 'dueOrangeFrame' : (days <= 7 ? 'dueYellowFrame' : '')))
   const displayNo = item.name || item.artikel || item.artikelnummer || item.barcode || 'Artikel'
   const canAddImage = !imageSrc && (can(user, settings, 'artikel_bearbeiten') || can(user, settings, 'artikel_anlegen'))
   return <div className={'item articleItem ' + stateClass}>
@@ -2516,7 +2516,7 @@ function Article({item,user,settings,writeOffArticle,markArticleCheckedZero,setE
         <p><span>EAN:</span> {item.barcode || '-'}</p>
         <p><span>Art.-Nr.:</span> {item.artikelnummer || '-'}</p>
       </div>
-      <p className={imageSrc ? 'imageStatus ok' : 'imageStatus missing'}>{imageSrc ? '📷 Bild hinterlegt' : (imageKnownMissing ? '🚫 Kein Bild hinterlegt' : '🔎 Bildstatus wird geprüft')}</p>
+      <p className={imageSrc ? 'imageStatus ok' : 'imageStatus missing'}>{imageSrc ? '📷 Bild hinterlegt' : '🚫 Kein Bild hinterlegt'}</p>
       <p className="articleMhdLine"><span>MHD:</span> {item.mhd ? new Date(item.mhd).toLocaleDateString('de-DE') : '-'} · {days <= 0 ? (days === 0 ? 'heute fällig' : `${Math.abs(days)} Tage drüber`) : `${days} Tage`}</p>
       {imageSrc && <button className="ghostSmall imageButton" type="button" onClick={openImage}>Bild anzeigen</button>}
       {canAddImage && <div className="captureRow inlineImageTools"><label className="miniUpload cardImageButton">📷 Bild aufnehmen<input type="file" accept="image/*" capture="environment" onChange={uploadMissingImage}/></label><label className="miniUpload cardImageButton">📁 Bild hochladen<input type="file" accept="image/*" onChange={uploadMissingImage}/></label></div>}
