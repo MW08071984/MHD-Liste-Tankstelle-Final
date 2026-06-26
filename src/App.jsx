@@ -1650,6 +1650,53 @@ export default function App(){
     return ''
   }
 
+
+  async function uploadArticleImageFromMhd(item, e){
+    const file = await compressImageFile(e.target.files?.[0])
+    e.target.value = ''
+    if(!file) return ''
+    if(!(can(user, settings, 'artikel_bearbeiten') || can(user, settings, 'artikel_anlegen'))){
+      setError('Keine Rechte zum Bild hochladen.')
+      appFeedback('error')
+      return ''
+    }
+    const url = await fileToDataUrl(file)
+    const barcode = String(item?.barcode || '').replace(/\D/g,'')
+    const artikelnummer = String(item?.artikelnummer || '').trim()
+    try{
+      if(db){
+        if(item?.id){
+          const { error:mhdError } = await supabase.from('mhd_artikel').update({ bild_url:url }).eq('id', item.id)
+          if(mhdError) throw mhdError
+        }
+        if(barcode){
+          const masterPayload = {
+            barcode,
+            artikelnummer,
+            name:item?.name || item?.artikel || 'Artikel',
+            kategorie:item?.kategorie || 'Sonstiges',
+            bild_url:url,
+            updated_at:nowISO()
+          }
+          const { error:masterError } = await supabase.from('artikel_stammdaten').upsert(masterPayload, { onConflict:'barcode' })
+          if(masterError) console.warn('Bild konnte im Stammdatensatz nicht gespeichert werden:', masterError)
+        }else if(artikelnummer){
+          const { error:masterByNumberError } = await supabase.from('artikel_stammdaten').update({ bild_url:url, updated_at:nowISO() }).eq('artikelnummer', artikelnummer)
+          if(masterByNumberError) console.warn('Bild konnte über Artikelnummer nicht gespeichert werden:', masterByNumberError)
+        }
+      }
+      if(item?.id) setItems(prev => prev.map(x => x.id === item.id ? {...x, bild_url:url, bild_status:'vorhanden'} : x))
+      if(barcode) setMasterArticles(prev => prev.map(x => String(x.barcode || '') === barcode ? {...x, bild_url:url} : x))
+      setSuccess('✓ Bild gespeichert.')
+      appFeedback('success')
+      return url
+    }catch(err){
+      setError('Bild konnte nicht gespeichert werden: ' + (err?.message || err))
+      appFeedback('error')
+      return ''
+    }
+  }
+
   async function saveMasterArticle(data){
     if(!can(user, settings, data?.id ? 'artikel_bearbeiten' : 'artikel_anlegen')){ setError('Keine Rechte.'); return false }
     const payload = {
@@ -2085,8 +2132,8 @@ export default function App(){
     {error && <div className="error">{error}</div>}
     {success && <div className="success" onClick={stopMhdOpenAlarm} title="Alarm stoppen">{success}</div>}
 
-    {tab === 'artikel' && can(user, settings, 'mhd_alle_ansehen') && <ArticleList items={filteredItems} allCount={items.length} articleFilter={articleFilter} setArticleFilter={setArticleFilter} itemsLimited={itemsLimited} allMhdLoaded={allMhdLoaded} loadAllItems={() => loadItems({all:true})} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} deleteMhdEntry={deleteMhdEntry} inlineMsg={inlineMsg} safeEditOverviewItem={safeEditOverviewItem} getArticleImage={getArticleImage}/>}
-    {tab === 'dashboard' && <Dashboard safeEditOverviewItem={safeEditOverviewItem} items={articleFilter === 'all' ? items : filteredItems} articleFilter={articleFilter} setTab={setTab} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} deleteMhdEntry={deleteMhdEntry} inlineMsg={inlineMsg} getArticleImage={getArticleImage}/>}
+    {tab === 'artikel' && can(user, settings, 'mhd_alle_ansehen') && <ArticleList items={filteredItems} allCount={items.length} articleFilter={articleFilter} setArticleFilter={setArticleFilter} itemsLimited={itemsLimited} allMhdLoaded={allMhdLoaded} loadAllItems={() => loadItems({all:true})} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} deleteMhdEntry={deleteMhdEntry} inlineMsg={inlineMsg} safeEditOverviewItem={safeEditOverviewItem} getArticleImage={getArticleImage} settings={settings} uploadArticleImageFromMhd={uploadArticleImageFromMhd}/>}
+    {tab === 'dashboard' && <Dashboard safeEditOverviewItem={safeEditOverviewItem} items={articleFilter === 'all' ? items : filteredItems} articleFilter={articleFilter} setTab={setTab} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} deleteMhdEntry={deleteMhdEntry} inlineMsg={inlineMsg} getArticleImage={getArticleImage} settings={settings} uploadArticleImageFromMhd={uploadArticleImageFromMhd}/>}
     {tab === 'erfassen' && <Erfassen form={form} setForm={setForm} setScannerOpen={setScannerOpen} lookupBarcode={lookupBarcode} uploadFormImg={uploadFormImg} addItem={addItem} user={user} inlineMsg={inlineMsg} masterArticles={masterArticles} reportMissingArticle={reportMissingArticle} saveMasterArticle={saveMasterArticle}/>}
     {tab === 'backwaren' && <Backwaren backwaren={backwaren} saveBackwarenList={saveBackwarenList} writeOff={writeOff} user={user}/>}
     {tab === 'abschriften' && can(user, settings, 'abschriften_ansehen') && <Abschriften writeoffs={writeoffs.filter(w => w.typ !== 'kontrolle')} user={user} setEditWriteoff={setEditWriteoff} deleteWriteoff={deleteWriteoff} deleteWriteoffsForDay={deleteWriteoffsForDay} undoWriteoff={undoWriteoff} pdfPassword={settings?.abschriften_pdf_passwort || ''}/>}
@@ -2232,7 +2279,7 @@ function Login({login,setLogin,error,doLogin}){
 
 function Stat({label,value,onClick,tone='normal'}){ return <button className={'stat '+tone} onClick={onClick}><span>{label}</span><b>{value}</b></button> }
 
-function Dashboard({items,articleFilter='all',setTab,user,writeOffArticle,markArticleCheckedZero,setEditArticle,deleteMhdEntry,safeEditOverviewItem,getArticleImage}){
+function Dashboard({items,articleFilter='all',setTab,user,settings,writeOffArticle,markArticleCheckedZero,setEditArticle,deleteMhdEntry,safeEditOverviewItem,getArticleImage,uploadArticleImageFromMhd}){
   const title = articleFilter === 'expired' ? 'Abgelaufene Artikel' : articleFilter === 'week' ? 'Nächste 7 Tage' : ''
   const shownItems = articleFilter === 'all' ? items.slice(0,8) : items
   return <section className="list">
@@ -2240,11 +2287,11 @@ function Dashboard({items,articleFilter='all',setTab,user,writeOffArticle,markAr
     {title && <div className="sectionHeader"><div><div className="pageTitleInline"><h2>{title}</h2><InfoButton title={title}>Diese Liste zeigt nur die Artikel des ausgewählten Zeitraums.</InfoButton></div><p className="filterInfo">{shownItems.length} Artikel angezeigt</p></div></div>}
     <button className="primary" onClick={() => { setTab('erfassen'); window.scrollTo({top:0, behavior:'smooth'}) }}>+ Schnell erfassen</button>
     {shownItems.length === 0 && articleFilter !== 'all' && <div className="empty">Keine passenden Artikel vorhanden.</div>}
-    {shownItems.map(item => <Article key={item.id} item={item} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} deleteMhdEntry={deleteMhdEntry} getArticleImage={getArticleImage}/>)}
+    {shownItems.map(item => <Article key={item.id} item={item} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} deleteMhdEntry={deleteMhdEntry} getArticleImage={getArticleImage} settings={settings} uploadArticleImageFromMhd={uploadArticleImageFromMhd}/>)}
   </section>
 }
 
-function ArticleList({items,allCount,articleFilter,setArticleFilter,itemsLimited,allMhdLoaded,loadAllItems,user,writeOffArticle,markArticleCheckedZero,setEditArticle,deleteMhdEntry,inlineMsg,safeEditOverviewItem,getArticleImage}){
+function ArticleList({items,allCount,articleFilter,setArticleFilter,itemsLimited,allMhdLoaded,loadAllItems,user,settings,writeOffArticle,markArticleCheckedZero,setEditArticle,deleteMhdEntry,inlineMsg,safeEditOverviewItem,getArticleImage,uploadArticleImageFromMhd}){
   const [search, setSearch] = useState('')
   const title = articleFilter === 'expired' ? 'Abgelaufene Artikel' : articleFilter === 'urgent' ? 'Bald ablaufende Artikel' : articleFilter === 'week' ? 'Artikel diese Woche' : 'Artikel'
   const term = search.trim().toLowerCase()
@@ -2263,11 +2310,11 @@ function ArticleList({items,allCount,articleFilter,setArticleFilter,itemsLimited
     </div>
     <input className="realInput" placeholder="Artikel suchen: Name, Art.-Nr. oder EAN" value={search} onChange={e => setSearch(e.target.value)} />
     {shownItems.length === 0 && <div className="empty">Keine passenden Artikel vorhanden.</div>}
-    {shownItems.map(item => <Article key={item.id} item={item} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} deleteMhdEntry={deleteMhdEntry} inlineMsg={inlineMsg} getArticleImage={getArticleImage}/>)}
+    {shownItems.map(item => <Article key={item.id} item={item} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} deleteMhdEntry={deleteMhdEntry} inlineMsg={inlineMsg} getArticleImage={getArticleImage} settings={settings} uploadArticleImageFromMhd={uploadArticleImageFromMhd}/>)}
   </section>
 }
 
-function Article({item,user,writeOffArticle,markArticleCheckedZero,setEditArticle,deleteMhdEntry,getArticleImage}){
+function Article({item,user,settings,writeOffArticle,markArticleCheckedZero,setEditArticle,deleteMhdEntry,getArticleImage,uploadArticleImageFromMhd}){
   const [amount, setAmount] = useState('')
   const [showImage, setShowImage] = useState(false)
   const [imageSrc, setImageSrc] = useState(firstImageUrl(item.bild_url))
@@ -2297,9 +2344,19 @@ function Article({item,user,writeOffArticle,markArticleCheckedZero,setEditArticl
     setImageLoading(false)
   }
 
+  async function uploadMissingImage(e){
+    const src = await uploadArticleImageFromMhd?.(item, e)
+    const cleanSrc = firstImageUrl(src)
+    if(cleanSrc){
+      setImageSrc(cleanSrc)
+      setImageKnownMissing(false)
+    }
+  }
+
   const qty = Number(amount || 0)
   const stateClass = days <= 0 ? 'expiredArticle' : (days >= 1 && days <= 3 ? 'urgentArticle' : '')
   const displayNo = item.name || item.artikel || item.artikelnummer || item.barcode || 'Artikel'
+  const canAddImage = !imageSrc && (can(user, settings, 'artikel_bearbeiten') || can(user, settings, 'artikel_anlegen'))
   return <div className={'item articleItem ' + stateClass}>
     <div className="artikelnummer small articleTitleBar">{displayNo}</div>
     <div className="grow articleCardBody">
@@ -2309,7 +2366,8 @@ function Article({item,user,writeOffArticle,markArticleCheckedZero,setEditArticl
       </div>
       <p className={imageSrc ? 'imageStatus ok' : 'imageStatus missing'}>{imageSrc ? '📷 Bild hinterlegt' : (imageKnownMissing ? '🚫 Kein Bild hinterlegt' : '🔎 Bildstatus wird geprüft')}</p>
       <p className="articleMhdLine"><span>MHD:</span> {item.mhd ? new Date(item.mhd).toLocaleDateString('de-DE') : '-'} · {days <= 0 ? (days === 0 ? 'heute fällig' : `${Math.abs(days)} Tage drüber`) : `${days} Tage`}</p>
-      <button className="ghostSmall imageButton" type="button" onClick={openImage}>Bild anzeigen</button>
+      {imageSrc && <button className="ghostSmall imageButton" type="button" onClick={openImage}>Bild anzeigen</button>}
+      {canAddImage && <div className="captureRow inlineImageTools"><label className="miniUpload cardImageButton">📷 Bild aufnehmen<input type="file" accept="image/*" capture="environment" onChange={uploadMissingImage}/></label><label className="miniUpload cardImageButton">📁 Bild hochladen<input type="file" accept="image/*" onChange={uploadMissingImage}/></label></div>}
     </div>
     <div className="writeBox">
       <label className="smallLabel">Menge für Abschrift</label>

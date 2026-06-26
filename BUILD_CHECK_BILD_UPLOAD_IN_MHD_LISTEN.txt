@@ -1,0 +1,6 @@
+Update 26.06.2026:
+- In Übersicht und Alle MHD wird bei fehlendem Bild für berechtigte Benutzer direkt Bild aufnehmen und Bild hochladen angezeigt.
+- Nach dem Speichern wechselt der Status sofort auf Bild hinterlegt und Bild anzeigen.
+- Mitarbeiter ohne Bildrechte sehen nur den Status Kein Bild hinterlegt.
+- Bestehende Funktionen und Daten bleiben unverändert.
+- Build erfolgreich geprüft mit npm run build.
