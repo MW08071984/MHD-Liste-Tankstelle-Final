@@ -1,0 +1,6 @@
+Build erfolgreich geprüft.
+Änderungen:
+- Erfolgston heller/kurzer und Fehlerton tiefer/länger/deutlicher unterscheidbar.
+- Erfolgs-/Fehler-Vibrationsmuster deutlicher getrennt.
+- In Einstellungen/Push-Seite Testbuttons für Erfolg, Fehler und MHD-Alarm ergänzt.
+- Alarm stoppen Button ergänzt.

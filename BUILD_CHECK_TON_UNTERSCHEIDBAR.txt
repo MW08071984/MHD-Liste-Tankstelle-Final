@@ -1,0 +1,7 @@
+Build erfolgreich geprüft.
+Änderung: Ton-Rückmeldungen deutlicher unterscheidbar gemacht.
+- Erfolg: heller kurzer aufsteigender Doppelton
+- Fehler: tiefer längerer dreifacher Fehlerton
+- Warnung: mittlerer Doppelton
+- Klick: sehr kurzer leiser Klickton
+Sonstige App-Funktionen wurden nicht gezielt verändert.

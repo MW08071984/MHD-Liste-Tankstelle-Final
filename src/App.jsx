@@ -486,36 +486,42 @@ function playFeedbackTone(type = 'success'){
     const AudioCtx = window.AudioContext || window.webkitAudioContext
     if(!AudioCtx) return
     const ctx = new AudioCtx()
-    const gain = ctx.createGain()
-    gain.gain.setValueAtTime(0.0001, ctx.currentTime)
-    gain.gain.exponentialRampToValueAtTime(type === 'error' ? 0.09 : 0.07, ctx.currentTime + 0.01)
-    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.18)
-    gain.connect(ctx.destination)
-    const freqs = type === 'error' ? [260, 190] : [880, 1180]
-    freqs.forEach((freq, i) => {
+    const presets = {
+      success: { wave:'sine', volume:0.11, notes:[[880,0.00,0.08],[1320,0.10,0.10]], close:380 },
+      error: { wave:'square', volume:0.13, notes:[[240,0.00,0.11],[170,0.13,0.13],[120,0.29,0.17]], close:620 },
+      warning: { wave:'triangle', volume:0.10, notes:[[520,0.00,0.10],[520,0.18,0.12]], close:520 },
+      click: { wave:'sine', volume:0.045, notes:[[760,0.00,0.035]], close:180 }
+    }
+    const cfg = presets[type] || presets.success
+    cfg.notes.forEach(([freq, delay, duration]) => {
+      const gain = ctx.createGain()
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime + delay)
+      gain.gain.exponentialRampToValueAtTime(cfg.volume, ctx.currentTime + delay + 0.012)
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + delay + duration)
+      gain.connect(ctx.destination)
       const osc = ctx.createOscillator()
-      osc.type = type === 'error' ? 'square' : 'sine'
-      osc.frequency.value = freq
+      osc.type = cfg.wave
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + delay)
       osc.connect(gain)
-      osc.start(ctx.currentTime + i * 0.08)
-      osc.stop(ctx.currentTime + i * 0.08 + 0.07)
+      osc.start(ctx.currentTime + delay)
+      osc.stop(ctx.currentTime + delay + duration + 0.02)
     })
-    setTimeout(() => ctx.close?.(), 320)
+    setTimeout(() => ctx.close?.(), cfg.close)
   }catch{}
 }
 
 function appFeedback(type = 'success'){
   try{
     const patterns = {
-      success:[100,80,100],
-      warning:[150,90,150],
-      error:[300,120,300],
+      success:[80],
+      warning:[160,90,160],
+      error:[280,120,280,120,420],
       click:[45],
       alarm:[500,300,500,300,500]
     }
     robustVibrate(patterns[type] || patterns.success, 1)
   }catch{}
-  if(type === 'success' || type === 'error') playFeedbackTone(type)
+  if(['success','error','warning','click'].includes(type)) playFeedbackTone(type)
 }
 
 let mhdAlarmTimer = null
@@ -3240,8 +3246,18 @@ function Settings({enablePush, settings = {}, saveSetting, uiTheme, setUiTheme})
   const [pdfPass, setPdfPass] = useState(settings.abschriften_pdf_passwort || '')
   useEffect(() => { setPdfPass(settings.abschriften_pdf_passwort || '') }, [settings.abschriften_pdf_passwort])
   return <section className="formCard">
-    <PageTitle title="Einstellungen" info="Hier werden Push und weitere App-Einstellungen verwaltet." />
+    <PageTitle title="Einstellungen" info="Hier werden Push, Ton und Vibration verwaltet." />
     <button onClick={enablePush}>🔔 Push aktivieren/testen</button>
+    <div className="adminBox">
+      <b>Ton & Vibration testen</b>
+      <p>Hier kann jeder prüfen, wie sich Erfolg, Fehler und MHD-Alarm auf diesem Gerät anhören und anfühlen.</p>
+      <div className="feedbackTestGrid">
+        <button type="button" className="feedbackSuccess" onClick={() => appFeedback('success')}>✅ Erfolg testen</button>
+        <button type="button" className="feedbackError" onClick={() => appFeedback('error')}>❌ Fehler testen</button>
+        <button type="button" className="feedbackAlarm" onClick={() => mhdOpenAlarm()}>🔔 MHD-Alarm testen</button>
+      </div>
+      <button type="button" className="ghostSmall" onClick={() => stopMhdOpenAlarm()}>Alarm stoppen</button>
+    </div>
     <div className="adminBox">
       <b>Design</b>
       <p>Das Design wird oben neben deinem Namen über <b>⚙️ Design</b> gewählt. Jeder Mitarbeiter kann sein eigenes Design auf diesem Gerät speichern.</p>

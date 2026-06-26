@@ -1135,3 +1135,4 @@ button.danger,.danger,.actions button.danger{
   .calendarPickerButton{ min-width:104px; }
   .calendarPickerButton span{ font-size:13px; }
 }
+.feedbackTestGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.feedbackTestGrid button{min-height:58px;font-size:16px}.feedbackSuccess{background:#079235!important;color:#fff!important;border-color:#056b28!important}.feedbackError{background:#c90016!important;color:#fff35d!important;border-color:#8b0010!important}.feedbackAlarm{background:#8b35e8!important;color:#fff!important;border-color:#4b148c!important}@media(max-width:560px){.feedbackTestGrid{grid-template-columns:1fr}.feedbackTestGrid button{width:100%}}
