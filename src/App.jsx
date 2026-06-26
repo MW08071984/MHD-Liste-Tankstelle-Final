@@ -2407,8 +2407,8 @@ function Dashboard({items,articleFilter='all',setTab,user,settings,writeOffArtic
   const title = articleFilter === 'expired' ? 'Abgelaufene Artikel' : articleFilter === 'week' ? 'Nächste 7 Tage' : ''
   const shownItems = articleFilter === 'all' ? items.slice(0,8) : items
   return <section className="list">
-    {!title && <div className="sectionTopInfo"><InfoButton title="Übersicht">Hier siehst du die wichtigsten MHD-Artikel und kannst schnell zur Erfassung springen.</InfoButton></div>}
-    {title && <div className="sectionHeader"><div><div className="pageTitleInline"><h2>{title}</h2><InfoButton title={title}>Diese Liste zeigt nur die Artikel des ausgewählten Zeitraums.</InfoButton></div><p className="filterInfo">{shownItems.length} Artikel angezeigt</p></div></div>}
+    {!title && <div className="sectionTopInfo"><InfoButton title="Übersicht">Hier siehst du die wichtigsten MHD-Artikel. Rahmenfarben gelten in jedem Design: 7 Tage gelb, 5 Tage orange, 1 Tag rot. Abgelaufene Artikel sind rot hinterlegt.</InfoButton></div>}
+    {title && <div className="sectionHeader"><div><div className="pageTitleInline"><h2>{title}</h2><InfoButton title={title}>Diese Liste zeigt nur die Artikel des ausgewählten Zeitraums. Rahmenfarben: 7 Tage gelb, 5 Tage orange, 1 Tag rot. Abgelaufene Artikel sind rot hinterlegt.</InfoButton></div><p className="filterInfo">{shownItems.length} Artikel angezeigt</p></div></div>}
     <button className="primary" onClick={() => { setTab('erfassen'); window.scrollTo({top:0, behavior:'smooth'}) }}>+ Schnell erfassen</button>
     {shownItems.length === 0 && articleFilter !== 'all' && <div className="empty">Keine passenden Artikel vorhanden.</div>}
     {shownItems.map(item => <Article key={item.id} item={item} user={user} writeOffArticle={writeOffArticle} markArticleCheckedZero={markArticleCheckedZero} setEditArticle={setEditArticle} deleteMhdEntry={deleteMhdEntry} getArticleImage={getArticleImage} settings={settings} uploadArticleImageFromMhd={uploadArticleImageFromMhd}/>)}
@@ -2426,7 +2426,7 @@ function ArticleList({items,allCount,articleFilter,setArticleFilter,itemsLimited
   return <section className="list">
     <div className="sectionHeader">
       <div>
-        <div className="pageTitleInline"><h2>{title}</h2><InfoButton title={title}>Hier stehen die MHD-Einträge. Chef/Stationsleitung kann Einträge bearbeiten, löschen oder Abschriften speichern. Fällige MHD-Artikel ploppen beim Öffnen einzeln auf. Ohne Menge oder 0 bleibt der Artikel in der Liste und die Erinnerung kommt später erneut.</InfoButton></div>
+        <div className="pageTitleInline"><h2>{title}</h2><InfoButton title={title}>Hier stehen die MHD-Einträge. Chef/Stationsleitung kann Einträge bearbeiten, löschen oder Abschriften speichern. Rahmenfarben gelten in jedem Design: 7 Tage gelb, 5 Tage orange, 1 Tag rot. Abgelaufene Artikel sind rot hinterlegt. Fällige MHD-Artikel ploppen beim Öffnen einzeln auf. Ohne Menge oder 0 bleibt der Artikel in der Liste und die Erinnerung kommt später erneut.</InfoButton></div>
         <p className="filterInfo">{shownItems.length} von {items.length} angezeigt · {allCount} Artikeln · Chef/Stationsleitung kann hier Einträge bearbeiten oder löschen.</p>
       </div>
       {itemsLimited && <button className="ghostSmall" onClick={loadAllItems}>Alle MHD laden</button>}
@@ -2478,7 +2478,7 @@ function Article({item,user,settings,writeOffArticle,markArticleCheckedZero,setE
   }
 
   const qty = Number(amount || 0)
-  const stateClass = days <= 0 ? 'expiredArticle' : (days >= 1 && days <= 3 ? 'urgentArticle' : '')
+  const stateClass = days <= 0 ? 'expiredArticle' : (days <= 1 ? 'dueRedFrame' : (days <= 5 ? 'dueOrangeFrame' : (days <= 7 ? 'dueYellowFrame' : '')))
   const displayNo = item.name || item.artikel || item.artikelnummer || item.barcode || 'Artikel'
   const canAddImage = !imageSrc && (can(user, settings, 'artikel_bearbeiten') || can(user, settings, 'artikel_anlegen'))
   return <div className={'item articleItem ' + stateClass}>
@@ -2756,8 +2756,21 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
       {masterArticles.map(a => <option key={a.id || a.barcode} value={a.barcode}>{a.name || a.barcode} · {a.artikelnummer || a.barcode}</option>)}
     </select>
 
-    <div className="labelInfoRow"><label>MHD</label><InfoButton title="MHD-Eingabe"><p>Standard: <b>Tag / Monat / Jahr</b>. Wenn auf dem Artikel nur Monat/Jahr steht, oben auf <b>Monat/Jahr</b> umstellen.</p><p>Punkt, Komma, Slash, Minus oder nur Zahlen sind möglich.</p></InfoButton></div>
-    <div className={mhdInputMode === 'full' ? 'mhdInputRow' : 'mhdInputRow mhdInputRowMonth'}>
+    <div className="labelInfoRow"><label>MHD</label><InfoButton title="MHD-Eingabe"><p>Mit der Schaltfläche wechselst du zwischen <b>Tag/Monat/Jahr</b> und <b>Monat/Jahr</b>.</p><p><b>Tag/Monat/Jahr:</b> normales MHD, z. B. 30.06.2026. <b>Monat/Jahr:</b> wenn nur Monat und Jahr aufgedruckt sind; die App nimmt automatisch den letzten Tag des Monats.</p><p>Punkt, Komma, Slash, Minus oder nur Zahlen sind möglich.</p></InfoButton></div>
+    <div className="mhdModeSwitch" role="group" aria-label="MHD Eingabeart auswählen">
+      <button
+        type="button"
+        className={mhdInputMode === 'full' ? 'active' : ''}
+        onClick={() => { setMhdInputMode('full'); setForm({...form, mhd:'', mhd_mode:'full'}) }}
+      >Tag / Monat / Jahr</button>
+      <button
+        type="button"
+        className={mhdInputMode === 'month' ? 'active' : ''}
+        onClick={() => { setMhdInputMode('month'); setForm({...form, mhd:'', mhd_mode:'month'}) }}
+      >Monat / Jahr</button>
+    </div>
+    <p className="mhdModeHelp">{mhdInputMode === 'month' ? 'Monat/Jahr: z. B. 12.2026 eingeben, gespeichert wird automatisch der letzte Tag im Monat.' : 'Tag/Monat/Jahr: vollständiges MHD eingeben oder Kalender nutzen.'}</p>
+    <div className={mhdInputMode === 'full' ? 'mhdInputRow mhdInputRowNoSelect' : 'mhdInputRow mhdInputRowMonthOnly'}>
       <input
         className="realInput"
         type="text"
@@ -2770,19 +2783,6 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
           if(iso) setForm({...form, mhd:iso, mhd_mode:mhdInputMode})
         }}
       />
-      <select
-        className="realInput mhdModeCompact"
-        aria-label="MHD Eingabeart auswählen"
-        value={mhdInputMode}
-        onChange={e => {
-          const nextMode = e.target.value
-          setMhdInputMode(nextMode)
-          setForm({...form, mhd:'', mhd_mode:nextMode})
-        }}
-      >
-        <option value="full">Tag</option>
-        <option value="month">Monat</option>
-      </select>
       {mhdInputMode === 'full' && <label className="calendarPickerButton">
         <span>📅 Kalender</span>
         <input
