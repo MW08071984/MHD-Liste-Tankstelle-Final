@@ -325,9 +325,18 @@ button.danger{
 
 .mhdInputRow{
   display:grid;
-  grid-template-columns: 1fr 76px;
+  grid-template-columns: minmax(0,1fr) 86px 112px;
   gap:10px;
   align-items:center;
+}
+.mhdInputRowMonth{
+  grid-template-columns: minmax(0,1fr) 86px;
+}
+.mhdModeCompact{
+  min-width:86px;
+  padding-left:10px!important;
+  padding-right:8px!important;
+  text-align:center;
 }
 .calendarInput{
   min-width:76px;
@@ -1120,7 +1129,9 @@ button.danger,.danger,.actions button.danger{
   cursor:pointer;
 }
 @media(max-width:420px){
-  .mhdInputRow{ grid-template-columns:1fr 112px; }
-  .calendarPickerButton{ min-width:112px; }
+  .mhdInputRow{ grid-template-columns:minmax(0,1fr) 78px 104px; gap:8px; }
+  .mhdInputRowMonth{ grid-template-columns:minmax(0,1fr) 78px; }
+  .mhdModeCompact{ min-width:78px; padding-left:8px!important; padding-right:6px!important; font-size:14px!important; }
+  .calendarPickerButton{ min-width:104px; }
   .calendarPickerButton span{ font-size:13px; }
 }

@@ -1,0 +1,11 @@
+MHD Dropdown Klein Fix
+
+Geändert:
+- Das große separate MHD-Dropdown wurde entfernt.
+- Die Auswahl Tag/Monat sitzt jetzt klein direkt neben dem Datumseingabefeld.
+- Dadurch ist die MHD-Eingabe nicht mehr doppelt und nimmt weniger Platz ein.
+- Kalender bleibt bei vollständigem Datum rechts daneben erhalten.
+
+Build geprüft:
+- npm install erfolgreich
+- npm run build erfolgreich

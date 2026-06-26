@@ -1,0 +1,4 @@
+Build erfolgreich geprüft: npm run build
+Änderung: Bildstatus in MHD-Karten wird jetzt sinnvoll aus MHD-Eintrag und Artikelliste geprüft.
+Wenn ein Bild vorhanden ist, erscheint nicht mehr fälschlich 'Kein Bild hinterlegt'.
+Zusätzlich bleibt die kleine MHD Dropdown-Änderung enthalten.

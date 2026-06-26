@@ -4,6 +4,11 @@ import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { supabase } from './main.jsx'
 
+
+function firstImageUrl(...values){
+  return values.map(v => String(v || '').trim()).find(Boolean) || ''
+}
+
 const DEFAULT_EMPLOYEES = [
   { nummer: 1, name: 'Lars', rolle: 'chef', passwort: '0000', muss_passwort_aendern: true },
   { nummer: 2, name: 'Philipp', rolle: 'stationsleitung', passwort: '0000', muss_passwort_aendern: true },
@@ -935,6 +940,52 @@ export default function App(){
     return data?.[0] || null
   }
 
+
+  async function enrichMhdItemsWithKnownImages(rows){
+    const list = Array.isArray(rows) ? rows : []
+    if(!db || !list.length) return list
+    try{
+      const imageByBarcode = new Map()
+      const imageByNumber = new Map()
+      const barcodes = [...new Set(list.map(r => String(r?.barcode || '').replace(/\D/g,'')).filter(Boolean))]
+      const numbers = [...new Set(list.map(r => String(r?.artikelnummer || '').trim()).filter(Boolean))]
+
+      if(barcodes.length){
+        const { data } = await supabase
+          .from('artikel_stammdaten')
+          .select('barcode,bild_url')
+          .in('barcode', barcodes)
+        ;(data || []).forEach(r => {
+          const key = String(r?.barcode || '').replace(/\D/g,'')
+          const img = firstImageUrl(r?.bild_url)
+          if(key && img) imageByBarcode.set(key, img)
+        })
+      }
+      if(numbers.length){
+        const { data } = await supabase
+          .from('artikel_stammdaten')
+          .select('artikelnummer,bild_url')
+          .in('artikelnummer', numbers)
+        ;(data || []).forEach(r => {
+          const key = String(r?.artikelnummer || '').trim()
+          const img = firstImageUrl(r?.bild_url)
+          if(key && img) imageByNumber.set(key, img)
+        })
+      }
+
+      return list.map(r => {
+        const direct = firstImageUrl(r?.bild_url)
+        const byBarcode = imageByBarcode.get(String(r?.barcode || '').replace(/\D/g,'')) || ''
+        const byNumber = imageByNumber.get(String(r?.artikelnummer || '').trim()) || ''
+        const img = firstImageUrl(direct, byBarcode, byNumber)
+        return img ? {...r, bild_url: img, bild_status: 'vorhanden'} : {...r, bild_status: 'fehlt'}
+      })
+    }catch(e){
+      console.warn('Bildstatus konnte nicht vorab geprüft werden:', e)
+      return list.map(r => ({...r, bild_status: firstImageUrl(r?.bild_url) ? 'vorhanden' : 'unbekannt'}))
+    }
+  }
+
   async function loadItems({ all = false, force = false } = {}){
     if(!db) return
 
@@ -955,7 +1006,8 @@ export default function App(){
       setError('MHD-Übersicht konnte nicht geladen werden: ' + error.message)
       return
     }
-    setItems(data || [])
+    const enrichedItems = await enrichMhdItemsWithKnownImages(data || [])
+    setItems(enrichedItems)
     setItemsLimited(!all)
     setAllMhdLoaded(!!all)
   }
@@ -2190,8 +2242,9 @@ function ArticleList({items,allCount,articleFilter,setArticleFilter,itemsLimited
 function Article({item,user,writeOffArticle,markArticleCheckedZero,setEditArticle,deleteMhdEntry,getArticleImage}){
   const [amount, setAmount] = useState('')
   const [showImage, setShowImage] = useState(false)
-  const [imageSrc, setImageSrc] = useState(item.bild_url || '')
+  const [imageSrc, setImageSrc] = useState(firstImageUrl(item.bild_url))
   const [imageLoading, setImageLoading] = useState(false)
+  const [imageKnownMissing, setImageKnownMissing] = useState(item.bild_status === 'fehlt')
   const days = daysUntil(item.mhd)
 
   function setSafeAmount(value){
@@ -2210,7 +2263,9 @@ function Article({item,user,writeOffArticle,markArticleCheckedZero,setEditArticl
     if(imageSrc || imageLoading) return
     setImageLoading(true)
     const src = await getArticleImage?.(item)
-    setImageSrc(src || '')
+    const cleanSrc = firstImageUrl(src)
+    setImageSrc(cleanSrc)
+    setImageKnownMissing(!cleanSrc)
     setImageLoading(false)
   }
 
@@ -2224,7 +2279,7 @@ function Article({item,user,writeOffArticle,markArticleCheckedZero,setEditArticl
         <p><span>EAN:</span> {item.barcode || '-'}</p>
         <p><span>Art.-Nr.:</span> {item.artikelnummer || '-'}</p>
       </div>
-      <p className={item.bild_url ? 'imageStatus ok' : 'imageStatus missing'}>{item.bild_url ? '📷 Bild vorhanden' : '🚫 Kein Bild hinterlegt'}</p>
+      <p className={imageSrc ? 'imageStatus ok' : 'imageStatus missing'}>{imageSrc ? '📷 Bild hinterlegt' : (imageKnownMissing ? '🚫 Kein Bild hinterlegt' : '🔎 Bildstatus wird geprüft')}</p>
       <p className="articleMhdLine"><span>MHD:</span> {item.mhd ? new Date(item.mhd).toLocaleDateString('de-DE') : '-'} · {days <= 0 ? (days === 0 ? 'heute fällig' : `${Math.abs(days)} Tage drüber`) : `${days} Tage`}</p>
       <button className="ghostSmall imageButton" type="button" onClick={openImage}>Bild anzeigen</button>
     </div>
@@ -2492,19 +2547,7 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
     </select>
 
     <div className="labelInfoRow"><label>MHD</label><InfoButton title="MHD-Eingabe"><p>Standard: <b>Tag / Monat / Jahr</b>. Wenn auf dem Artikel nur Monat/Jahr steht, oben auf <b>Monat/Jahr</b> umstellen.</p><p>Punkt, Komma, Slash, Minus oder nur Zahlen sind möglich.</p></InfoButton></div>
-    <select
-      className="realInput mhdModeSelect"
-      value={mhdInputMode}
-      onChange={e => {
-        const nextMode = e.target.value
-        setMhdInputMode(nextMode)
-        setForm({...form, mhd:'', mhd_mode:nextMode})
-      }}
-    >
-      <option value="full">TT.MM.JJJJ - vollständiges Datum</option>
-      <option value="month">MM.JJJJ - nur Monat/Jahr</option>
-    </select>
-    <div className="mhdInputRow">
+    <div className={mhdInputMode === 'full' ? 'mhdInputRow' : 'mhdInputRow mhdInputRowMonth'}>
       <input
         className="realInput"
         type="text"
@@ -2517,6 +2560,19 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
           if(iso) setForm({...form, mhd:iso, mhd_mode:mhdInputMode})
         }}
       />
+      <select
+        className="realInput mhdModeCompact"
+        aria-label="MHD Eingabeart auswählen"
+        value={mhdInputMode}
+        onChange={e => {
+          const nextMode = e.target.value
+          setMhdInputMode(nextMode)
+          setForm({...form, mhd:'', mhd_mode:nextMode})
+        }}
+      >
+        <option value="full">Tag</option>
+        <option value="month">Monat</option>
+      </select>
       {mhdInputMode === 'full' && <label className="calendarPickerButton">
         <span>📅 Kalender</span>
         <input
