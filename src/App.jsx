@@ -1075,19 +1075,47 @@ export default function App(){
       return
     }
 
-    // FINAL SPEED: Übersicht ohne Bilddaten laden. Bilder/Base64 sind die größte Bremse.
-    let query = supabase.from('mhd_artikel').select('id,barcode,artikelnummer,name,artikel,kategorie,mhd,created_at,mitarbeiter,bild_url').order('mhd')
-    if(!all) query = query.lte('mhd', next30ISO())
-    const { data, error } = await query
+    // FINAL SPEED/STABIL: Übersicht ohne große Bilddaten laden.
+    // Bei Datenbank-Timeout wird automatisch ohne ORDER BY neu versucht und im Browser sortiert.
+    const columns = 'id,barcode,artikelnummer,name,artikel,kategorie,mhd,created_at,mitarbeiter,bild_url'
+    async function runItemsQuery({ ordered = true } = {}){
+      let query = supabase.from('mhd_artikel').select(columns)
+      if(!all) query = query.lte('mhd', next30ISO())
+      if(ordered) query = query.order('mhd', { ascending:true })
+      if(all) query = query.range(0, 999)
+      return await query
+    }
+
+    let { data, error } = await runItemsQuery({ ordered:true })
+    if(error && String(error.message || '').toLowerCase().includes('timeout')){
+      console.warn('MHD-Abfrage mit Sortierung Timeout, versuche schnelle Ersatzabfrage:', error)
+      const retry = await runItemsQuery({ ordered:false })
+      data = retry.data
+      error = retry.error
+    }
+    if(error && String(error.message || '').toLowerCase().includes('timeout')){
+      console.warn('MHD-Abfrage Timeout, versuche minimale Ersatzabfrage ohne große Felder:', error)
+      let retryQuery = supabase.from('mhd_artikel').select('id,barcode,artikelnummer,name,artikel,mhd')
+      if(!all) retryQuery = retryQuery.lte('mhd', next30ISO())
+      if(all) retryQuery = retryQuery.range(0, 999)
+      const retry = await retryQuery
+      data = (retry.data || []).map(r => ({...r, kategorie:'', created_at:'', mitarbeiter:'', bild_url:''}))
+      error = retry.error
+    }
     if(error){
       console.warn(error)
-      setError('MHD-Übersicht konnte nicht geladen werden: ' + error.message)
+      const timeout = String(error.message || '').toLowerCase().includes('timeout')
+      setError(timeout ? 'MHD-Liste lädt gerade zu langsam. Bitte noch einmal auf Alle MHD klicken oder die Seite neu öffnen.' : 'MHD-Übersicht konnte nicht geladen werden: ' + error.message)
       return
+    }
+    if(Array.isArray(data)){
+      data = [...data].sort((a,b) => String(a.mhd || '').localeCompare(String(b.mhd || '')))
     }
     const enrichedItems = await enrichMhdItemsWithKnownImages(data || [])
     setItems(enrichedItems)
     setItemsLimited(!all)
     setAllMhdLoaded(!!all)
+    setError('')
   }
 
   async function loadEmployees(){
@@ -2478,7 +2506,7 @@ function Article({item,user,settings,writeOffArticle,markArticleCheckedZero,setE
   }
 
   const qty = Number(amount || 0)
-  const stateClass = days <= 0 ? 'expiredArticle' : (days <= 1 ? 'dueRedFrame' : (days <= 5 ? 'dueOrangeFrame' : (days <= 7 ? 'dueYellowFrame' : '')))
+  const stateClass = days < 0 ? 'expiredArticle' : (days <= 1 ? 'dueRedFrame' : (days <= 5 ? 'dueOrangeFrame' : (days <= 7 ? 'dueYellowFrame' : '')))
   const displayNo = item.name || item.artikel || item.artikelnummer || item.barcode || 'Artikel'
   const canAddImage = !imageSrc && (can(user, settings, 'artikel_bearbeiten') || can(user, settings, 'artikel_anlegen'))
   return <div className={'item articleItem ' + stateClass}>

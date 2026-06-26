@@ -1153,9 +1153,9 @@ button.danger,.danger,.actions button.danger{
 .mhdInputRowMonthOnly{grid-template-columns:minmax(0,1fr)!important}
 
 /* MHD-Fälligkeit: Rahmenfarben unabhängig vom gewählten Design */
-.item.dueYellowFrame{border-color:#ffd400!important;background:linear-gradient(145deg,#fffdf4,#fff8cf)!important}
-.item.dueOrangeFrame{border-color:#ff8a00!important;background:linear-gradient(145deg,#fffdf4,#fff6c3)!important}
-.item.dueRedFrame{border-color:#d71920!important;background:linear-gradient(145deg,#fffdf4,#fff6c3)!important}
+.item.dueYellowFrame{border-color:#ffd400!important}
+.item.dueOrangeFrame{border-color:#ff8a00!important}
+.item.dueRedFrame{border-color:#d71920!important}
 .item.expiredArticle{border-color:#b00000!important;background:linear-gradient(145deg,#ffd6d6,#ff9b9b)!important}
 .item.dueYellowFrame .articleTitleBar,.item.dueOrangeFrame .articleTitleBar,.item.dueRedFrame .articleTitleBar,.item.expiredArticle .articleTitleBar{border-color:inherit!important}
 .item.dueYellowFrame{box-shadow:0 0 0 2px rgba(255,212,0,.25)!important}
