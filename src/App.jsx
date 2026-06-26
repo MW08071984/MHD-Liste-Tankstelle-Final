@@ -2244,18 +2244,20 @@ export default function App(){
   }
 
   const tabs = [
-    ['dashboard','Übersicht'],
-    ...(can(user, settings, 'mhd_erfassen') ? [['erfassen','Erfassen']] : []),
-    ...(can(user, settings, 'backwaren') ? [['backwaren','Backwaren']] : []),
-    ...(can(user, settings, 'abschriften_ansehen') ? [['abschriften','Abschriften']] : []),
-    ...(can(user, settings, 'mhd_alle_ansehen') ? [['artikel','Alle MHD']] : []),
-    ...(can(user, settings, 'artikel_ansehen') ? [['stammdaten','Artikelliste']] : []),
-    ...(can(user, settings, 'fehlende_bearbeiten') ? [['fehlende','Fehlende Artikel']] : []),
-    ...(can(user, settings, 'dienstplan_ansehen') ? [['dienstplan','Dienstplan']] : []),
-    ...(can(user, settings, 'online_ansehen') ? [['online','Online']] : []),
-    ...(can(user, settings, 'mitarbeiter_verwalten') ? [['verwaltung','Verwaltung']] : []),
-    ...(can(user, settings, 'einstellungen') ? [['settings','Einstellungen']] : [])
+    ['dashboard','Übersicht','📊'],
+    ...(can(user, settings, 'mhd_erfassen') ? [['erfassen','Erfassen','➕']] : []),
+    ...(can(user, settings, 'backwaren') ? [['backwaren','Backwaren','🥐']] : []),
+    ...(can(user, settings, 'abschriften_ansehen') ? [['abschriften','Abschriften','🗑️']] : []),
+    ...(can(user, settings, 'mhd_alle_ansehen') ? [['artikel','Alle MHD','📅']] : []),
+    ...(can(user, settings, 'artikel_ansehen') ? [['stammdaten','Artikelliste','📦']] : []),
+    ...(can(user, settings, 'fehlende_bearbeiten') ? [['fehlende','Fehlende Artikel','⚠️', stats.missingOpen]] : []),
+    ...(can(user, settings, 'dienstplan_ansehen') ? [['dienstplan','Dienstplan','👥']] : []),
+    ...(can(user, settings, 'online_ansehen') ? [['online','Online','🌐']] : []),
+    ...(can(user, settings, 'mitarbeiter_verwalten') ? [['verwaltung','Verwaltung','⚙️']] : []),
+    ...(can(user, settings, 'einstellungen') ? [['settings','Einstellungen','🔧']] : [])
   ]
+
+  const hasWriteoffsToday = stats.todayWriteoffs > 0
 
   return <main className={`app theme-${uiTheme}`} onClickCapture={handleGlobalActionFeedback}>
     <header className="topbar topbarFinal">
@@ -2270,28 +2272,22 @@ export default function App(){
       </div>
     </header>
 
-    <section className="stats">
-      {can(user, settings, 'mhd_alle_ansehen') && <Stat label="Artikel" value={stats.totalText} tone="normal" onClick={() => openArticleFilter('all')}/>}
+    <section className={`stats ${isAdmin(user) ? 'statsAdminClean' : ''}`}>
       <Stat label="Abgelaufen" value={stats.expiredText} tone="expired" onClick={() => openArticleFilter('expired')}/>
       <Stat label="7 Tage" value={stats.weekText} tone="week" onClick={() => openArticleFilter('week')}/>
-      {can(user, settings, 'fehlende_bearbeiten') && <Stat label="Fehlende Artikel" value={stats.missingOpen === 1 ? '1 offen' : `${stats.missingOpen} offen`} tone="missing" onClick={() => setTab('fehlende')}/>}
-      {can(user, settings, 'abschriften_ansehen') && <Stat label="Abschriften" value={stats.todayWriteoffs === 1 ? '1 heute' : `${stats.todayWriteoffs} heute`} tone="writeoffs" onClick={() => setTab('abschriften')}/>}
+      {isAdmin(user) && can(user, settings, 'abschriften_ansehen') && <Stat label="Abschriften" value={hasWriteoffsToday ? '🟢 Vorhanden' : '❌ Keine'} tone={hasWriteoffsToday ? 'writeoffsOk' : 'writeoffsNone'} onClick={() => setTab('abschriften')}/>}
     </section>
-
-    {isAdmin(user) && <section className="mhdDashboardStats" aria-label="MHD Statistik">
-      <span>📦 Artikel gesamt: <b>{stats.total}</b></span>
-      <span>🟡 7 Tage: <b>{stats.yellow}</b></span>
-      <span>🟠 5–2 Tage: <b>{stats.orange}</b></span>
-      <span>🔴 1–0 Tage: <b>{stats.red}</b></span>
-      <span>🟥 Abgelaufen: <b>{stats.expired}</b></span>
-    </section>}
 
     {can(user, settings, 'abschriften_download') && <section className="todayStats single">
       <button className="pdfButton" onClick={() => exportAbschriftenPDF(writeoffs.filter(w => w.typ !== 'kontrolle' && entryDateKey(w) === todayISO()), 'Abschriftenliste', todayISO(), settings?.abschriften_pdf_passwort || '')}>📄 Abschriftenliste herunterladen</button>
     </section>}
 
-    <nav className="tabs">
-      {tabs.map(([key,label]) => <button key={key} className={tab === key ? 'active' : ''} onClick={() => { setError(''); setTab(key) }}>{label}</button>)}
+    <nav className="tabs menuTiles">
+      {tabs.map(([key,label,icon,badge]) => <button key={key} className={tab === key ? 'active' : ''} onClick={() => { setError(''); setTab(key) }}>
+        <span className="tabIcon" aria-hidden="true">{icon}</span>
+        <span className="tabLabel">{label}</span>
+        {Number(badge) > 0 && <span className="tabBadge" aria-label={`${badge} offen`}>{badge}</span>}
+      </button>)}
     </nav>
 
     {error && <div className="error">{error}</div>}

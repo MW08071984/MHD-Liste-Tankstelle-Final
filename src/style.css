@@ -1226,3 +1226,90 @@ button.danger,.danger,.actions button.danger{
 }
 .confirmDetails p{margin:0;font-size:17px;font-weight:800;color:var(--text)}
 @media(max-width:520px){.missingMatch{grid-template-columns:1fr}.missingMatch button{width:100%}.mhdDashboardStats{grid-template-columns:1fr 1fr}.mhdDashboardStats span{font-size:13px}}
+
+/* Dashboard/Menu Aufräumung: Chef/Stationsleitung kompakt, Mitarbeiter unverändert */
+.statsAdminClean{
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:10px;
+}
+.statsAdminClean .stat{
+  min-height:92px;
+  text-align:center;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+}
+.statsAdminClean .stat b{
+  font-size:22px;
+  line-height:1.15;
+}
+.stat.writeoffsOk{
+  background:linear-gradient(145deg,#efffe7,#b8f7a8)!important;
+  border-color:#188b24!important;
+}
+.stat.writeoffsOk b,.stat.writeoffsOk span{color:#0d5d16!important}
+.stat.writeoffsNone{
+  background:linear-gradient(145deg,#fff6f6,#ffd6d6)!important;
+  border-color:#c61f1f!important;
+}
+.stat.writeoffsNone b,.stat.writeoffsNone span{color:#8a1111!important}
+
+.menuTiles{
+  display:grid!important;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:10px!important;
+  padding:10px 0 14px!important;
+  background:transparent!important;
+}
+.menuTiles button{
+  position:relative;
+  min-height:66px!important;
+  border-radius:18px!important;
+  padding:8px 6px!important;
+  display:flex!important;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:3px;
+  line-height:1.05!important;
+  font-weight:1000!important;
+  box-shadow:0 4px 10px rgba(0,0,0,.08);
+}
+.menuTiles .tabIcon{
+  font-size:22px;
+  line-height:1;
+}
+.menuTiles .tabLabel{
+  font-size:13px;
+  line-height:1.05;
+}
+.menuTiles .tabBadge{
+  position:absolute;
+  top:-8px;
+  right:-7px;
+  min-width:25px;
+  height:25px;
+  padding:0 6px;
+  border-radius:999px;
+  background:#d71920;
+  color:#fff;
+  border:3px solid #fff3b0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:12px;
+  line-height:1;
+  font-weight:1000;
+  box-shadow:0 2px 8px rgba(0,0,0,.25);
+}
+@media(max-width:560px){
+  .statsAdminClean{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .statsAdminClean .stat:nth-child(3){grid-column:1/-1;min-height:76px}
+}
+@media(max-width:420px){
+  .menuTiles{grid-template-columns:repeat(3,minmax(0,1fr));gap:7px!important}
+  .menuTiles button{min-height:58px!important;padding:7px 4px!important}
+  .menuTiles .tabIcon{font-size:19px}
+  .menuTiles .tabLabel{font-size:12px}
+}

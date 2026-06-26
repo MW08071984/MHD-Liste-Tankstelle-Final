@@ -1,0 +1,8 @@
+Build erfolgreich geprüft.
+Änderungen:
+- Dashboard Chef/Stationsleitung auf Abgelaufen, 7 Tage und Abschriften-Status reduziert.
+- Artikel gesamt, Fehlende-Artikel-Kachel und doppelte Statistik entfernt.
+- Fehlende Artikel als Badge im Menüpunkt angezeigt.
+- Menü als moderne Symbol-Kacheln gestaltet.
+- Mitarbeiter-Dashboard unverändert.
+- Keine Datenbank-/Datenänderungen.
