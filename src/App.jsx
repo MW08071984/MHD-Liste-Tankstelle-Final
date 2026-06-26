@@ -648,6 +648,10 @@ export default function App(){
   const [prefillMasterArticle, setPrefillMasterArticle] = useState(null)
   const [globalImage, setGlobalImage] = useState(null)
   const [pushPanelOpen, setPushPanelOpen] = useState(false)
+  const [duePopupQueue, setDuePopupQueue] = useState([])
+  const [duePopupIndex, setDuePopupIndex] = useState(0)
+  const [duePopupOpen, setDuePopupOpen] = useState(false)
+  const [duePopupAmount, setDuePopupAmount] = useState('')
 
   useEffect(() => {
     function showImage(e){ setGlobalImage(e.detail || null) }
@@ -901,6 +905,73 @@ export default function App(){
     }
   }
 
+
+  const duePopupSnoozeKey = 'mhd_due_popup_snooze_until'
+
+  function getDuePopupItems(){
+    const today = todayISO()
+    return (items || [])
+      .filter(x => String(x?.mhd || '').slice(0,10) <= today)
+      .sort((a,b) => String(a?.mhd || '').localeCompare(String(b?.mhd || '')))
+  }
+
+  function notifyDuePopupAgain(count){
+    const text = count === 1
+      ? '1 MHD-Artikel ist fällig und muss noch kontrolliert werden.'
+      : count + ' MHD-Artikel sind fällig und müssen noch kontrolliert werden.'
+    try{
+      if('Notification' in window && Notification.permission === 'granted'){
+        new Notification('MHD Kontrolle', { body:text, icon:'/icon-192.png', vibrate:[1000,250,1000,250,1000], requireInteraction:true })
+      }
+    }catch{}
+    setSuccess(text)
+  }
+
+  function openDuePopupIfNeeded(force = false){
+    if(!user) return false
+    const due = getDuePopupItems()
+    if(!due.length) return false
+    const snoozeUntil = Number(localStorage.getItem(duePopupSnoozeKey) || 0)
+    if(!force && snoozeUntil && Date.now() < snoozeUntil) return false
+    setDuePopupQueue(due)
+    setDuePopupIndex(0)
+    setDuePopupAmount('')
+    setDuePopupOpen(true)
+    notifyDuePopupAgain(due.length)
+    mhdOpenAlarm()
+    return true
+  }
+
+  function snoozeDuePopup(minutes = 60){
+    stopMhdOpenAlarm()
+    setDuePopupOpen(false)
+    setDuePopupAmount('')
+    try{ localStorage.setItem(duePopupSnoozeKey, String(Date.now() + minutes * 60000)) }catch{}
+    setSuccess('MHD-Erinnerung kommt später erneut. Der Artikel bleibt in der MHD-Liste.')
+  }
+
+  async function saveDuePopupAmount(){
+    const item = duePopupQueue[duePopupIndex]
+    if(!item) return
+    const cleanAmount = String(duePopupAmount || '').replace(/[^0-9]/g,'')
+    if(cleanAmount === ''){
+      appFeedback('error')
+      return setError('Bitte Menge oder 0 eingeben. Ohne Eingabe bleibt der Artikel offen.')
+    }
+    stopMhdOpenAlarm()
+    await writeOffArticle(item, Number(cleanAmount), 'MHD')
+    setDuePopupAmount('')
+    const nextIndex = duePopupIndex + 1
+    if(nextIndex < duePopupQueue.length){
+      setDuePopupIndex(nextIndex)
+      mhdOpenAlarm()
+    }else{
+      setDuePopupOpen(false)
+      setDuePopupQueue([])
+      try{ localStorage.removeItem(duePopupSnoozeKey) }catch{}
+    }
+  }
+
   function next30ISO(){
     const limitDate = new Date()
     limitDate.setDate(limitDate.getDate()+30)
@@ -1119,6 +1190,20 @@ export default function App(){
   useEffect(() => {
     if(!user || !items.length) return
     checkDueNotifications()
+    openDuePopupIfNeeded(false)
+  }, [user, items])
+
+  useEffect(() => {
+    if(!user) return
+    const timer = setInterval(() => openDuePopupIfNeeded(false), 5 * 60 * 1000)
+    const onVisible = () => { if(!document.hidden) openDuePopupIfNeeded(false) }
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onVisible)
+    return () => {
+      clearInterval(timer)
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onVisible)
+    }
   }, [user, items])
 
   async function saveSetting(key, value){
@@ -2145,6 +2230,16 @@ export default function App(){
 
     {globalImage && <div className="modalOverlay"><div className="modalCard imageOnlyModal"><h2>{globalImage.title || 'Bild anzeigen'}</h2><img className="smallProductImage" src={globalImage.src}/><button onClick={() => setGlobalImage(null)}>Schließen</button></div></div>}
     {pushPanelOpen && <PushPanel enablePush={enablePush} close={() => setPushPanelOpen(false)} />}
+    {duePopupOpen && duePopupQueue[duePopupIndex] && <DueMhdPopup
+      item={duePopupQueue[duePopupIndex]}
+      index={duePopupIndex}
+      total={duePopupQueue.length}
+      amount={duePopupAmount}
+      setAmount={setDuePopupAmount}
+      save={saveDuePopupAmount}
+      later={() => snoozeDuePopup(60)}
+      stopAlarm={stopMhdOpenAlarm}
+    />}
 
     {masterScannerOpen && <Scanner onClose={() => setMasterScannerOpen(false)} onDetected={(code) => { localStorage.setItem('mhd_master_scanned_ean', code); window.dispatchEvent(new CustomEvent('mhd-master-scan', {detail:code})); setMasterScannerOpen(false) }}/>} 
     {scannerOpen && <Scanner onClose={() => setScannerOpen(false)} onDetected={(code) => {
@@ -2162,6 +2257,35 @@ export default function App(){
 }
 
 
+
+
+function DueMhdPopup({item, index, total, amount, setAmount, save, later, stopAlarm}){
+  const days = daysUntil(item?.mhd)
+  const title = item?.name || item?.artikel || item?.artikelnummer || item?.barcode || 'Artikel'
+  const img = firstImageUrl(item?.bild_url)
+  function cleanAmount(value){ setAmount(String(value || '').replace(/[^0-9]/g,'')) }
+  return <div className="modalOverlay dueMhdOverlay">
+    <div className="modalCard dueMhdModal">
+      <button type="button" className="modalCloseX" onClick={() => { stopAlarm?.(); later?.(); }} aria-label="Später erinnern">×</button>
+      <div className="dueMhdBadge">MHD fällig · {index + 1} von {total}</div>
+      <h2>{title}</h2>
+      {img && <img className="dueMhdImage" src={img} alt={title} loading="lazy" decoding="async"/>}
+      <div className="dueMhdDetails">
+        <p><b>MHD:</b> {item?.mhd ? new Date(item.mhd).toLocaleDateString('de-DE') : '-'}</p>
+        <p><b>Status:</b> {days === 0 ? 'Heute fällig' : `${Math.abs(days)} Tage abgelaufen`}</p>
+        <p><b>EAN:</b> {item?.barcode || '-'}</p>
+        <p><b>Art.-Nr.:</b> {item?.artikelnummer || '-'}</p>
+      </div>
+      <label className="smallLabel">Menge für Abschrift eintragen oder 0 wenn nichts mehr da ist</label>
+      <input className="realInput dueMhdQty" inputMode="numeric" type="number" min="0" value={amount} placeholder="Menge oder 0" onChange={e => cleanAmount(e.target.value)} />
+      <p className="dueMhdHint">Ohne Eingabe bleibt der Artikel in der MHD-Liste und wird später erneut erinnert.</p>
+      <div className="modalActions dueMhdActions">
+        <button type="button" className="successBtn" onClick={save}>Speichern / nächster Artikel</button>
+        <button type="button" className="ghostSmall" onClick={() => { stopAlarm?.(); later?.(); }}>Später erinnern</button>
+      </div>
+    </div>
+  </div>
+}
 
 function PushPanel({enablePush, close}){
   return <div className="modalOverlay"><div className="modalCard pushTestModal">
@@ -2302,7 +2426,7 @@ function ArticleList({items,allCount,articleFilter,setArticleFilter,itemsLimited
   return <section className="list">
     <div className="sectionHeader">
       <div>
-        <div className="pageTitleInline"><h2>{title}</h2><InfoButton title={title}>Hier stehen die MHD-Einträge. Chef/Stationsleitung kann Einträge bearbeiten, löschen oder Abschriften speichern.</InfoButton></div>
+        <div className="pageTitleInline"><h2>{title}</h2><InfoButton title={title}>Hier stehen die MHD-Einträge. Chef/Stationsleitung kann Einträge bearbeiten, löschen oder Abschriften speichern. Fällige MHD-Artikel ploppen beim Öffnen einzeln auf. Ohne Menge oder 0 bleibt der Artikel in der Liste und die Erinnerung kommt später erneut.</InfoButton></div>
         <p className="filterInfo">{shownItems.length} von {items.length} angezeigt · {allCount} Artikeln · Chef/Stationsleitung kann hier Einträge bearbeiten oder löschen.</p>
       </div>
       {itemsLimited && <button className="ghostSmall" onClick={loadAllItems}>Alle MHD laden</button>}

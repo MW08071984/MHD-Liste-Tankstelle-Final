@@ -1,0 +1,11 @@
+Build erfolgreich geprüft.
+
+Änderungen:
+- Fällige/abgelaufene MHD-Artikel werden beim Öffnen der App als Popup angezeigt.
+- Mehrere fällige Artikel werden einzeln nacheinander angezeigt.
+- Ohne Eingabe bleibt der Artikel in der MHD-Liste.
+- Erst bei Eingabe von 0 oder einer Menge wird gespeichert/entfernt.
+- Wegklicken/Später erinnern setzt eine erneute Erinnerung nach ca. 60 Minuten.
+- Info-Button der MHD-Liste wurde kurz ergänzt.
+
+Bestehende Daten werden nicht gelöscht.
