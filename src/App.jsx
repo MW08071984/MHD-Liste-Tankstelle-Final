@@ -647,6 +647,7 @@ export default function App(){
   const [missingArticles, setMissingArticles] = useState([])
   const [prefillMasterArticle, setPrefillMasterArticle] = useState(null)
   const [globalImage, setGlobalImage] = useState(null)
+  const [pushPanelOpen, setPushPanelOpen] = useState(false)
 
   useEffect(() => {
     function showImage(e){ setGlobalImage(e.detail || null) }
@@ -2059,7 +2060,7 @@ export default function App(){
         <h1 className="topbarHello">Hallo {user.name}</h1>
         <div className="topbarButtonRow">
           <DesignButton uiTheme={uiTheme} setUiTheme={setUiTheme}/>
-          <button className="pushBtn" onClick={enablePush} title="Push-Benachrichtigungen aktivieren/testen">🔔 Push</button>
+          <button className="pushBtn" onClick={() => setPushPanelOpen(true)} title="Push, Ton und Vibration testen">🔔 Push</button>
           <button className="logout" onClick={logout}>🚪 Logout</button>
         </div>
       </div>
@@ -2096,6 +2097,7 @@ export default function App(){
     {tab === 'settings' && can(user, settings, 'einstellungen') && <Settings enablePush={enablePush} settings={settings} saveSetting={saveSetting} uiTheme={uiTheme} setUiTheme={setUiTheme}/>}
 
     {globalImage && <div className="modalOverlay"><div className="modalCard imageOnlyModal"><h2>{globalImage.title || 'Bild anzeigen'}</h2><img className="smallProductImage" src={globalImage.src}/><button onClick={() => setGlobalImage(null)}>Schließen</button></div></div>}
+    {pushPanelOpen && <PushPanel enablePush={enablePush} close={() => setPushPanelOpen(false)} />}
 
     {masterScannerOpen && <Scanner onClose={() => setMasterScannerOpen(false)} onDetected={(code) => { localStorage.setItem('mhd_master_scanned_ean', code); window.dispatchEvent(new CustomEvent('mhd-master-scan', {detail:code})); setMasterScannerOpen(false) }}/>} 
     {scannerOpen && <Scanner onClose={() => setScannerOpen(false)} onDetected={(code) => {
@@ -2112,6 +2114,26 @@ export default function App(){
   </main>
 }
 
+
+
+function PushPanel({enablePush, close}){
+  return <div className="modalOverlay"><div className="modalCard pushTestModal">
+    <h2>Push, Ton & Vibration</h2>
+    <p>Hier kann jeder direkt auf seinem Handy testen, ob Push, Erfolgston, Fehlerton und Vibration funktionieren.</p>
+    <button type="button" onClick={enablePush}>🔔 Push-Benachrichtigung aktivieren/testen</button>
+    <div className="adminBox">
+      <b>Ton & Vibration testen</b>
+      <p>Erfolg und Fehler sind bewusst deutlich unterschiedlich.</p>
+      <div className="feedbackTestGrid">
+        <button type="button" className="feedbackSuccess" onClick={() => appFeedback('success')}>✅ Erfolg testen</button>
+        <button type="button" className="feedbackError" onClick={() => appFeedback('error')}>❌ Fehler testen</button>
+        <button type="button" className="feedbackAlarm" onClick={() => mhdOpenAlarm()}>🔔 MHD-Alarm testen</button>
+      </div>
+      <button type="button" className="ghostSmall" onClick={() => stopMhdOpenAlarm()}>Alarm stoppen</button>
+    </div>
+    <div className="modalActions"><button type="button" onClick={() => { stopMhdOpenAlarm(); close(); }}>Schließen</button></div>
+  </div></div>
+}
 
 async function compressImageFile(file, maxSize = 360, quality = 0.68){
   if(!file || !file.type || !file.type.startsWith('image/')) return file
