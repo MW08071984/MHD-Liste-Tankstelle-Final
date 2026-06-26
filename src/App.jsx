@@ -117,6 +117,45 @@ function normalizeMhdInput(value){
   return ''
 }
 
+
+function normalizeMhdInputMode(value, mode = 'full'){
+  const raw = String(value || '').trim()
+  if(!raw) return ''
+  if(mode === 'month'){
+    const buildMonthYearIso = (monthRaw, yearRaw) => {
+      const monthNum = Number(monthRaw)
+      const yearStr = String(yearRaw || '')
+      const yearNum = Number(yearStr.length === 2 ? '20' + yearStr : yearStr)
+      if(monthNum >= 1 && monthNum <= 12 && yearNum >= 2000){
+        const lastDay = new Date(yearNum, monthNum, 0).getDate()
+        return `${yearNum}-${String(monthNum).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`
+      }
+      return ''
+    }
+    const separated = raw.match(/^\s*(\d{1,2})[.,\-/\s]+(\d{2}|\d{4})\s*$/)
+    if(separated) return buildMonthYearIso(separated[1], separated[2])
+    const digits = raw.replace(/\D/g,'')
+    if(digits.length === 6) return buildMonthYearIso(digits.slice(0,2), digits.slice(2))
+    if(digits.length === 5) return buildMonthYearIso(digits.slice(0,1), digits.slice(1))
+    if(digits.length === 4) return buildMonthYearIso(digits.slice(0,2), digits.slice(2)) || buildMonthYearIso(digits.slice(0,1), digits.slice(1))
+    if(digits.length === 3) return buildMonthYearIso(digits.slice(0,1), digits.slice(1))
+    return ''
+  }
+  return normalizeMhdInput(raw)
+}
+
+function mhdEntryValue(value, mode = 'full'){
+  const raw = String(value || '')
+  if(/^\d{4}-\d{2}-\d{2}$/.test(raw)){
+    if(mode === 'month'){
+      const [y,m] = raw.split('-')
+      return `${m}.${y}`
+    }
+    return toGermanDate(raw)
+  }
+  return raw
+}
+
 function toGermanDate(value){
   const iso = normalizeMhdInput(value)
   if(!iso) return String(value || '')
@@ -206,6 +245,28 @@ function can(user, settings, key){
   return !!userRights(user, settings)[key]
 }
 const cleanCode = v => String(v || '').replace(/\D/g,'')
+function ean13CheckDigit(body12){
+  const digits = String(body12 || '').replace(/\D/g,'')
+  if(digits.length !== 12) return ''
+  const sum = digits.split('').reduce((acc, d, i) => acc + Number(d) * (i % 2 ? 3 : 1), 0)
+  return String((10 - (sum % 10)) % 10)
+}
+function isValidEan13(code){
+  const clean = cleanCode(code)
+  return clean.length === 13 && ean13CheckDigit(clean.slice(0,12)) === clean.slice(12)
+}
+function isValidEan8(code){
+  const clean = cleanCode(code)
+  if(clean.length !== 8) return false
+  const sum = clean.slice(0,7).split('').reduce((acc, d, i) => acc + Number(d) * (i % 2 ? 1 : 3), 0)
+  return String((10 - (sum % 10)) % 10) === clean.slice(7)
+}
+function isLikelyProductBarcode(code){
+  const clean = cleanCode(code)
+  if(clean.length === 13) return isValidEan13(clean) || true
+  if(clean.length === 8) return isValidEan8(clean) || true
+  return clean.length >= 4
+}
 const stripLeadingZeros = v => cleanCode(v).replace(/^0+/, '')
 const codesEqual = (a,b) => { const x=cleanCode(a), y=cleanCode(b); return !!x && !!y && (x===y || stripLeadingZeros(x)===stripLeadingZeros(y)) }
 const roleLabel = r => r === 'chef' ? 'Chef' : r === 'chef_temp' ? 'Chef-Rechte' : r === 'stationsleitung' ? 'Stationsleitung' : 'Mitarbeiter'
@@ -886,7 +947,7 @@ export default function App(){
     }
 
     // FINAL SPEED: Übersicht ohne Bilddaten laden. Bilder/Base64 sind die größte Bremse.
-    let query = supabase.from('mhd_artikel').select('id,barcode,artikelnummer,name,artikel,kategorie,mhd,created_at,mitarbeiter').order('mhd')
+    let query = supabase.from('mhd_artikel').select('id,barcode,artikelnummer,name,artikel,kategorie,mhd,created_at,mitarbeiter,bild_url').order('mhd')
     if(!all) query = query.lte('mhd', next30ISO())
     const { data, error } = await query
     if(error){
@@ -919,7 +980,6 @@ export default function App(){
       .order('name')
     if(error){
       console.warn('Artikelliste konnte nicht geladen werden:', error)
-      setMasterArticles([])
       setLoadedTabs(prev => ({...prev, master:true}))
       return setError('Artikelliste konnte nicht geladen werden: ' + error.message)
     }
@@ -1267,15 +1327,15 @@ export default function App(){
   }
 
   async function uploadFormImg(e){
-    const file = await compressImageFile(e.target.files?.[0])
-    if(!file) return
-    const url = await fileToDataUrl(file)
-    setForm(f => ({ ...f, bild_url:url }))
-
-    // Wenn Chef/Stationsleitung ein Bild bei einem bereits bekannten Artikel ergänzt,
-    // sofort dauerhaft speichern. Sonst sah es so aus, als wäre es gespeichert,
-    // war nach dem Neuladen aber wieder weg.
     try{
+      const file = await compressImageFile(e.target.files?.[0])
+      if(!file) return
+      const url = await fileToDataUrl(file)
+      setForm(f => ({ ...f, bild_url:url }))
+
+      // Wenn Chef/Stationsleitung ein Bild bei einem bereits bekannten Artikel ergänzt,
+      // sofort dauerhaft speichern. Sonst sah es so aus, als wäre es gespeichert,
+      // war nach dem Neuladen aber wieder weg.
       if(db && isAdmin(user)){
         const clean = String(form.barcode || '').replace(/\D/g,'')
         if(clean){
@@ -1291,10 +1351,12 @@ export default function App(){
       appFeedback('success')
     }catch(err){
       console.warn('Bild konnte nicht sofort gespeichert werden:', err)
-      msgAt('erfassen','warning','Bild übernommen. Bitte mit Speichern sichern.')
+      msgAt('erfassen','warning','Bild konnte nicht gespeichert werden. Bitte erneut versuchen.')
+      appFeedback('error')
+    }finally{
+      try{ if(e?.target) e.target.value = '' }catch{}
     }
   }
-
 
   function safeEditOverviewItem(item){
     if(!item) return
@@ -1320,7 +1382,7 @@ export default function App(){
   async function addItem(){
     setError('')
     if(!can(user, settings, 'mhd_erfassen')) return setError('Keine Rechte.')
-    const normalizedMhd = normalizeMhdInput(form.mhd)
+    const normalizedMhd = normalizeMhdInputMode(form.mhd, form.mhd_mode || 'full')
     if(!form.name){
       appFeedback('error')
       msgAt('erfassen','error','Artikel fehlt.')
@@ -2162,6 +2224,7 @@ function Article({item,user,writeOffArticle,markArticleCheckedZero,setEditArticl
         <p><span>EAN:</span> {item.barcode || '-'}</p>
         <p><span>Art.-Nr.:</span> {item.artikelnummer || '-'}</p>
       </div>
+      <p className={item.bild_url ? 'imageStatus ok' : 'imageStatus missing'}>{item.bild_url ? '📷 Bild vorhanden' : '🚫 Kein Bild hinterlegt'}</p>
       <p className="articleMhdLine"><span>MHD:</span> {item.mhd ? new Date(item.mhd).toLocaleDateString('de-DE') : '-'} · {days <= 0 ? (days === 0 ? 'heute fällig' : `${Math.abs(days)} Tage drüber`) : `${days} Tage`}</p>
       <button className="ghostSmall imageButton" type="button" onClick={openImage}>Bild anzeigen</button>
     </div>
@@ -2428,48 +2491,43 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
       {masterArticles.map(a => <option key={a.id || a.barcode} value={a.barcode}>{a.name || a.barcode} · {a.artikelnummer || a.barcode}</option>)}
     </select>
 
-    <div className="labelInfoRow"><label>MHD vollständiges Datum</label><InfoButton title="MHD-Eingabe"><p>Wenn auf dem Artikel Tag / Monat / Jahr steht, bei <b>MHD vollständiges Datum</b> eintragen.</p><p>Wenn auf dem Artikel nur Monat / Jahr steht, bei <b>MHD nur Monat/Jahr</b> eintragen.</p></InfoButton></div>
+    <div className="labelInfoRow"><label>MHD</label><InfoButton title="MHD-Eingabe"><p>Standard: <b>Tag / Monat / Jahr</b>. Wenn auf dem Artikel nur Monat/Jahr steht, oben auf <b>Monat/Jahr</b> umstellen.</p><p>Punkt, Komma, Slash, Minus oder nur Zahlen sind möglich.</p></InfoButton></div>
+    <select
+      className="realInput mhdModeSelect"
+      value={mhdInputMode}
+      onChange={e => {
+        const nextMode = e.target.value
+        setMhdInputMode(nextMode)
+        setForm({...form, mhd:'', mhd_mode:nextMode})
+      }}
+    >
+      <option value="full">TT.MM.JJJJ - vollständiges Datum</option>
+      <option value="month">MM.JJJJ - nur Monat/Jahr</option>
+    </select>
     <div className="mhdInputRow">
       <input
         className="realInput"
         type="text"
         inputMode="numeric"
-        placeholder="TT.MM.JJJJ"
-        value={mhdInputMode === 'full' ? mhdInputValue(form.mhd || '') : ''}
-        onFocus={() => setMhdInputMode('full')}
-        onChange={e => { setMhdInputMode('full'); setForm({...form, mhd:e.target.value}) }}
+        placeholder={mhdInputMode === 'month' ? 'MM.JJJJ, z. B. 12.2026' : 'TT.MM.JJJJ'}
+        value={mhdEntryValue(form.mhd || '', mhdInputMode)}
+        onChange={e => setForm({...form, mhd:e.target.value, mhd_mode:mhdInputMode})}
         onBlur={e => {
-          const iso = normalizeMhdInput(e.target.value)
-          if(iso) setForm({...form, mhd:iso})
+          const iso = normalizeMhdInputMode(e.target.value, mhdInputMode)
+          if(iso) setForm({...form, mhd:iso, mhd_mode:mhdInputMode})
         }}
       />
-      <label className="calendarPickerButton">
+      {mhdInputMode === 'full' && <label className="calendarPickerButton">
         <span>📅 Kalender</span>
         <input
           type="date"
           min={todayISO()}
           aria-label="MHD per Kalender auswählen"
-          value={normalizeMhdInput(form.mhd) || ''}
-          onChange={e => { setMhdInputMode('full'); setForm({...form, mhd:e.target.value}) }}
+          value={normalizeMhdInputMode(form.mhd, 'full') || ''}
+          onChange={e => setForm({...form, mhd:e.target.value, mhd_mode:mhdInputMode})}
         />
-      </label>
+      </label>}
     </div>
-
-    <label>MHD nur Monat/Jahr</label>
-    <input
-      className="realInput"
-      type="text"
-      inputMode="numeric"
-      placeholder="MM.JJJJ, z. B. 12.2026"
-      value={mhdInputMode === 'month' ? mhdMonthYearInputValue(form.mhd || '') : ''}
-      onFocus={() => setMhdInputMode('month')}
-      onChange={e => { setMhdInputMode('month'); setForm({...form, mhd:e.target.value}) }}
-      onBlur={e => {
-        const iso = normalizeMhdInput(e.target.value)
-        if(iso) setForm({...form, mhd:iso})
-      }}
-    />
-
 
     <InlineFeedback msg={inlineMsg?.erfassen}/>
     <button className="primary" onClick={addItem}>Speichern</button>
@@ -3247,9 +3305,28 @@ function Scanner({onClose,onDetected}){
     try{ streamRef.current?.getTracks()?.forEach(t => t.stop()) }catch{}
   }
 
-  function finishDetected(code){
+  const scanHitsRef = useRef({ code:'', count:0 })
+
+  function finishDetected(code, options = {}){
     const clean = String(code || '').replace(/\D/g,'')
     if(!clean || detectedRef.current) return
+    const manualInput = !!options.manual
+
+    if(!manualInput){
+      if(clean.length === 12 && clean.startsWith('0')){
+        setScanMsg({type:'warning', text:'Unsicher erkannt: ' + clean + '. Bitte EAN auf der Packung prüfen oder manuell eingeben.'})
+        return
+      }
+      if(!isLikelyProductBarcode(clean)) return
+      const prev = scanHitsRef.current
+      const nextCount = prev.code === clean ? prev.count + 1 : 1
+      scanHitsRef.current = { code:clean, count:nextCount }
+      if(nextCount < 2){
+        setScanMsg({type:'warning', text:'Barcode erkannt: ' + clean + ' – bitte kurz ruhig halten...'})
+        return
+      }
+    }
+
     detectedRef.current = true
     setScanMsg({type:'success', text:'✓ Barcode erkannt: ' + clean})
     stopCamera()
@@ -3314,7 +3391,7 @@ function Scanner({onClose,onDetected}){
       let detector
       try{
         detector = new window.BarcodeDetector({
-          formats: ['ean_13','ean_8','code_128','code_39','upc_a','upc_e','itf']
+          formats: ['ean_13','ean_8']
         })
       }catch{ return }
 
@@ -3354,8 +3431,7 @@ function Scanner({onClose,onDetected}){
           const BarcodeFormat = window.ZXing.BarcodeFormat
           const DecodeHintType = window.ZXing.DecodeHintType
           hints.set(DecodeHintType.POSSIBLE_FORMATS, [
-            BarcodeFormat.EAN_13, BarcodeFormat.EAN_8, BarcodeFormat.UPC_A, BarcodeFormat.UPC_E,
-            BarcodeFormat.CODE_128, BarcodeFormat.CODE_39, BarcodeFormat.ITF
+            BarcodeFormat.EAN_13, BarcodeFormat.EAN_8
           ])
           hints.set(DecodeHintType.TRY_HARDER, true)
         }catch{}
@@ -3389,8 +3465,8 @@ function Scanner({onClose,onDetected}){
     <InlineFeedback msg={scanMsg}/>
     <video ref={videoRef} className="scannerVideo" autoPlay muted playsInline></video>
     <label>Barcode manuell eingeben</label>
-    <input inputMode="numeric" pattern="[0-9]*" placeholder="EAN / Barcode" value={manual} onChange={e => setManual(e.target.value.replace(/\D/g,''))} onKeyDown={e => { if(e.key === 'Enter' && manual){ e.preventDefault(); finishDetected(manual) } }}/>
-    <button disabled={!manual} onClick={() => finishDetected(manual)}>Übernehmen</button>
+    <input inputMode="numeric" pattern="[0-9]*" placeholder="EAN / Barcode" value={manual} onChange={e => setManual(e.target.value.replace(/\D/g,''))} onKeyDown={e => { if(e.key === 'Enter' && manual){ e.preventDefault(); finishDetected(manual, {manual:true}) } }}/>
+    <button disabled={!manual} onClick={() => finishDetected(manual, {manual:true})}>Übernehmen</button>
     <button onClick={() => { stopCamera(); onClose() }}>Schließen</button>
   </div></div>
 }

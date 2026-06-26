@@ -1,0 +1,19 @@
+Build geprüft: npm run build erfolgreich.
+
+Enthaltene Änderungen:
+- Datumseingabe auf ein MHD-Feld mit Modus-Auswahl umgestellt.
+- Standard: vollständiges Datum; optional: Monat/Jahr.
+- Datumseingabe akzeptiert Punkt, Komma, Slash, Minus, Leerzeichen und reine Zahlen.
+- Speichern-Button bleibt direkt nach MHD-Eingabe.
+- Kalender-Button bleibt als 📅 Kalender beschriftet.
+- Bildstatus wird in MHD-Karten angezeigt: Bild vorhanden / Kein Bild hinterlegt.
+- Scanner nimmt automatische Treffer robuster an: EAN-13/EAN-8 bevorzugt, gleiche Erkennung muss zweimal kommen, unsichere 12-stellige 0-Codes werden nicht blind übernommen.
+- Artikelliste wird bei Ladefehlern nicht absichtlich geleert; Fehler werden angezeigt.
+- Bild-Upload Fehler werden abgefangen, statt in eine weiße Seite zu laufen.
+
+Nicht geändert:
+- Bestehende Datenbankdaten
+- Rechteverwaltung
+- Designs außer bestehende Nutzung
+- Menüs
+- Supabase Tabellenstruktur
