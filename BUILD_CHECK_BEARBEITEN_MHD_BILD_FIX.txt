@@ -1,0 +1,7 @@
+Build geprüft: npm run build erfolgreich.
+Änderungen:
+- MHD-Eingabe: Auswahl Tag/Monat/Jahr und Monat/Jahr unter das Datumseingabefeld verschoben.
+- Artikelliste: Bearbeiten robuster gemacht, damit keine leere Seite entsteht.
+- Artikelliste/Bearbeiten: Wenn Bild vorhanden ist, wird nur Bild anzeigen + Bild ändern angezeigt.
+- Wenn kein Bild vorhanden ist, bleiben Bild aufnehmen + Bild hochladen erhalten.
+- Keine Datenbankänderungen, keine vorhandenen Daten werden gelöscht.

@@ -2871,19 +2871,6 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
     </select>
 
     <div className="labelInfoRow"><label>MHD</label><InfoButton title="MHD-Eingabe"><p>Mit der Schaltfläche wechselst du zwischen <b>Tag/Monat/Jahr</b> und <b>Monat/Jahr</b>.</p><p><b>Tag/Monat/Jahr:</b> normales MHD, z. B. 30.06.2026. <b>Monat/Jahr:</b> wenn nur Monat und Jahr aufgedruckt sind; die App nimmt automatisch den letzten Tag des Monats.</p><p>Punkt, Komma, Slash, Minus oder nur Zahlen sind möglich.</p></InfoButton></div>
-    <div className="mhdModeSwitch" role="group" aria-label="MHD Eingabeart auswählen">
-      <button
-        type="button"
-        className={mhdInputMode === 'full' ? 'active' : ''}
-        onClick={() => { setMhdInputMode('full'); setForm({...form, mhd:'', mhd_mode:'full'}) }}
-      >Tag / Monat / Jahr</button>
-      <button
-        type="button"
-        className={mhdInputMode === 'month' ? 'active' : ''}
-        onClick={() => { setMhdInputMode('month'); setForm({...form, mhd:'', mhd_mode:'month'}) }}
-      >Monat / Jahr</button>
-    </div>
-    <p className="mhdModeHelp">{mhdInputMode === 'month' ? 'Monat/Jahr: z. B. 12.2026 eingeben, gespeichert wird automatisch der letzte Tag im Monat.' : 'Tag/Monat/Jahr: vollständiges MHD eingeben oder Kalender nutzen.'}</p>
     <div className={mhdInputMode === 'full' ? 'mhdInputRow mhdInputRowNoSelect' : 'mhdInputRow mhdInputRowMonthOnly'}>
       <input
         className="realInput"
@@ -2909,6 +2896,19 @@ function Erfassen({form,setForm,setScannerOpen,lookupBarcode,uploadFormImg,addIt
       </label>}
     </div>
 
+    <div className="mhdModeSwitch mhdModeSwitchBelow" role="group" aria-label="MHD Eingabeart auswählen">
+      <button
+        type="button"
+        className={mhdInputMode === 'full' ? 'active' : ''}
+        onClick={() => { setMhdInputMode('full'); setForm({...form, mhd:'', mhd_mode:'full'}) }}
+      >Tag / Monat / Jahr</button>
+      <button
+        type="button"
+        className={mhdInputMode === 'month' ? 'active' : ''}
+        onClick={() => { setMhdInputMode('month'); setForm({...form, mhd:'', mhd_mode:'month'}) }}
+      >Monat / Jahr</button>
+    </div>
+    <p className="mhdModeHelp">{mhdInputMode === 'month' ? 'Monat/Jahr: z. B. 12.2026 eingeben, gespeichert wird automatisch der letzte Tag im Monat.' : 'Tag/Monat/Jahr: vollständiges MHD eingeben oder Kalender nutzen.'}</p>
     <InlineFeedback msg={inlineMsg?.erfassen}/>
     <button className="primary" onClick={addItem}>Speichern</button>
 
@@ -3354,15 +3354,22 @@ function MasterArticles({masterArticles, mhdItems=[], saveMasterArticle,deleteMa
   }
 
   function edit(a){
-    setData({
-      id:a.id,
-      barcode:a.barcode || '',
-      artikelnummer:a.artikelnummer || '',
-      name:a.name || '',
-      kategorie:a.kategorie || 'Sonstiges',
-      bild_url:a.bild_url || ''
-    })
-    window.scrollTo({top:0, behavior:'smooth'})
+    try{
+      if(!a) return
+      setData({
+        id:a.id || null,
+        barcode:a.barcode || '',
+        artikelnummer:a.artikelnummer || '',
+        name:a.name || a.artikel || '',
+        kategorie:a.kategorie || 'Sonstiges',
+        bild_url:a.bild_url || ''
+      })
+      setMsg({type:'success', text:'✓ Artikel zum Bearbeiten geladen.'})
+      setTimeout(() => { try{ document.querySelector('.formCard')?.scrollIntoView({behavior:'smooth', block:'start'}) }catch{} }, 50)
+    }catch(err){
+      console.error(err)
+      setMsg({type:'error', text:'Artikel konnte nicht zum Bearbeiten geöffnet werden. Bitte Liste neu laden und erneut versuchen.'})
+    }
   }
 
   async function uploadArticleImageDirect(article, e){
@@ -3417,7 +3424,10 @@ function MasterArticles({masterArticles, mhdItems=[], saveMasterArticle,deleteMa
 
     <label>Bild</label>
     <input placeholder="Bild URL oder Upload nutzen" value={data.bild_url} onChange={e => setData({...data, bild_url:e.target.value})}/>
-    <div className="captureRow"><label className="upload captureButton">📷 Bild aufnehmen<input type="file" accept="image/*" capture="environment" onChange={upload}/></label><label className="upload captureButton">📁 Bild hochladen<input type="file" accept="image/*" onChange={upload}/></label></div>
+    {data.bild_url ? <div className="captureRow">
+      <button type="button" className="ghostSmall" onClick={() => window.dispatchEvent(new CustomEvent('mhd-show-image', {detail:{src:data.bild_url, title:data.name || 'Artikelbild'}}))}>Bild anzeigen</button>
+      <label className="upload captureButton">🔄 Bild ändern<input type="file" accept="image/*" onChange={upload}/></label>
+    </div> : <div className="captureRow"><label className="upload captureButton">📷 Bild aufnehmen<input type="file" accept="image/*" capture="environment" onChange={upload}/></label><label className="upload captureButton">📁 Bild hochladen<input type="file" accept="image/*" onChange={upload}/></label></div>}
     {data.bild_url && <button type="button" onClick={removeArticleBg}>✂️ Bild freistellen</button>}
     {data.bild_url && <img className="preview transparentPreview" src={data.bild_url}/>}    
     <InlineFeedback msg={msg}/>
@@ -3443,8 +3453,10 @@ function MasterArticles({masterArticles, mhdItems=[], saveMasterArticle,deleteMa
           <button className="editBtn" onClick={() => edit({...a, bild_url: cardImg || a.bild_url || ''})}>Bearbeiten</button>
           <button className="successBtn" type="button" onClick={() => quickMhdFromMaster?.({...a, bild_url: cardImg || a.bild_url || ''})}>MHD erfassen</button>
           {cardImg && <button className="ghostSmall" type="button" onClick={() => window.dispatchEvent(new CustomEvent('mhd-show-image', {detail:{src:cardImg, title:a.name || 'Artikelbild'}}))}>Bild anzeigen</button>}
-          <label className="miniUpload cardImageButton">📷 Bild aufnehmen<input type="file" accept="image/*" capture="environment" onChange={e => uploadArticleImageDirect(a,e)}/></label>
-          <label className="miniUpload cardImageButton">📁 Bild hochladen<input type="file" accept="image/*" onChange={e => uploadArticleImageDirect(a,e)}/></label>
+          {cardImg ? <label className="miniUpload cardImageButton">🔄 Bild ändern<input type="file" accept="image/*" onChange={e => uploadArticleImageDirect(a,e)}/></label> : <>
+            <label className="miniUpload cardImageButton">📷 Bild aufnehmen<input type="file" accept="image/*" capture="environment" onChange={e => uploadArticleImageDirect(a,e)}/></label>
+            <label className="miniUpload cardImageButton">📁 Bild hochladen<input type="file" accept="image/*" onChange={e => uploadArticleImageDirect(a,e)}/></label>
+          </>}
           <button className="danger" onClick={() => deleteMasterArticle(a)}>Löschen</button>
         </div>
       </div>
@@ -3700,9 +3712,12 @@ function ArticleModal({item,close,save}){
     <label>EAN / Barcode</label>
     <input placeholder="EAN / Barcode" value={data.barcode || ''} onChange={e => setData({...data, barcode:e.target.value.replace(/\D/g,'')})}/>
 
-    <div className="captureRow"><label className="upload captureButton">📷 Bild aufnehmen<input type="file" accept="image/*" capture="environment" onChange={upload}/></label><label className="upload captureButton">📁 Bild hochladen<input type="file" accept="image/*" onChange={upload}/></label></div>
+    {data.bild_url ? <div className="captureRow">
+      <button type="button" className="ghostSmall" onClick={() => window.dispatchEvent(new CustomEvent('mhd-show-image', {detail:{src:data.bild_url, title:data.name || data.artikel || 'Artikelbild'}}))}>Bild anzeigen</button>
+      <label className="upload captureButton">🔄 Bild ändern<input type="file" accept="image/*" onChange={upload}/></label>
+    </div> : <div className="captureRow"><label className="upload captureButton">📷 Bild aufnehmen<input type="file" accept="image/*" capture="environment" onChange={upload}/></label><label className="upload captureButton">📁 Bild hochladen<input type="file" accept="image/*" onChange={upload}/></label></div>}
     {data.bild_url && <button type="button" onClick={removeArticleBg}>✂️ Bild freistellen</button>}
-    {data.bild_url && <img className="preview transparentPreview" src={data.bild_url}/>}
+    {data.bild_url && <img className="preview transparentPreview" src={data.bild_url}/>} 
     <InlineFeedback msg={localMsg}/>
 
     <div className="modalActions"><button onClick={close}>Abbrechen</button><button onClick={saveNow}>Speichern</button></div>
