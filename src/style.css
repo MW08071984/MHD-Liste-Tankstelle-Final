@@ -439,7 +439,11 @@ button.danger{
 .missingMeta{margin-top:6px;color:#5a2d00;font-weight:900}
 .missingActions{display:grid;gap:8px;align-content:start}
 .missingActions button{width:100%;padding:12px 10px;border-radius:18px;font-size:16px;line-height:1.15}
-.missingActions button:nth-child(2){background:#8b1016;color:var(--yellow)}
+.missingActions button:last-child{background:#8b1016;color:var(--yellow)}
+.missingEditBox{display:grid;gap:8px}
+.missingEditBox label{font-weight:1000;color:var(--dark);font-size:14px;text-transform:uppercase}
+.missingEditBox input{width:100%;border:3px solid var(--blue);border-radius:14px;padding:10px 12px;font-weight:800;background:#fff}
+.missingEditActions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px}
 @media(max-width:560px){.missingCard{grid-template-columns:1fr}.missingActions{grid-template-columns:1fr 1fr}.missingActions button:first-child{grid-column:1/-1}.missingEan{font-size:26px}.missingName{font-size:22px}}
 
 /* Finale Ergänzung: Bild aufnehmen / hochladen sauber nebeneinander */

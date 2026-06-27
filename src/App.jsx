@@ -723,6 +723,8 @@ export default function App(){
       created_at: row?.created_at || nowISO(),
       barcode,
       hinweis: row?.hinweis || 'Artikel nicht in Artikelliste gefunden',
+      artikelname: row?.artikelname || row?.name || extractMissingArticleName?.(row) || '',
+      artikelnummer: row?.artikelnummer || row?.interne_artikelnummer || row?.artnr || '',
       gemeldet_von: row?.gemeldet_von || user?.name || '',
       gemeldet_von_nummer: Number(row?.gemeldet_von_nummer || user?.nummer || 0),
       status: row?.status || 'offen',
@@ -1441,6 +1443,38 @@ export default function App(){
     }
     appFeedback('error')
     setError('Kein passender Artikel über EAN, interne Artikelnummer oder Namen gefunden.')
+  }
+
+  async function updateMissingArticle(row, updates){
+    if(!isAdmin(user)) return setError('Keine Rechte.')
+    const nextBarcode = String(updates?.barcode || row?.barcode || '').replace(/\D/g,'')
+    const nextName = String(updates?.artikelname || updates?.name || extractMissingArticleName(row) || '').trim()
+    const nextArtNr = String(updates?.artikelnummer || extractMissingArtNr(row) || '').trim()
+    if(!nextBarcode) return setError('EAN darf nicht leer sein.')
+    const nextHinweis = `Artikelname: ${nextName || 'Ohne Namen'}${nextArtNr ? ' · Art.-Nr.: ' + nextArtNr : ''}`
+    const nextRow = {
+      ...row,
+      barcode: nextBarcode,
+      artikelname: nextName,
+      artikelnummer: nextArtNr,
+      hinweis: nextHinweis
+    }
+
+    // Sofort in der Oberfläche aktualisieren, damit die App auch bei Netz-/Schemafehlern stabil bleibt.
+    setMissingArticles(prev => mergeMissingLists([nextRow], (prev || []).filter(x => x.id !== row.id && !codesEqual(x.barcode, row.barcode))))
+    writeMissingLocal(mergeMissingLists([nextRow], readMissingLocal().filter(x => x.id !== row.id && !codesEqual(x.barcode, row.barcode))))
+    await writeMissingToSettings(mergeMissingLists([nextRow], (await readMissingFromSettings()).filter(x => x.id !== row.id && !codesEqual(x.barcode, row.barcode))))
+
+    if(db && row?.id && !String(row.id).startsWith('app-')){
+      try{
+        const { error } = await supabase.from('fehlende_artikel').update({ barcode: nextBarcode, hinweis: nextHinweis }).eq('id', row.id)
+        if(error && !isMissingArticlesTableError(error)) console.warn('Fehlender Artikel konnte nicht in Tabelle aktualisiert werden:', error)
+      }catch(e){
+        console.warn('Fehlender Artikel Update: Ersatzspeicher bleibt aktiv.', e)
+      }
+    }
+    setSuccess('Fehlender Artikel wurde bearbeitet.')
+    if(db) loadMissingArticles().catch(() => {})
   }
 
 
@@ -2249,7 +2283,7 @@ export default function App(){
     ...(can(user, settings, 'backwaren') ? [['backwaren','Backwaren','🥐']] : []),
     ...(can(user, settings, 'abschriften_ansehen') ? [['abschriften','Abschriften','🗑️']] : []),
     ...(can(user, settings, 'mhd_alle_ansehen') ? [['artikel','Alle MHD','📅']] : []),
-    ...(can(user, settings, 'artikel_ansehen') ? [['stammdaten','Artikelliste','📦']] : []),
+    ...(can(user, settings, 'artikel_ansehen') ? [['stammdaten','Artikelliste','📦', masterArticles.length]] : []),
     ...(can(user, settings, 'fehlende_bearbeiten') ? [['fehlende','Fehlende Artikel','⚠️', stats.missingOpen]] : []),
     ...(can(user, settings, 'dienstplan_ansehen') ? [['dienstplan','Dienstplan','👥']] : []),
     ...(can(user, settings, 'online_ansehen') ? [['online','Online','🌐']] : []),
@@ -2314,7 +2348,7 @@ export default function App(){
     {tab === 'erfassen' && <Erfassen form={form} setForm={setForm} setScannerOpen={setScannerOpen} lookupBarcode={lookupBarcode} uploadFormImg={uploadFormImg} addItem={addItem} user={user} inlineMsg={inlineMsg} masterArticles={masterArticles} reportMissingArticle={reportMissingArticle} saveMasterArticle={saveMasterArticle}/>}
     {tab === 'backwaren' && <Backwaren backwaren={backwaren} saveBackwarenList={saveBackwarenList} writeOff={writeOffWithConfirm} user={user}/>}
     {tab === 'abschriften' && can(user, settings, 'abschriften_ansehen') && <Abschriften writeoffs={writeoffs.filter(w => w.typ !== 'kontrolle')} user={user} setEditWriteoff={setEditWriteoff} deleteWriteoff={deleteWriteoff} deleteWriteoffsForDay={deleteWriteoffsForDay} undoWriteoff={undoWriteoff} pdfPassword={settings?.abschriften_pdf_passwort || ''}/>}
-    {tab === 'fehlende' && can(user, settings, 'fehlende_bearbeiten') && <MissingArticles missingArticles={missingArticles} masterArticles={masterArticles} markMissingDone={markMissingDone} takeOverMissingArticle={takeOverMissingArticle} useExistingForMissing={useExistingForMissing} recheckMissingArticle={recheckMissingArticle}/>}    {tab === 'stammdaten' && can(user, settings, 'artikel_ansehen') && <MasterArticles prefillArticle={prefillMasterArticle} onPrefillUsed={() => setPrefillMasterArticle(null)} onMissingSaved={markMissingDone} quickMhdFromMaster={quickMhdFromMaster} masterArticles={masterArticles} mhdItems={items} saveMasterArticle={saveMasterArticle} deleteMasterArticle={deleteMasterArticle} setMasterScannerOpen={setMasterScannerOpen}/>}
+    {tab === 'fehlende' && can(user, settings, 'fehlende_bearbeiten') && <MissingArticles missingArticles={missingArticles} masterArticles={masterArticles} markMissingDone={markMissingDone} takeOverMissingArticle={takeOverMissingArticle} useExistingForMissing={useExistingForMissing} recheckMissingArticle={recheckMissingArticle} updateMissingArticle={updateMissingArticle}/>}    {tab === 'stammdaten' && can(user, settings, 'artikel_ansehen') && <MasterArticles prefillArticle={prefillMasterArticle} onPrefillUsed={() => setPrefillMasterArticle(null)} onMissingSaved={markMissingDone} quickMhdFromMaster={quickMhdFromMaster} masterArticles={masterArticles} mhdItems={items} saveMasterArticle={saveMasterArticle} deleteMasterArticle={deleteMasterArticle} setMasterScannerOpen={setMasterScannerOpen}/>}
     {tab === 'dienstplan' && <Dienstplan settings={settings} saveSetting={saveSetting} user={user}/>}
     {tab === 'online' && can(user, settings, 'online_ansehen') && <Online online={online}/>}
     {tab === 'verwaltung' && can(user, settings, 'mitarbeiter_verwalten') && <Verwaltung employees={employees} settings={settings} saveEmployee={saveEmployee} deleteEmployee={deleteEmployee} resetPassword={resetPassword} saveEmployeeRights={saveEmployeeRights}/>}
@@ -3173,25 +3207,53 @@ function findMissingMatches(row, masterArticles=[]){
   return scored.slice(0,5)
 }
 
-function MissingArticles({missingArticles,masterArticles=[],markMissingDone,takeOverMissingArticle,useExistingForMissing,recheckMissingArticle}){
+function MissingArticles({missingArticles,masterArticles=[],markMissingDone,takeOverMissingArticle,useExistingForMissing,recheckMissingArticle,updateMissingArticle}){
   const open = missingArticles.filter(x => x.status !== 'erledigt')
   const getMissingName = (row) => extractMissingName(row) || 'Ohne Namen'
+  const [editId, setEditId] = useState(null)
+  const [editData, setEditData] = useState({ barcode:'', artikelname:'', artikelnummer:'' })
+  function startEdit(row){
+    setEditId(row.id || row.barcode)
+    setEditData({
+      barcode: row.barcode || '',
+      artikelname: getMissingName(row) === 'Ohne Namen' ? '' : getMissingName(row),
+      artikelnummer: extractMissingArtNr(row) || ''
+    })
+  }
+  async function saveEdit(row){
+    await updateMissingArticle?.(row, editData)
+    setEditId(null)
+  }
   return <section className="formCard">
-    <PageTitle title="Fehlende Artikel" info="Hier landen EANs, die Mitarbeiter gescannt haben, aber nicht in der Artikelliste vorhanden sind. Chef/Stationsleitung kann über EAN, interne Artikelnummer und Name vergleichen, vorhandene Artikel übernehmen, neu anlegen oder Vorschläge löschen." />
+    <PageTitle title="Fehlende Artikel" info="Hier landen EANs, die Mitarbeiter gescannt haben, aber nicht in der Artikelliste vorhanden sind. Chef/Stationsleitung kann über EAN, interne Artikelnummer und Name vergleichen, fehlende Angaben bearbeiten, vorhandene Artikel übernehmen, neu anlegen oder Vorschläge löschen." />
     {open.length === 0 && <div className="empty">Keine fehlenden Artikel vorhanden.</div>}
     {open.map(row => {
       const name = getMissingName(row)
       const matches = findMissingMatches(row, masterArticles)
+      const isEditing = editId === (row.id || row.barcode)
       return <div className="missingCard" key={row.id || row.barcode}>
         <div className="missingInfo">
-          <div className="missingEanLabel">EAN</div>
-          <div className="missingEan">{row.barcode || '-'}</div>
-          <div className="missingNameLabel">Artikelname</div>
-          <div className="missingName">{name}</div>
-          {extractMissingArtNr(row) && <><div className="missingNameLabel">Art.-Nr.</div><div className="missingName">{extractMissingArtNr(row)}</div></>}
-          <div className="missingMeta">{row.gemeldet_von || '-'} · {row.created_at ? new Date(row.created_at).toLocaleDateString('de-DE') : ''}</div>
+          {isEditing ? <div className="missingEditBox">
+            <label>EAN</label>
+            <input value={editData.barcode} inputMode="numeric" onChange={e => setEditData({...editData, barcode:e.target.value.replace(/\D/g,'')})}/>
+            <label>Artikelname</label>
+            <input value={editData.artikelname} onChange={e => setEditData({...editData, artikelname:e.target.value})}/>
+            <label>Interne Artikelnummer</label>
+            <input value={editData.artikelnummer} onChange={e => setEditData({...editData, artikelnummer:e.target.value})}/>
+            <div className="missingEditActions">
+              <button type="button" className="successBtn" onClick={() => saveEdit(row)}>Speichern</button>
+              <button type="button" className="ghostSmall" onClick={() => setEditId(null)}>Abbrechen</button>
+            </div>
+          </div> : <>
+            <div className="missingEanLabel">EAN</div>
+            <div className="missingEan">{row.barcode || '-'}</div>
+            <div className="missingNameLabel">Artikelname</div>
+            <div className="missingName">{name}</div>
+            {extractMissingArtNr(row) && <><div className="missingNameLabel">Art.-Nr.</div><div className="missingName">{extractMissingArtNr(row)}</div></>}
+            <div className="missingMeta">{row.gemeldet_von || '-'} · {row.created_at ? new Date(row.created_at).toLocaleDateString('de-DE') : ''}</div>
+          </>}
         </div>
-        {matches.length > 0 && <div className="missingMatches">
+        {matches.length > 0 && !isEditing && <div className="missingMatches">
           <b>Mögliche Treffer aus der Artikelliste</b>
           {matches.map(({article,reasons}) => <div className="missingMatch" key={article.id || article.barcode || article.artikelnummer}>
             <div>
@@ -3202,12 +3264,13 @@ function MissingArticles({missingArticles,masterArticles=[],markMissingDone,take
             <button type="button" className="successBtn" onClick={() => useExistingForMissing?.(row, article)}>Vorhandenen Artikel übernehmen</button>
           </div>)}
         </div>}
-        <div className="missingActions">
+        {!isEditing && <div className="missingActions">
           <button onClick={() => recheckMissingArticle?.(row)}>Abgleich starten</button>
+          <button onClick={() => startEdit(row)}>Bearbeiten</button>
           <button onClick={() => takeOverMissingArticle?.(row)}>Neuen Artikel anlegen</button>
           <button onClick={() => navigator.clipboard?.writeText(row.barcode || '')}>EAN kopieren</button>
           <button onClick={() => markMissingDone(row)}>Vorschlag löschen</button>
-        </div>
+        </div>}
       </div>
     })}
   </section>

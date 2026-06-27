@@ -1,0 +1,7 @@
+Build erfolgreich geprüft.
+Änderungen:
+- Artikelliste-Menüpunkt zeigt Anzahl der hinterlegten Artikel als roten Badge.
+- Fehlende Artikel haben jetzt einen Bearbeiten-Button.
+- Fehlende Artikel können direkt in EAN, Artikelname und interne Artikelnummer korrigiert werden.
+- Vorschlag löschen bleibt rot markiert.
+- Keine Datenbankdaten werden gelöscht.
